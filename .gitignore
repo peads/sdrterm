@@ -1,0 +1,11 @@
+a.out
+*.swp
+cmake-build-*/
+.idea/
+build*/
+*.wav
+*.dat
+*.raw
+.DS_Store
+CMakeFiles
+junk/
