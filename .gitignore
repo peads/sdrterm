@@ -9,3 +9,9 @@ build*/
 .DS_Store
 CMakeFiles
 junk/
+*.pyc
+*.bin
+.venv*
+venv*
+build
+*egg-info*

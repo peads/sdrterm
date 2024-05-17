@@ -1,0 +1,11 @@
+*.c text
+*.h text
+*.py text
+
+*.png binary
+*.jpg binary
+*.wav binary
+*.bin binary
+*.mp3 binary
+*.dat binary
+*.raw binary
