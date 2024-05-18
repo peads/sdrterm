@@ -83,48 +83,34 @@ class IOArgs:
     isDead = None
     omegaOut = None
     correctIq = None
+    simo = None
 
-    def __init__(self,
-                 fs: int,
-                 inFile: str,
-                 outFile: str,
-                 dec: int,
-                 center: str,
-                 tuned: int,
-                 vfos: str,
-                 dm: str,
-                 processes,
-                 pipes,
-                 pl: str,
-                 isDead,
-                 omegaOut: int,
-                 bits: int = None,
-                 enc: str = None,
-                 normalize: bool = False,
-                 correctIq: bool = False):
-        IOArgs.fs = fs
-        IOArgs.inFile = inFile
-        IOArgs.outFile = outFile
-        IOArgs.dec = dec
-        IOArgs.center = float(center)
-        IOArgs.tuned = tuned
-        IOArgs.vfos = [float(x) for x in vfos.split(',')] if not (
-                vfos is None or len(vfos) < 1) else []
-        # IOArgs.vfos.insert(0, 0)
-        IOArgs.vfos.append(0)
-        IOArgs.dm = dm
-        IOArgs.processes = processes
-        IOArgs.pipes = pipes
-        IOArgs.pl = pl
-        IOArgs.isDead = isDead
-        IOArgs.bits = bits
-        IOArgs.enc = enc
-        IOArgs.normalize = normalize
-        IOArgs.omegaOut = omegaOut
-        IOArgs.correctIq = correctIq
+    def __init__(self, **kwargs):
+        IOArgs.simo = kwargs['simo']
+        IOArgs.fs = kwargs['fs'] if 'fs' in kwargs else None
+        IOArgs.inFile = kwargs['inFile']
+        IOArgs.outFile = kwargs['outFile']
+        IOArgs.dec = kwargs['dec'] if 'dec' in kwargs else None
+        IOArgs.center = float(kwargs['center'])
+        IOArgs.tuned = kwargs['tuned'] if 'tuned' in kwargs else None
+        if 'vfos' in kwargs and kwargs['vfos'] is not None:
+            vfos = kwargs['vfos']
+            IOArgs.vfos = [float(x) for x in vfos.split(',')]
+            IOArgs.vfos.append(0)
+        IOArgs.dm = kwargs['dm'] if 'dm' in kwargs else None
+        IOArgs.processes = kwargs['processes']
+        IOArgs.pipes = kwargs['pipes']
+        IOArgs.pl = kwargs['pl'] if 'pl' in kwargs else None
+        IOArgs.isDead = kwargs['isDead']
+        IOArgs.bits = kwargs['bits'] if 'bits' in kwargs else None
+        IOArgs.enc = kwargs['enc'] if 'enc' in kwargs else None
+        IOArgs.normalize = kwargs['normalize'] if 'normalize' in kwargs else False
+        IOArgs.omegaOut = kwargs['omegaOut'] if 'omegaOut' in kwargs else None
+        IOArgs.correctIq = kwargs['correctIq'] if 'correctIq' in kwargs else False
         IOArgs.initParameters()
         IOArgs.initIOHandlers()
-        isDead.value = 0
+        IOArgs.isDead.value = 0
+
 
     @classmethod
     def initParameters(cls):
@@ -133,9 +119,11 @@ class IOArgs:
         cls.fileInfo = checkWavHeader(cls.inFile, cls.fs, cls.bits, cls.enc)
         cls.fs = cls.fileInfo['sampRate']
 
+
     @classmethod
     def initIOHandlers(cls):
-        processor = VfoProcessor(decimation=cls.dec,
+        processor = VfoProcessor if cls.simo and cls.vfos else DspProcessor
+        processor = processor(decimation=cls.dec,
                                  centerFreq=cls.center,
                                  tunedFreq=cls.tuned,
                                  vfos=cls.vfos,
@@ -158,11 +146,11 @@ class IOArgs:
                 plotUuid = IOArgs.addConsumer(plotter, (r, w), uuid=psplot.uuid)
                 plotter.name = "Plotter-" + str(plotUuid)
 
+
     @classmethod
     def addConsumer(cls, proc: Process,
                     pipe: Pipe,
                     uuid: UUID = None):
-
         if uuid is None:
             uuid = uuid4()
 
@@ -191,16 +179,30 @@ def main(fs: Annotated[int, typer.Option(show_default=False, help='Sampling freq
          normalize: Annotated[bool, typer.Option(help='Toggle normalizing input analytic signal')] = False,
          omegaOut: Annotated[int, typer.Option('--omega-out', '-m', help='Cutoff frequency in Hz')] = 9500,
          correct_iq: Annotated[bool, typer.Option(help='Toggle iq correction for visualization')] = False,
-         use_file_buffer: Annotated[bool, typer.Option(help="Toggle buffering full file to memory before processing. Obviously, this doesn't include when reading from stdin")] = True):
+         use_file_buffer: Annotated[bool, typer.Option(help="Toggle buffering full file to memory before processing. Obviously, this doesn't include when reading from stdin")] = True,
+         simo: Annotated[bool, typer.Option(help='EXPERIMENTAL enable using named pipes to output data processed from multiple channels specified by the vfos option')] = False):
 
     processes: dict[UUID, Process] = {}
     pipes: dict[UUID, Pipe] = {}
     isDead = Value('i', 0)
-    ioArgs = IOArgs(fs, i, o, dec,
-                    center, tuned, vfos,
-                    dm, processes, pipes,
-                    pl, isDead, omegaOut,
-                    bits, enc, normalize, correct_iq)
+    ioArgs = IOArgs(fs=fs,
+                    inFile=i,
+                    outFile=o,
+                    dec=dec,
+                    center=center,
+                    tuned=tuned,
+                    vfos=vfos,
+                    dm=dm,
+                    processes=processes,
+                    pipes=pipes,
+                    pl=pl,
+                    isDead=isDead,
+                    omegaOut=omegaOut,
+                    bits=bits,
+                    enc=enc,
+                    normalize=normalize,
+                    correct_iq=correct_iq,
+                    simo=simo)
     try:
         for proc in processes.values():
             proc.start()
