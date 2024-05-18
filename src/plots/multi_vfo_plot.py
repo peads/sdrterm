@@ -31,11 +31,9 @@ class MultiVFOPlot(Plot):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        if 'vfos' not in kwargs.keys() or not kwargs['vfos']:
+        if self.vfos is None:
             raise ValueError('vfos not specified')
         self.axes = None
-        self.vfos = kwargs['vfos']
-        self.vfos.insert(0, 0)
         self.xticks = (-1 / 2 + np.arange(1 / 8, 1, 1 / 8)) * self.bandwidth
 
     def initPlot(self):

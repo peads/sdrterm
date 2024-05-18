@@ -35,10 +35,11 @@ class PowerSpectrumPlot(Plot):
         super().initPlot()
         self.fig, self.ax = plt.subplots()
         self.ln, = self.ax.plot(0, 0)
-        self.ax.set_ylim(-1, 2.5)
+        self.ax.set_ylim(-2, 2.5)
         self.ax.set_xlim(self.xticks[0], self.xticks[-1])
         self.ax.set_xticks(self.xticks)
-        self.ax.set_xlabel(f'{self.tunedFreq / 10E+5} [MHz]')
+        if self.tunedFreq:
+            self.ax.set_xlabel(f'{self.tunedFreq / 10E+5} [MHz]')
         plt.ioff()
         plt.show(block=False)
         self.initBlit()

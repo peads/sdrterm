@@ -1,32 +1,9 @@
 import struct
+from functools import partial
 from multiprocessing import Pipe, Process, Value
 from uuid import UUID
 
-from misc.general_util import eprint, printException
-
-
-# def generateDomain(dataType: str):
-#     xmin, xmax = None, None
-#     match dataType:
-#         case 'B':
-#             xmin, xmax = 0, 255
-#         case 'b':
-#             xmin, xmax = -128, 127
-#         case 'H':
-#             xmin, xmax = 0, 65536
-#         case 'h':
-#             xmin, xmax = -32768, 32767
-#         case 'I':
-#             xmin, xmax = 0, 4294967295
-#         case 'i':
-#             xmin, xmax = -2147483648, 2147483647
-#         case 'L':
-#             xmin, xmax = 0, 18446744073709551615
-#         case 'l':
-#             xmin, xmax = -9223372036854775808, 9223372036854775807
-#         case _:
-#             pass
-#     return xmin, xmax
+from misc.general_util import applyIgnoreException, eprint, printException
 
 
 def readFile(wordtype, isDead: Value, pipes: dict[UUID, Pipe],
@@ -38,7 +15,6 @@ def readFile(wordtype, isDead: Value, pipes: dict[UUID, Pipe],
         if offset:
             file.seek(offset)  # skip the wav header(s)
         try:
-            # data = []
             data = bytearray()
             while not isDead.value:
                 for _ in range(MIN_BUF_SIZE):
@@ -67,5 +43,8 @@ def readFile(wordtype, isDead: Value, pipes: dict[UUID, Pipe],
         except Exception as e:
             printException(e)
         finally:
+            for (uuid, (r, w)) in list(pipes.items()):
+                applyIgnoreException(partial(w.send, b''))
+                w.close()
             isDead.value = 1
             eprint(f'Reader halted')

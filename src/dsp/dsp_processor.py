@@ -30,29 +30,24 @@ from misc.general_util import deinterleave, eprint, printException
 
 
 class DspProcessor(DataProcessor):
+    _FILTER_DEGREE = 4
+
     def __init__(self,
-                 fs: str,
-                 decimation: str,
-                 centerFreq: str,
+                 fs: int,
+                 decimation: int,
+                 centerFreq: float,
                  omegaOut: int,
                  demod: str = None,
-                 tunedFreq: str = None,
+                 tunedFreq: int = None,
                  vfos: str = None,
                  normalize: bool = False):
-        try:
-            fs = int(fs)
-            centerFreq = float(centerFreq)
-            tunedFreq = float(tunedFreq) if tunedFreq is not None else None
-            decimation = int(decimation) if decimation is not None else 1
-        except (ValueError, TypeError) as e:
-            raise ValueError(e)
 
-        self._FILTER_DEGREE = 8
+        decimation = decimation if decimation is not None else 1
         self.outputFilters = []
         self.sosIn = None
         self.fs = fs
         self.decimationFactor = decimation if decimation is not None and decimation > 0 else (
-                    np.floor(np.log2(fs / 1000)) - 8)
+                np.floor(np.log2(fs / 1000)) - 8)
         self.logDecimationFactor = self.decimationFactor
         self.decimatedFs = fs >> int(
             np.round(self.decimationFactor)) if self.decimationFactor > 0 else fs
@@ -62,8 +57,7 @@ class DspProcessor(DataProcessor):
         self.demod = demod if demod is not None else realDemod
         self.bandwidth = None
         self.tunedFreq = tunedFreq
-        self.vfos = [float(x) for x in vfos.split(',')] if not (
-                    vfos is None or len(vfos) < 1) else None
+        self.vfos = vfos
         self.normalize = normalize
         self.omegaOut = omegaOut
         eprint(
@@ -92,6 +86,7 @@ class DspProcessor(DataProcessor):
         eprint('NFM Selected')
         self.bandwidth = 12500
         self.sosIn = generateFmInputFilters(self.decimatedFs, self._FILTER_DEGREE, self.bandwidth)
+        # self.outputFilters = [signal.ellip(self._FILTER_DEGREE, 1, 30, self.omegaOut,
         self.outputFilters = [signal.butter(self._FILTER_DEGREE, self.omegaOut,
                                             btype='lowpass',
                                             analog=False,
@@ -115,7 +110,8 @@ class DspProcessor(DataProcessor):
         self.setDemod(amDemod)
 
     def processData(self, isDead, pipe, f) -> None:
-        if f is None or (isinstance(f, str)) and len(f) < 1:
+        if f is None or (isinstance(f, str)) and len(f) < 1 \
+                or self.demod is None:
             raise ValueError('f is not defined')
         reader, writer = pipe
         normalize = cnormalize if self.normalize else lambda x: x
@@ -124,6 +120,8 @@ class DspProcessor(DataProcessor):
                 while not isDead.value:
                     writer.close()
                     y = reader.recv()
+                    if y is None or len(y) < 1:
+                        break
                     y = deinterleave(y)
                     y = convertDeinterlRealToComplex(y)
                     y = normalize(y)

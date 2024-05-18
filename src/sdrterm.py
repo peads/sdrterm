@@ -18,6 +18,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
+import atexit
 import sys
 from multiprocessing import Pipe, Process, Value
 from typing import Annotated, Iterable
@@ -36,6 +37,32 @@ from plots.util import selectDemodulation, selectPlotType
 # print(plt.rcParams['backend'])
 # print(plt.get_backend(), matplotlib.__version__)
 # plt.get_backend(), matplotlib.__version__
+#
+class ExitHooks(object):
+    # https://stackoverflow.com/a/9741784/8372013
+    def __init__(self):
+        self._orig_exit = None
+        self.exit_code = None
+        self.exception = None
+
+    def hook(self):
+        self._orig_exit = sys.exit
+        sys.exit = self.exit
+        sys.excepthook = self.exc_handler
+
+    def exit(self, code=0):
+        self.exit_code = code
+        self._orig_exit(code)
+
+    def exc_handler(self, __, exc, *_):
+        self.exception = exc
+
+    def describe(self):
+        if hooks.exit_code is not None:
+            eprint(f"death by sys.exit({self.exit_code})")
+        elif hooks.exception is not None:
+            eprint(f"death by exception: {self.exception}")
+
 
 class IOArgs:
     pl = None
@@ -54,16 +81,35 @@ class IOArgs:
     inFile = None
     isDead = None
     omegaOut = None
+    correctIq = None
 
-    def __init__(self, fs, inFile, outFile, dec, center, tuned, vfos, dm, processes, pipes, pl,
-                 isDead, omegaOut, bits=None, enc=None, normalize=False):
+    def __init__(self,
+                 fs: int,
+                 inFile: str,
+                 outFile: str,
+                 dec: int,
+                 center: str,
+                 tuned: int,
+                 vfos: str,
+                 dm: str,
+                 processes,
+                 pipes,
+                 pl: str,
+                 isDead,
+                 omegaOut: int,
+                 bits: int = None,
+                 enc: str = None,
+                 normalize: bool = False,
+                 correctIq: bool = False):
         IOArgs.fs = fs
         IOArgs.inFile = inFile
         IOArgs.outFile = outFile
         IOArgs.dec = dec
-        IOArgs.center = center
+        IOArgs.center = float(center)
         IOArgs.tuned = tuned
-        IOArgs.vfos = vfos
+        IOArgs.vfos = [float(x) for x in vfos.split(',')] if not (
+                vfos is None or len(vfos) < 1) else []
+        IOArgs.vfos.insert(0, 0)
         IOArgs.dm = dm
         IOArgs.processes = processes
         IOArgs.pipes = pipes
@@ -73,6 +119,7 @@ class IOArgs:
         IOArgs.enc = enc
         IOArgs.normalize = normalize
         IOArgs.omegaOut = omegaOut
+        IOArgs.correctIq = correctIq
         IOArgs.initParameters()
         IOArgs.initIOHandlers()
         isDead.value = 0
@@ -102,7 +149,7 @@ class IOArgs:
 
         if cls.pl is not None and len(cls.pl) > 0:
             for p in cls.pl.split(','):
-                psplot = selectPlotType(p, processor, cls.fileInfo['bitsPerSample'][1])
+                psplot = selectPlotType(p, processor, cls.fileInfo['bitsPerSample'][1], cls.correctIq)
                 r, w = Pipe(False)
                 plotter = Process(target=psplot.processData,
                                   args=(cls.isDead, (r, w)))
@@ -128,25 +175,29 @@ def closePipes(pipes: Iterable):
         w.close()
 
 
-def main(fs: Annotated[str, typer.Option(show_default=False, help='Sampling frequency in Samples/s')] = None,
+def main(fs: Annotated[int, typer.Option(show_default=False, help='Sampling frequency in Samples/s')] = None,
          center: Annotated[str, typer.Option('--center-frequency', '-c', help='Offset from tuned frequency in Hz')] = '0',
          i: Annotated[str, typer.Option('--input', '-i', show_default='stdin', help='Input device')] = None,
          o: Annotated[str, typer.Option('--output', '-o', show_default='stdout', help='Output device')] = None,
          pl: Annotated[str, typer.Option('--plot', help='1D-Comma-separated value of plot type(s)')] = None,
          dm: Annotated[str, typer.Option('--demod', help='Demodulation type')] = 'fm',
-         tuned: Annotated[str, typer.Option('--tuned-frequency', '-t', help='Tuned frequency in Hz')] = None,
+         tuned: Annotated[int, typer.Option('--tuned-frequency', '-t', help='Tuned frequency in Hz')] = None,
          vfos: Annotated[str, typer.Option(help='1D-Comma-separated value of offsets from center frequency to process in addition to center in Hz')] = None,
-         dec: Annotated[str, typer.Option('--decimation', help='Log2 of decimation factor (i.e. x where 2^x is the decimation factor))')] = None,
-         bits: Annotated[str, typer.Option('--bits-per-sample', '-b', help='Bits per sample (ignored if wav file)')] = None,
+         dec: Annotated[int, typer.Option('--decimation', help='Log2 of decimation factor (i.e. x where 2^x is the decimation factor))')] = None,
+         bits: Annotated[int, typer.Option('--bits-per-sample', '-b', help='Bits per sample (ignored if wav file)')] = None,
          enc:  Annotated[str, typer.Option('--encoding', '-e', help='Binary encoding (ignored if wav file)')] = None,
          normalize: Annotated[bool, typer.Option(help='Normalize input analytic signal')] = False,
-         omegaOut: Annotated[int, typer.Option('--omega-out', '-m', help='Cutoff frequency in Hz')] = 9500):
+         omegaOut: Annotated[int, typer.Option('--omega-out', '-m', help='Cutoff frequency in Hz')] = 9500,
+         correctIq: Annotated[bool, typer.Option('--correct-iq', '-q', help='Correct IQ for visualization')] = False):
 
     processes: dict[UUID, Process] = {}
     pipes: dict[UUID, Pipe] = {}
     isDead = Value('i', 0)
-    ioArgs = IOArgs(fs, i, o, dec, center, tuned, vfos, dm, processes, pipes, pl, isDead, omegaOut, bits, enc,
-                    normalize)
+    ioArgs = IOArgs(fs, i, o, dec,
+                    center, tuned, vfos,
+                    dm, processes, pipes,
+                    pl, isDead, omegaOut,
+                    bits, enc, normalize, correctIq)
 
     try:
         for proc in processes.values():
@@ -168,4 +219,7 @@ def main(fs: Annotated[str, typer.Option(show_default=False, help='Sampling freq
 
 
 if __name__ == '__main__':
+    hooks = ExitHooks()
+    hooks.hook()
+    atexit.register(hooks.describe)
     typer.run(main)

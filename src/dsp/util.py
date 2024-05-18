@@ -53,6 +53,7 @@ def generateDeemphFilter(fs: Real, f=7.5e-5) -> np.ndarray[any, np.number]:
 
 
 def generateInputFilters(fs: float, deg: int, omega: Number | np.number):
+    # return signal.ellip(deg, 1, 30, [1, omega],
     return signal.butter(deg, [1, omega],
                          btype='bandpass',
                          analog=False,
@@ -69,6 +70,7 @@ def generateAmInputFilters(fs: float, deg: int, omega: Number | np.number = 1000
 
 
 def generateBroadcastOutputFilter(fs: float, deg: int, omega=18000):
+    # return signal.ellip(deg, 1, 30, omega,
     return signal.butter(deg, omega,
                          btype='lowpass',
                          analog=False,
@@ -98,3 +100,35 @@ def cnormalize(Z: np.ndarray[any, np.complex_]) -> np.ndarray[any, np.complex_]:
     ix = np.isnan(ret[:, ])
     ret[ix] = ret[np.ix_(ix)].all(0)
     return ret
+
+
+def rms(inp):
+    def func(a):
+        return np.sqrt(-np.square(np.sum(a)) + len(a) * np.sum(a * a)) / len(a)
+
+    ret = np.apply_along_axis(func, -1, inp)
+    return ret
+
+
+def generateDomain(dataType: str):
+    xmin, xmax = None, None
+    match dataType:
+        case 'B':
+            xmin, xmax = 0, 255
+        case 'b':
+            xmin, xmax = -128, 127
+        case 'H':
+            xmin, xmax = 0, 65536
+        case 'h':
+            xmin, xmax = -32768, 32767
+        case 'I':
+            xmin, xmax = 0, 4294967295
+        case 'i':
+            xmin, xmax = -2147483648, 2147483647
+        case 'L':
+            xmin, xmax = 0, 18446744073709551615
+        case 'l':
+            xmin, xmax = -9223372036854775808, 9223372036854775807
+        case _:
+            pass
+    return xmin, xmax
