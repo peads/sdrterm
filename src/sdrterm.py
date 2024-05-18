@@ -18,7 +18,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-import atexit
 import os
 import sys
 from multiprocessing import Pipe, Process, Value
@@ -40,31 +39,6 @@ from plots.util import selectDemodulation, selectPlotType
 # print(plt.get_backend(), matplotlib.__version__)
 # plt.get_backend(), matplotlib.__version__
 #
-class ExitHooks(object):
-    # https://stackoverflow.com/a/9741784/8372013
-    def __init__(self):
-        self._orig_exit = None
-        self.exit_code = None
-        self.exception = None
-
-    def hook(self):
-        self._orig_exit = sys.exit
-        sys.exit = self.exit
-        sys.excepthook = self.exc_handler
-
-    def exit(self, code=0):
-        self.exit_code = code
-        self._orig_exit(code)
-
-    def exc_handler(self, __, exc, *_):
-        self.exception = exc
-
-    def describe(self):
-        if hooks.exit_code is not None:
-            eprint(f"death by sys.exit({self.exit_code})")
-        elif hooks.exception is not None:
-            eprint(f"death by exception: {self.exception}")
-
 
 class IOArgs:
     pl = None
@@ -225,7 +199,4 @@ def main(fs: Annotated[int, typer.Option(show_default=False, help='Sampling freq
 
 
 if __name__ == '__main__':
-    hooks = ExitHooks()
-    hooks.hook()
-    atexit.register(hooks.describe)
     typer.run(main)
