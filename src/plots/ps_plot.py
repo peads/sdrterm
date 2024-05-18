@@ -17,11 +17,13 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
+import sys
 
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy import fft
 
+from misc.general_util import eprint
 from plots.abstract_plot import Plot
 
 
@@ -37,7 +39,8 @@ class PowerSpectrumPlot(Plot):
         self.ln, = self.ax.plot(0, 0)
         self.ax.set_ylim(-2, 2.5)
         self.ax.set_xlim(self.xticks[0], self.xticks[-1])
-        self.ax.set_xticks(self.xticks)
+        xlabels = [str(round(x, 3)) for x in self.xticks / self.fs + self.tunedFreq / 10E+5]
+        self.ax.set_xticks(self.xticks, xlabels)
         if self.tunedFreq:
             self.ax.set_xlabel(f'{self.tunedFreq / 10E+5} [MHz]')
         plt.ioff()
