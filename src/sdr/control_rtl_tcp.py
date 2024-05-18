@@ -29,7 +29,7 @@ class ControlRtlTcp:
         connection.sendall(pack('>BI', RtlTcpCommands.SET_GAIN_MODE.value, 1))
         connection.sendall(pack('>BI', RtlTcpCommands.SET_AGC_MODE.value, 0))
         connection.sendall(pack('>BI', RtlTcpCommands.SET_TUNER_GAIN_BY_INDEX.value, 0))
-        connection.sendall(pack('>BI', RtlTcpCommands.SET_SAMPLE_RATE.value, 250000))
+        connection.sendall(pack('>BI', RtlTcpCommands.SET_SAMPLE_RATE.value, 1024000))
         connection.sendall(pack('>BI', RtlTcpCommands.SET_BIAS_TEE.value, 0))
 
     def setFrequency(self, freq):

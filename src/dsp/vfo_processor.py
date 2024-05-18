@@ -46,7 +46,7 @@ class VfoProcessor(DspProcessor):
                     y = shiftFreq(y, self.centerFreq, self.fs)
                     y = signal.decimate(y, self.decimationFactor, ftype='fir')
                     results = [pool.apply_async(self.handleOutput, (file.fileno(), freq, y)) for (name, file), freq in zip(namedPipes, self.vfos)]
-                    y = signal.sosfilt(self.sosIn, y)
+                    # y = signal.sosfilt(self.sosIn, y)
                     # y = self.demod(y)
                     # y = applyFilters(y, self.outputFilters)
                     # file.write(struct.pack(len(y) * 'd', *y))

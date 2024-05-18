@@ -98,7 +98,7 @@ class IOArgs:
 
     @classmethod
     def initIOHandlers(cls):
-        processor = VfoProcessor if cls.simo and cls.vfos else DspProcessor
+        processor = VfoProcessor if hasattr(os, 'mkfifo') and cls.simo and cls.vfos else DspProcessor
         processor = processor(decimation=cls.dec,
                               centerFreq=cls.center,
                               tunedFreq=cls.tuned,
