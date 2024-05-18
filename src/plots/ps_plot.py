@@ -17,13 +17,11 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-import sys
 
 import matplotlib.pyplot as plt
 import numpy as np
 from scipy import fft
 
-from misc.general_util import eprint
 from plots.abstract_plot import Plot
 
 

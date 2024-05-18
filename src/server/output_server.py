@@ -86,7 +86,7 @@ class OutputServer:
                         try:
                             cs.sendall(data)
                             processingList.append(cs)
-                        except (ConnectionAbortedError, BlockingIOError, ConnectionResetError, EOFError, BrokenPipeError) as e:
+                        except (ConnectionAbortedError, BlockingIOError, ConnectionResetError, ConnectionAbortedError, EOFError, BrokenPipeError) as e:
                             applyIgnoreException(lambda: cs.shutdown(socket.SHUT_RDWR))
                             cs.close()
                             print(f'Client disconnected {e}')
@@ -97,7 +97,7 @@ class OutputServer:
 
                 processingList.clear()
                 data.clear()
-        except (EOFError, ConnectionResetError):
+        except (EOFError, ConnectionResetError, ConnectionAbortedError):
             pass
         except Exception as ex:
             printException(ex)
