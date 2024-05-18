@@ -56,7 +56,11 @@ class WaterfallPlot(Plot):
             self.text_fps = self.ax.text(0, 1, "FPS: ", bbox=dict(boxstyle="round",
                                                                   ec=(1., 0.5, 0.5),
                                                                   fc=(1., 0.8, 0.8), ))
-        self.ax.set_xticks(self.xticks)
+
+        xlabels = [str(round(x, 3)) for x in self.xticks / self.fs + self.tunedFreq / 10E+5]
+        self.ax.set_xticks(self.xticks, xlabels)
+        if self.tunedFreq:
+            self.ax.set_xlabel(f'{self.tunedFreq / 10E+5} [MHz]')
         plt.ioff()
         plt.show(block=False)
         self.initBlit()

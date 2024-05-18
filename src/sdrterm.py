@@ -109,7 +109,8 @@ class IOArgs:
         IOArgs.tuned = tuned
         IOArgs.vfos = [float(x) for x in vfos.split(',')] if not (
                 vfos is None or len(vfos) < 1) else []
-        IOArgs.vfos.insert(0, 0)
+        # IOArgs.vfos.insert(0, 0)
+        IOArgs.vfos.append(0)
         IOArgs.dm = dm
         IOArgs.processes = processes
         IOArgs.pipes = pipes

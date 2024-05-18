@@ -20,19 +20,11 @@
 import multiprocessing
 import os
 import socket
-from contextlib import closing
 from queue import Empty
 from threading import Thread
 
 from misc.general_util import applyIgnoreException, printException
-
-
-# taken from https://stackoverflow.com/a/45690594
-def findPort(host='localhost'):
-    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
-        s.bind((host, 0))
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        return s.getsockname()[1]
+from sdr.util import findPort
 
 
 class OutputServer:
