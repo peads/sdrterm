@@ -15,7 +15,9 @@ def readFile(wordtype, fullFileRead: bool, isDead: Value, pipes: dict[UUID, Pipe
     bitdepth, structtype = wordtype
     readSize <<= bitdepth
     with open(f, 'rb') as ff:
-        if sys.stdin.fileno() != ff.fileno() and fullFileRead:
+        if sys.stdin.fileno() == ff.fileno() or not fullFileRead:
+            file = ff
+        else:
             eprint('Reading full file to memory')
             if os.name != 'POSIX':
                 file = mmap.mmap(ff.fileno(), 0, access=mmap.ACCESS_READ)
@@ -23,8 +25,6 @@ def readFile(wordtype, fullFileRead: bool, isDead: Value, pipes: dict[UUID, Pipe
                 file = mmap.mmap(ff.fileno(), 0, prot=mmap.PROT_READ)
                 file.madvise(mmap.MADV_SEQUENTIAL)
             eprint(f'Read: {file.size()} bytes')
-        else:
-            file = ff
 
         if offset:
             file.seek(offset)  # skip the wav header(s)

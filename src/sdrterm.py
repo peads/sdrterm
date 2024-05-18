@@ -27,6 +27,7 @@ from uuid import UUID, uuid4
 import typer
 
 from dsp.dsp_processor import DspProcessor
+from dsp.vfo_processor import VfoProcessor
 from misc.file_util import checkWavHeader
 from misc.general_util import eprint, printException
 from misc.read_file import readFile
@@ -134,7 +135,7 @@ class IOArgs:
 
     @classmethod
     def initIOHandlers(cls):
-        processor = DspProcessor(decimation=cls.dec,
+        processor = VfoProcessor(decimation=cls.dec,
                                  centerFreq=cls.center,
                                  tunedFreq=cls.tuned,
                                  vfos=cls.vfos,
