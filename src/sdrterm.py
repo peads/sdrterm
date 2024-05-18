@@ -187,9 +187,10 @@ def main(fs: Annotated[int, typer.Option(show_default=False, help='Sampling freq
          dec: Annotated[int, typer.Option('--decimation', help='Log2 of decimation factor (i.e. x where 2^x is the decimation factor))')] = None,
          bits: Annotated[int, typer.Option('--bits-per-sample', '-b', help='Bits per sample (ignored if wav file)')] = None,
          enc:  Annotated[str, typer.Option('--encoding', '-e', help='Binary encoding (ignored if wav file)')] = None,
-         normalize: Annotated[bool, typer.Option(help='Normalize input analytic signal')] = False,
+         normalize: Annotated[bool, typer.Option(help='Toggle normalizing input analytic signal')] = False,
          omegaOut: Annotated[int, typer.Option('--omega-out', '-m', help='Cutoff frequency in Hz')] = 9500,
-         correctIq: Annotated[bool, typer.Option('--correct-iq', '-q', help='Correct IQ for visualization')] = False):
+         correct_iq: Annotated[bool, typer.Option(help='Toggle iq correction for visualization')] = False,
+         use_file_buffer: Annotated[bool, typer.Option(help="Toggle buffering full file to memory before processing. Obviously, this doesn't include when reading from stdin")] = True):
 
     processes: dict[UUID, Process] = {}
     pipes: dict[UUID, Pipe] = {}
@@ -198,8 +199,7 @@ def main(fs: Annotated[int, typer.Option(show_default=False, help='Sampling freq
                     center, tuned, vfos,
                     dm, processes, pipes,
                     pl, isDead, omegaOut,
-                    bits, enc, normalize, correctIq)
-
+                    bits, enc, normalize, correct_iq)
     try:
         for proc in processes.values():
             proc.start()
@@ -209,7 +209,8 @@ def main(fs: Annotated[int, typer.Option(show_default=False, help='Sampling freq
                  isDead=isDead,
                  offset=ioArgs.fileInfo['dataOffset'],
                  wordtype=ioArgs.fileInfo['bitsPerSample'],
-                 f=ioArgs.inFile)
+                 f=ioArgs.inFile,
+                 fullFileRead=use_file_buffer)
     except KeyboardInterrupt:
         pass
     except Exception as e:

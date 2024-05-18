@@ -1,19 +1,34 @@
+import os
 import struct
+import sys
 from functools import partial
+import mmap
 from multiprocessing import Pipe, Process, Value
 from uuid import UUID
 
 from misc.general_util import applyIgnoreException, eprint, printException
 
 
-def readFile(wordtype, isDead: Value, pipes: dict[UUID, Pipe],
+def readFile(wordtype, fullFileRead: bool, isDead: Value, pipes: dict[UUID, Pipe],
              processes: dict[UUID, Process], f: str, offset=0, readSize=8192):
     MIN_BUF_SIZE = 16
     bitdepth, structtype = wordtype
     readSize <<= bitdepth
-    with open(f, 'rb') as file:
+    with open(f, 'rb') as ff:
+        if sys.stdin.fileno() != ff.fileno() and fullFileRead:
+            eprint('Reading full file to memory')
+            if os.name != 'POSIX':
+                file = mmap.mmap(ff.fileno(), 0, access=mmap.ACCESS_READ)
+            else:
+                file = mmap.mmap(ff.fileno(), 0, prot=mmap.PROT_READ)
+                file.madvise(mmap.MADV_SEQUENTIAL)
+            eprint(f'Read: {file.size()} bytes')
+        else:
+            file = ff
+
         if offset:
             file.seek(offset)  # skip the wav header(s)
+
         try:
             data = bytearray()
             while not isDead.value:
@@ -43,6 +58,7 @@ def readFile(wordtype, isDead: Value, pipes: dict[UUID, Pipe],
         except Exception as e:
             printException(e)
         finally:
+            file.close()
             for (uuid, (r, w)) in list(pipes.items()):
                 applyIgnoreException(partial(w.send, b''))
                 w.close()
