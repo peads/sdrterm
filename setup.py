@@ -17,33 +17,33 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-from setuptools import setup
+from setuptools import setup, find_namespace_packages
 
 setup(
     name='sdrterm',
-    version='0.0.01',    
+    version='0.0.01',
     description='Provides simple terminal-based user-interface for processing/analysis of SDR data',
     url='https://github.com/peads/sdrterm',
     author='Patrick Eads',
     author_email='peads@users.noreply.github.com',
     license='GPLv3',
-    package_dir = {"": "src"},
-#    packages=['sdrterm'],
+    package_dir={"": "src"},
+    packages=find_namespace_packages(where='src'),
     install_requires=['scipy',
                       'numpy',
                       'matplotlib',
-                      'typer',                     
+                      'typer',
                       ],
-    license_files = ('LICENSE',),
+    license_files=('LICENSE',),
     classifiers=[
-        'Development Status :: 2 - Pre-Alpha'
+        'Development Status :: 2 - Pre-Alpha',
         'Intended Audience :: Developers',
         'Intended Audience :: Science/Research',
         'Intended Audience :: Telecommunications Industry',
         'License :: OSI Approved :: GNU General Public License v3 (GPLv3)',
         'Environment :: Console',
         'Natural Language :: English',
-        'Operating System :: POSIX :: Linux',        
+        'Operating System :: POSIX :: Linux',
         'Operating System :: Microsoft :: Windows :: Windows 7',
         'Operating System :: Microsoft :: Windows :: Windows 8',
         'Operating System :: Microsoft :: Windows :: Windows 8.1',

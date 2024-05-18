@@ -31,12 +31,10 @@ class MultiVFOPlot(Plot):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        if 'vfos' not in kwargs.keys() or not kwargs['vfos']:
+        if self.vfos is None:
             raise ValueError('vfos not specified')
         self.axes = None
-        self.vfos = kwargs['vfos']
-        self.vfos.insert(0, 0)
-        self.xticks = (-1 / 2 + np.arange(1 / 8, 1, 1 / 8)) * self.bandwidth
+        # self.xticks = (-1 / 2 + np.arange(1 / 8, 1, 1 / 8)) * self.bandwidth
 
     def initPlot(self):
         super().initPlot()
@@ -59,6 +57,9 @@ class MultiVFOPlot(Plot):
                     self.axes[pos] = ax
                     self.ln[pos] = ax.plot(0, 0)[0]
                     ax.set_xlim(-self.bandwidth, self.bandwidth)
+                    xticks = ax.get_xticks()
+                    xlabels = [str(round(x, 1)) for x in ax.get_xticks() / self.bandwidth + (self.tunedFreq + self.vfos[pos]) / 10E+5]
+                    ax.set_xticks(xticks, xlabels)
                     ax.set_ylim(0, 10)
                     ax.set_xlabel(f'{label} [MHz]')
         plt.ioff()

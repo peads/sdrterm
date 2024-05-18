@@ -18,6 +18,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
+import os
 import sys
 from multiprocessing import Pipe, Process, Value
 from typing import Annotated, Iterable
@@ -26,6 +27,7 @@ from uuid import UUID, uuid4
 import typer
 
 from dsp.dsp_processor import DspProcessor
+from dsp.vfo_processor import VfoProcessor
 from misc.file_util import checkWavHeader
 from misc.general_util import eprint, printException
 from misc.read_file import readFile
@@ -36,6 +38,7 @@ from plots.util import selectDemodulation, selectPlotType
 # print(plt.rcParams['backend'])
 # print(plt.get_backend(), matplotlib.__version__)
 # plt.get_backend(), matplotlib.__version__
+#
 
 class IOArgs:
     pl = None
@@ -54,28 +57,37 @@ class IOArgs:
     inFile = None
     isDead = None
     omegaOut = None
+    correctIq = None
+    simo = None
+    fileInfo = None
 
-    def __init__(self, fs, inFile, outFile, dec, center, tuned, vfos, dm, processes, pipes, pl,
-                 isDead, omegaOut, bits=None, enc=None, normalize=False):
-        IOArgs.fs = fs
-        IOArgs.inFile = inFile
-        IOArgs.outFile = outFile
-        IOArgs.dec = dec
-        IOArgs.center = center
-        IOArgs.tuned = tuned
-        IOArgs.vfos = vfos
-        IOArgs.dm = dm
-        IOArgs.processes = processes
-        IOArgs.pipes = pipes
-        IOArgs.pl = pl
-        IOArgs.isDead = isDead
-        IOArgs.bits = bits
-        IOArgs.enc = enc
-        IOArgs.normalize = normalize
-        IOArgs.omegaOut = omegaOut
+    def __init__(self, **kwargs):
+        IOArgs.simo = kwargs['simo']
+        IOArgs.fs = kwargs['fs'] if 'fs' in kwargs else None
+        IOArgs.inFile = kwargs['inFile']
+        IOArgs.outFile = kwargs['outFile']
+        IOArgs.dec = kwargs['dec'] if 'dec' in kwargs else None
+        IOArgs.center = float(kwargs['center'])
+        IOArgs.tuned = kwargs['tuned'] if 'tuned' in kwargs else None
+        if 'vfos' in kwargs and kwargs['vfos'] is not None:
+            vfos = kwargs['vfos']
+            IOArgs.vfos = [float(x) for x in vfos.split(',')]
+            IOArgs.vfos.append(0)
+        IOArgs.dm = kwargs['dm'] if 'dm' in kwargs else None
+        IOArgs.processes = kwargs['processes']
+        IOArgs.pipes = kwargs['pipes']
+        IOArgs.pl = kwargs['pl'] if 'pl' in kwargs else None
+        IOArgs.isDead = kwargs['isDead']
+        IOArgs.bits = kwargs['bits'] if 'bits' in kwargs else None
+        IOArgs.enc = kwargs['enc'] if 'enc' in kwargs else None
+        IOArgs.normalize = kwargs['normalize'] if 'normalize' in kwargs else False
+        IOArgs.omegaOut = kwargs['omegaOut'] if 'omegaOut' in kwargs else None
+        IOArgs.correctIq = kwargs['correctIq']
+
+        IOArgs.outFile = 'NUL' if IOArgs.outFile is not None and '/dev/null' in IOArgs.outFile and 'POSIX' not in os.name else IOArgs.outFile
         IOArgs.initParameters()
         IOArgs.initIOHandlers()
-        isDead.value = 0
+        IOArgs.isDead.value = 0
 
     @classmethod
     def initParameters(cls):
@@ -86,13 +98,14 @@ class IOArgs:
 
     @classmethod
     def initIOHandlers(cls):
-        processor = DspProcessor(decimation=cls.dec,
-                                 centerFreq=cls.center,
-                                 tunedFreq=cls.tuned,
-                                 vfos=cls.vfos,
-                                 fs=cls.fs,
-                                 normalize=cls.normalize,
-                                 omegaOut=cls.omegaOut)
+        processor = VfoProcessor if hasattr(os, 'mkfifo') and cls.simo and cls.vfos else DspProcessor
+        processor = processor(decimation=cls.dec,
+                              centerFreq=cls.center,
+                              tunedFreq=cls.tuned,
+                              vfos=cls.vfos,
+                              fs=cls.fs,
+                              normalize=cls.normalize,
+                              omegaOut=cls.omegaOut)
         selectDemodulation(cls.dm, processor)()
         r, w = Pipe(False)
         fileWriter = Process(target=processor.processData,
@@ -102,7 +115,7 @@ class IOArgs:
 
         if cls.pl is not None and len(cls.pl) > 0:
             for p in cls.pl.split(','):
-                psplot = selectPlotType(p, processor, cls.fileInfo['bitsPerSample'][1])
+                psplot = selectPlotType(p, processor, cls.fileInfo['bitsPerSample'][1], cls.correctIq)
                 r, w = Pipe(False)
                 plotter = Process(target=psplot.processData,
                                   args=(cls.isDead, (r, w)))
@@ -113,7 +126,6 @@ class IOArgs:
     def addConsumer(cls, proc: Process,
                     pipe: Pipe,
                     uuid: UUID = None):
-
         if uuid is None:
             uuid = uuid4()
 
@@ -128,26 +140,44 @@ def closePipes(pipes: Iterable):
         w.close()
 
 
-def main(fs: Annotated[str, typer.Option(show_default=False, help='Sampling frequency in Samples/s')] = None,
+def main(fs: Annotated[int, typer.Option(show_default=False, help='Sampling frequency in Samples/s')] = None,
          center: Annotated[str, typer.Option('--center-frequency', '-c', help='Offset from tuned frequency in Hz')] = '0',
-         i: Annotated[str, typer.Option('--input', '-i', show_default='stdin', help='Input device')] = None,
-         o: Annotated[str, typer.Option('--output', '-o', show_default='stdout', help='Output device')] = None,
+         inFile: Annotated[str, typer.Option('--input', '-i', show_default='stdin', help='Input device')] = None,
+         outFile: Annotated[str, typer.Option('--output', '-o', show_default='stdout', help='Output device')] = None,
          pl: Annotated[str, typer.Option('--plot', help='1D-Comma-separated value of plot type(s)')] = None,
          dm: Annotated[str, typer.Option('--demod', help='Demodulation type')] = 'fm',
-         tuned: Annotated[str, typer.Option('--tuned-frequency', '-t', help='Tuned frequency in Hz')] = None,
+         tuned: Annotated[int, typer.Option('--tuned-frequency', '-t', help='Tuned frequency in Hz')] = None,
          vfos: Annotated[str, typer.Option(help='1D-Comma-separated value of offsets from center frequency to process in addition to center in Hz')] = None,
-         dec: Annotated[str, typer.Option('--decimation', help='Log2 of decimation factor (i.e. x where 2^x is the decimation factor))')] = None,
-         bits: Annotated[str, typer.Option('--bits-per-sample', '-b', help='Bits per sample (ignored if wav file)')] = None,
+         dec: Annotated[int, typer.Option('--decimation', help='Log2 of decimation factor (i.e. x where 2^x is the decimation factor))')] = None,
+         bits: Annotated[int, typer.Option('--bits-per-sample', '-b', help='Bits per sample (ignored if wav file)')] = None,
          enc:  Annotated[str, typer.Option('--encoding', '-e', help='Binary encoding (ignored if wav file)')] = None,
-         normalize: Annotated[bool, typer.Option(help='Normalize input analytic signal')] = False,
-         omegaOut: Annotated[int, typer.Option('--omega-out', '-m', help='Cutoff frequency in Hz')] = 9500):
+         normalize: Annotated[bool, typer.Option(help='Toggle normalizing input analytic signal')] = False,
+         omegaOut: Annotated[int, typer.Option('--omega-out', '-m', help='Cutoff frequency in Hz')] = 9500,
+         correct_iq: Annotated[bool, typer.Option(help='Toggle iq correction for visualization')] = False,
+         use_file_buffer: Annotated[bool, typer.Option(help="Toggle buffering full file to memory before processing. Obviously, this doesn't include when reading from stdin")] = True,
+         simo: Annotated[bool, typer.Option(help='EXPERIMENTAL enable using named pipes to output data processed from multiple channels specified by the vfos option')] = False):
 
     processes: dict[UUID, Process] = {}
     pipes: dict[UUID, Pipe] = {}
     isDead = Value('i', 0)
-    ioArgs = IOArgs(fs, i, o, dec, center, tuned, vfos, dm, processes, pipes, pl, isDead, omegaOut, bits, enc,
-                    normalize)
-
+    ioArgs = IOArgs(fs=fs,
+                    inFile=inFile,
+                    outFile=outFile,
+                    dec=dec,
+                    center=center,
+                    tuned=tuned,
+                    vfos=vfos,
+                    dm=dm,
+                    processes=processes,
+                    pipes=pipes,
+                    pl=pl,
+                    isDead=isDead,
+                    omegaOut=omegaOut,
+                    bits=bits,
+                    enc=enc,
+                    normalize=normalize,
+                    correctIq=correct_iq,
+                    simo=simo)
     try:
         for proc in processes.values():
             proc.start()
@@ -157,7 +187,8 @@ def main(fs: Annotated[str, typer.Option(show_default=False, help='Sampling freq
                  isDead=isDead,
                  offset=ioArgs.fileInfo['dataOffset'],
                  wordtype=ioArgs.fileInfo['bitsPerSample'],
-                 f=ioArgs.inFile)
+                 f=ioArgs.inFile,
+                 fullFileRead=use_file_buffer)
     except KeyboardInterrupt:
         pass
     except Exception as e:

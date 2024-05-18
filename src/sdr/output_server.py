@@ -20,19 +20,11 @@
 import multiprocessing
 import os
 import socket
-from contextlib import closing
 from queue import Empty
 from threading import Thread
 
 from misc.general_util import applyIgnoreException, printException
-
-
-# taken from https://stackoverflow.com/a/45690594
-def findPort(host='localhost'):
-    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
-        s.bind((host, 0))
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        return s.getsockname()[1]
+from sdr.util import findPort
 
 
 class OutputServer:
@@ -86,7 +78,7 @@ class OutputServer:
                         try:
                             cs.sendall(data)
                             processingList.append(cs)
-                        except (ConnectionAbortedError, BlockingIOError, ConnectionResetError, EOFError, BrokenPipeError) as e:
+                        except (ConnectionAbortedError, BlockingIOError, ConnectionResetError, ConnectionAbortedError, EOFError, BrokenPipeError) as e:
                             applyIgnoreException(lambda: cs.shutdown(socket.SHUT_RDWR))
                             cs.close()
                             print(f'Client disconnected {e}')
@@ -97,7 +89,7 @@ class OutputServer:
 
                 processingList.clear()
                 data.clear()
-        except (EOFError, ConnectionResetError):
+        except (EOFError, ConnectionResetError, ConnectionAbortedError):
             pass
         except Exception as ex:
             printException(ex)

@@ -38,23 +38,26 @@ def selectDemodulation(demodType: str, processor: DspProcessor) -> Callable:
         raise ValueError(f'Invalid plot type "{demodType}"')
 
 
-def selectPlotType(plotType: string, processor: DspProcessor, dataType=None):
+def selectPlotType(plotType: string, processor: DspProcessor, dataType=None, iq=False):
     # stupid python not having switch fall-thru >:(
     if plotType == "ps" or plotType == "power":
         return PowerSpectrumPlot(fs=processor.fs,
                                  centerFreq=processor.centerFreq,
                                  tunedFreq=processor.tunedFreq,
-                                 bandwidth=processor.bandwidth)
+                                 bandwidth=processor.bandwidth,
+                                 iq=iq)
     elif plotType == "wave" or plotType == "waveform":
         return WaveFormPlot(fs=processor.fs,
                             processor=processor,
-                            centerFreq=processor.centerFreq)
+                            centerFreq=processor.centerFreq,
+                            iq=iq)
     elif plotType == "water" or plotType == "waterfall":
         return WaterfallPlot(fs=processor.fs,
                              processor=processor,
                              centerFreq=processor.centerFreq,
                              bandwidth=processor.bandwidth,
-                             tunedFreq=processor.tunedFreq)
+                             tunedFreq=processor.tunedFreq,
+                             iq=iq)
     elif plotType == "vfos" or plotType == "vfo":
         return MultiVFOPlot(fs=processor.fs,
                             processor=processor,
@@ -62,6 +65,7 @@ def selectPlotType(plotType: string, processor: DspProcessor, dataType=None):
                             bandwidth=processor.bandwidth,
                             tunedFreq=processor.tunedFreq,
                             vfos=processor.vfos,
-                            dataType=dataType)
+                            dataType=dataType,
+                            iq=iq)
     else:
         raise ValueError(f'Invalid plot type "{plotType}"')

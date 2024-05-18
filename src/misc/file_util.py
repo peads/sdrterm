@@ -45,6 +45,9 @@ TYPES = dict(((8, ((SIGNED, 'b'), (UNSIGNED, 'B'))),
 
 
 def parseRawType(bits, enc, fs):
+    if fs is None or fs < 1:
+        raise ValueError('fs is required for raw input')
+    fs = int(fs)
     if bits is None and enc is None:
         result = zipRet((0, 0, 0, fs, 0, 0, (3, 'd')))
         result['dataOffset'] = 0

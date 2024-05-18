@@ -49,10 +49,13 @@ class Plot(DataProcessor, ABC):
             'centerFreq'] is not None else 0
         self.bandwidth = (kwargs['bandwidth'] if 'bandwidth' in kwargs.keys() and kwargs[
             'bandwidth'] is not None else self.fs) / 2
-        self.tunedFreq = kwargs['tunedFreq'] if 'tunedFreq' in kwargs.keys() and kwargs['tunedFreq'] is not None else 0
+        self.tunedFreq = kwargs['tunedFreq'] if 'tunedFreq' in kwargs.keys() and kwargs[
+            'tunedFreq'] is not None else 0
         self.uuid = uuid4()
+        self.vfos = kwargs['vfos'] if 'vfos' in kwargs.keys() and len(kwargs['vfos']) > 1 else None
         self.close = None
-        self.iq = IQCorrection(self.fs)
+        self.correctIq = kwargs['iq']
+        self.iqCorrector = IQCorrection(self.fs) if self.correctIq else None
 
     @abstractmethod
     def animate(self, y: list | np.ndarray):
@@ -85,18 +88,25 @@ class Plot(DataProcessor, ABC):
         try:
             while not (self._isDead or isDead.value):
                 writer.close()
-                y = np.array(reader.recv())
+                y = reader.recv()
+                if y is None or len(y) < 1:
+                    break
+                y = np.array(y)
                 y = y[0::2] + 1j * y[1::2]
-                y = self.iq.correctIq(y)
+                if self.correctIq:
+                    y = self.iqCorrector.correctIq(y)
                 y = shiftFreq(y, self.centerFreq, self.fs)
                 self.animate(y)
-        except (EOFError, KeyboardInterrupt):
+        except EOFError:
             pass
+        except KeyboardInterrupt:
+            isDead.value = 1
         except Exception as e:
+            isDead.value = 1
             printException(e)
         finally:
-            self._isDead = True
-            reader.close()
             if 'spawn' not in multiprocessing.get_start_method():
                 isDead.value = 1
+            self._isDead = True
+            reader.close()
             eprint(f'Figure {type(self).__name__}-{self.uuid} halted')

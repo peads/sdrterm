@@ -29,8 +29,8 @@ from exceptions.server_interrupt import ServerInterruptError
 from exceptions.unrecognized_input import UnrecognizedInputError
 from misc.general_util import applyIgnoreException, printException
 from sdr.control_rtl_tcp import ControlRtlTcp
+from sdr.output_server import OutputServer
 from sdr.rtl_tcp_commands import RtlTcpCommands
-from server.output_server import OutputServer
 
 
 def main(host: str, port: str):
