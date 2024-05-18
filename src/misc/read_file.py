@@ -1,8 +1,8 @@
+import mmap
 import os
 import struct
 import sys
 from functools import partial
-import mmap
 from multiprocessing import Pipe, Process, Value
 from uuid import UUID
 

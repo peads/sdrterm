@@ -11,7 +11,7 @@ CMakeFiles
 junk/
 *.pyc
 *.bin
-.venv*
-venv*
+*venv*
 build
 *egg-info*
+*wenv*

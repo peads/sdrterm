@@ -17,8 +17,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-from contextlib import closing
 import socket
+from contextlib import closing
 
 
 # taken from https://stackoverflow.com/a/45690594

@@ -1,14 +1,12 @@
 import os
-import posix
 import struct
-import uuid
+from multiprocessing import Pool
 
 from scipy import signal
 
 from dsp.dsp_processor import DspProcessor
 from dsp.util import applyFilters, cnormalize, convertDeinterlRealToComplex, shiftFreq
 from misc.general_util import deinterleave, eprint, printException
-from multiprocessing import Pool
 
 
 class VfoProcessor(DspProcessor):
@@ -55,7 +53,7 @@ class VfoProcessor(DspProcessor):
                     results = [r.get() for r in results]
 
             except (EOFError, KeyboardInterrupt):
-                pass
+                isDead.value = 1
             except Exception as e:
                 printException(e)
             finally:

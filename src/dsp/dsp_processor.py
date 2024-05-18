@@ -132,8 +132,9 @@ class DspProcessor(DataProcessor):
                     y = applyFilters(y, self.outputFilters)
                     file.write(struct.pack(len(y) * 'd', *y))
             except (EOFError, KeyboardInterrupt):
-                pass
+                isDead.value = 1
             except Exception as e:
+                isDead.value = 1
                 printException(e)
             finally:
                 file.write(b'')

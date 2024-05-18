@@ -19,6 +19,7 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
 import atexit
+import os
 import sys
 from multiprocessing import Pipe, Process, Value
 from typing import Annotated, Iterable
@@ -84,6 +85,7 @@ class IOArgs:
     omegaOut = None
     correctIq = None
     simo = None
+    fileInfo = None
 
     def __init__(self, **kwargs):
         IOArgs.simo = kwargs['simo']
@@ -106,11 +108,12 @@ class IOArgs:
         IOArgs.enc = kwargs['enc'] if 'enc' in kwargs else None
         IOArgs.normalize = kwargs['normalize'] if 'normalize' in kwargs else False
         IOArgs.omegaOut = kwargs['omegaOut'] if 'omegaOut' in kwargs else None
-        IOArgs.correctIq = kwargs['correctIq'] if 'correctIq' in kwargs else False
+        IOArgs.correctIq = kwargs['correctIq']
+
+        IOArgs.outFile = 'NUL' if IOArgs.outFile is not None and '/dev/null' in IOArgs.outFile and 'POSIX' not in os.name else IOArgs.outFile
         IOArgs.initParameters()
         IOArgs.initIOHandlers()
         IOArgs.isDead.value = 0
-
 
     @classmethod
     def initParameters(cls):
@@ -119,17 +122,16 @@ class IOArgs:
         cls.fileInfo = checkWavHeader(cls.inFile, cls.fs, cls.bits, cls.enc)
         cls.fs = cls.fileInfo['sampRate']
 
-
     @classmethod
     def initIOHandlers(cls):
         processor = VfoProcessor if cls.simo and cls.vfos else DspProcessor
         processor = processor(decimation=cls.dec,
-                                 centerFreq=cls.center,
-                                 tunedFreq=cls.tuned,
-                                 vfos=cls.vfos,
-                                 fs=cls.fs,
-                                 normalize=cls.normalize,
-                                 omegaOut=cls.omegaOut)
+                              centerFreq=cls.center,
+                              tunedFreq=cls.tuned,
+                              vfos=cls.vfos,
+                              fs=cls.fs,
+                              normalize=cls.normalize,
+                              omegaOut=cls.omegaOut)
         selectDemodulation(cls.dm, processor)()
         r, w = Pipe(False)
         fileWriter = Process(target=processor.processData,
@@ -145,7 +147,6 @@ class IOArgs:
                                   args=(cls.isDead, (r, w)))
                 plotUuid = IOArgs.addConsumer(plotter, (r, w), uuid=psplot.uuid)
                 plotter.name = "Plotter-" + str(plotUuid)
-
 
     @classmethod
     def addConsumer(cls, proc: Process,
@@ -167,8 +168,8 @@ def closePipes(pipes: Iterable):
 
 def main(fs: Annotated[int, typer.Option(show_default=False, help='Sampling frequency in Samples/s')] = None,
          center: Annotated[str, typer.Option('--center-frequency', '-c', help='Offset from tuned frequency in Hz')] = '0',
-         i: Annotated[str, typer.Option('--input', '-i', show_default='stdin', help='Input device')] = None,
-         o: Annotated[str, typer.Option('--output', '-o', show_default='stdout', help='Output device')] = None,
+         inFile: Annotated[str, typer.Option('--input', '-i', show_default='stdin', help='Input device')] = None,
+         outFile: Annotated[str, typer.Option('--output', '-o', show_default='stdout', help='Output device')] = None,
          pl: Annotated[str, typer.Option('--plot', help='1D-Comma-separated value of plot type(s)')] = None,
          dm: Annotated[str, typer.Option('--demod', help='Demodulation type')] = 'fm',
          tuned: Annotated[int, typer.Option('--tuned-frequency', '-t', help='Tuned frequency in Hz')] = None,
@@ -186,8 +187,8 @@ def main(fs: Annotated[int, typer.Option(show_default=False, help='Sampling freq
     pipes: dict[UUID, Pipe] = {}
     isDead = Value('i', 0)
     ioArgs = IOArgs(fs=fs,
-                    inFile=i,
-                    outFile=o,
+                    inFile=inFile,
+                    outFile=outFile,
                     dec=dec,
                     center=center,
                     tuned=tuned,
@@ -201,7 +202,7 @@ def main(fs: Annotated[int, typer.Option(show_default=False, help='Sampling freq
                     bits=bits,
                     enc=enc,
                     normalize=normalize,
-                    correct_iq=correct_iq,
+                    correctIq=correct_iq,
                     simo=simo)
     try:
         for proc in processes.values():
