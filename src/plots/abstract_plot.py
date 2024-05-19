@@ -52,7 +52,8 @@ class Plot(DataProcessor, ABC):
         self.tunedFreq = kwargs['tunedFreq'] if 'tunedFreq' in kwargs.keys() and kwargs[
             'tunedFreq'] is not None else 0
         self.uuid = uuid4()
-        self.vfos = kwargs['vfos'] if 'vfos' in kwargs.keys() and len(kwargs['vfos']) > 1 else None
+        self.vfos = kwargs['vfos'] if 'vfos' in kwargs.keys() and kwargs[
+            'vfos'] is not None and len(kwargs['vfos']) > 1 else None
         self.close = None
         self.correctIq = kwargs['iq']
         self.iqCorrector = IQCorrection(self.fs) if self.correctIq else None

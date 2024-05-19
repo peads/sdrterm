@@ -107,7 +107,8 @@ class IOArgs:
                               vfos=cls.vfos,
                               fs=cls.fs,
                               normalize=cls.normalize,
-                              omegaOut=cls.omegaOut)
+                              omegaOut=cls.omegaOut,
+                              correctIq=cls.correctIq)
         selectDemodulation(cls.dm, processor)()
         r, w = Pipe(False)
         fileWriter = Process(target=processor.processData,
@@ -155,7 +156,7 @@ def main(fs: Annotated[int, typer.Option('--sampling-rate', '--fs', show_default
          enc:  Annotated[str, typer.Option('--encoding', '-e', help='Binary encoding (ignored if wav file)')] = None,
          normalize: Annotated[bool, typer.Option(help='Toggle normalizing input analytic signal')] = False,
          omegaOut: Annotated[int, typer.Option('--omega-out', '-m', help='Cutoff frequency in Hz')] = 9500,
-         correct_iq: Annotated[bool, typer.Option(help='Toggle iq correction for visualization')] = False,
+         correct_iq: Annotated[bool, typer.Option(help='Toggle iq correction')] = False,
          use_file_buffer: Annotated[bool, typer.Option(help="Toggle buffering full file to memory before processing. Obviously, this doesn't include when reading from stdin")] = True,
          simo: Annotated[bool, typer.Option(help='EXPERIMENTAL enable using named pipes to output data processed from multiple channels specified by the vfos option')] = False,
          verbose: Annotated[bool, typer.Option('--verbose', '-v', help='Toggle verbose output')] = False):
