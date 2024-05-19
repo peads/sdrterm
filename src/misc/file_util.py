@@ -23,7 +23,7 @@ from typing import Iterable
 
 import numpy as np
 
-from misc.general_util import eprint
+from misc.general_util import vprint
 
 WAVE_FORMAT_PCM = 0x0001
 WAVE_FORMAT_IEEE_FLOAT = 0x0003
@@ -144,7 +144,7 @@ def checkWavHeader(f, fs, bits, enc):
                 off = file.tell()
                 break
         ret['dataOffset'] = off
-    eprint(json.dumps(ret, indent=2))
+    vprint(json.dumps(ret, indent=2))
     return ret
 
 # TODO Possible heuristic to determine datatype for raw PCM input by determining angle between real and imag compnents

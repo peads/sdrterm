@@ -6,7 +6,7 @@ from functools import partial
 from multiprocessing import Pipe, Process, Value
 from uuid import UUID
 
-from misc.general_util import applyIgnoreException, eprint, printException
+from misc.general_util import applyIgnoreException, vprint, printException
 
 
 def readFile(wordtype, fullFileRead: bool, isDead: Value, pipes: dict[UUID, Pipe],
@@ -18,13 +18,13 @@ def readFile(wordtype, fullFileRead: bool, isDead: Value, pipes: dict[UUID, Pipe
         if sys.stdin.fileno() == ff.fileno() or not fullFileRead:
             file = ff
         else:
-            eprint('Reading full file to memory')
+            vprint('Reading full file to memory')
             if os.name != 'POSIX':
                 file = mmap.mmap(ff.fileno(), 0, access=mmap.ACCESS_READ)
             else:
                 file = mmap.mmap(ff.fileno(), 0, prot=mmap.PROT_READ)
                 file.madvise(mmap.MADV_SEQUENTIAL)
-            eprint(f'Read: {file.size()} bytes')
+            vprint(f'Read: {file.size()} bytes')
 
         if offset:
             file.seek(offset)  # skip the wav header(s)
@@ -63,4 +63,4 @@ def readFile(wordtype, fullFileRead: bool, isDead: Value, pipes: dict[UUID, Pipe
                 applyIgnoreException(partial(w.send, b''))
                 w.close()
             isDead.value = 1
-            eprint(f'Reader halted')
+            print(f'Reader halted')

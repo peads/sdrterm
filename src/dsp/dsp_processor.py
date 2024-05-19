@@ -17,6 +17,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
+import json
 import struct
 
 import numpy as np
@@ -24,9 +25,9 @@ from scipy import signal
 
 from dsp.data_processor import DataProcessor
 from dsp.demodulation import amDemod, fmDemod, realDemod
-from dsp.util import applyFilters, cnormalize, convertDeinterlRealToComplex, generateAmInputFilters, \
-    generateBroadcastOutputFilter, generateFmInputFilters, generateFmOutputFilters, shiftFreq
-from misc.general_util import deinterleave, eprint, printException
+from dsp.util import applyFilters, cnormalize, convertDeinterlRealToComplex, \
+    generateBroadcastOutputFilter, generateFmOutputFilters, shiftFreq
+from misc.general_util import deinterleave, vprint, printException
 
 
 class DspProcessor(DataProcessor):
@@ -60,10 +61,6 @@ class DspProcessor(DataProcessor):
         self.vfos = vfos
         self.normalize = normalize
         self.omegaOut = omegaOut
-        eprint(
-            f'input sample rate: {self.fs} decimation factor {self.decimationFactor} '
-            f'decimated sample rate {self.decimatedFs} center frequency: {self.centerFreq} '
-            f'tuned frequency: {self.tunedFreq} vfo offsets: {self.vfos}')
 
     def setDecimation(self, decimation):
         if decimation is not None:
@@ -79,15 +76,19 @@ class DspProcessor(DataProcessor):
     def setDemod(self, fun):
         if bool(fun):
             self.demod = fun
+            self.sosIn = signal.ellip(self._FILTER_DEGREE, 1, 30, [1, self.bandwidth],
+                                      btype='bandpass',
+                                      analog=False,
+                                      output='sos',
+                                      fs=self.decimatedFs)
             return self.demod
         raise ValueError("Demodulation function is not defined")
 
     def selectOuputFm(self):
-        eprint('NFM Selected')
+        vprint('NFM Selected')
         self.bandwidth = 12500
-        self.sosIn = generateFmInputFilters(self.decimatedFs, self._FILTER_DEGREE, self.bandwidth)
-        # self.outputFilters = [signal.ellip(self._FILTER_DEGREE, 1, 30, self.omegaOut,
-        self.outputFilters = [signal.butter(self._FILTER_DEGREE, self.omegaOut,
+        self.outputFilters = [signal.ellip(self._FILTER_DEGREE, 1, 30, self.omegaOut,
+        # self.outputFilters = [signal.butter(self._FILTER_DEGREE, self.omegaOut,
                                             btype='lowpass',
                                             analog=False,
                                             output='sos',
@@ -95,17 +96,15 @@ class DspProcessor(DataProcessor):
         self.setDemod(fmDemod)
 
     def selectOuputWfm(self):
-        eprint('WFM Selected')
+        vprint('WFM Selected')
         self.bandwidth = 15000
-        self.sosIn = generateFmInputFilters(self.decimatedFs, self._FILTER_DEGREE, self.bandwidth)
         self.outputFilters = generateFmOutputFilters(self.decimatedFs >> 1, self._FILTER_DEGREE,
                                                      18000)
         self.setDemod(fmDemod)
 
     def selectOuputAm(self):
-        eprint('AM Selected')
+        vprint('AM Selected')
         self.bandwidth = 10000
-        self.sosIn = generateAmInputFilters(self.decimatedFs, self._FILTER_DEGREE, self.bandwidth)
         self.outputFilters = [generateBroadcastOutputFilter(self.decimatedFs, self._FILTER_DEGREE)]
         self.setDemod(amDemod)
 
@@ -132,11 +131,15 @@ class DspProcessor(DataProcessor):
                     y = applyFilters(y, self.outputFilters)
                     file.write(struct.pack(len(y) * 'd', *y))
             except (EOFError, KeyboardInterrupt):
-                isDead.value = 1
+                pass
             except Exception as e:
-                isDead.value = 1
                 printException(e)
             finally:
+                isDead.value = 1
                 file.write(b'')
                 reader.close()
-                eprint(f'File writer halted')
+                print(f'File writer halted')
+
+    def __repr__(self):
+        return json.dumps({key: value for key, value in self.__dict__.items()
+                           if not key.startswith('__') and not callable(key)}, indent=2)

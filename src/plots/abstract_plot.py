@@ -30,7 +30,7 @@ from matplotlib import pyplot as plt
 from dsp.data_processor import DataProcessor
 from dsp.iq_correction import IQCorrection
 from dsp.util import shiftFreq
-from misc.general_util import eprint, printException
+from misc.general_util import vprint, printException
 
 
 class Plot(DataProcessor, ABC):
@@ -56,6 +56,7 @@ class Plot(DataProcessor, ABC):
         self.close = None
         self.correctIq = kwargs['iq']
         self.iqCorrector = IQCorrection(self.fs) if self.correctIq else None
+        self.processor = kwargs['processor'] if 'processor' in kwargs.keys() else None
 
     @abstractmethod
     def animate(self, y: list | np.ndarray):
@@ -68,7 +69,7 @@ class Plot(DataProcessor, ABC):
 
     def onClose(self, _):
         self._isDead = True
-        eprint(f'Window {type(self).__name__}: {self.fig}-{self.uuid} closed')
+        vprint(f'Window {type(self).__name__}: {self.fig}-{self.uuid} closed')
 
     def initBlit(self):
         mpl.rcParams['toolbar'] = 'None'
@@ -109,4 +110,4 @@ class Plot(DataProcessor, ABC):
                 isDead.value = 1
             self._isDead = True
             reader.close()
-            eprint(f'Figure {type(self).__name__}-{self.uuid} halted')
+            vprint(f'Figure {type(self).__name__}-{self.uuid} halted')
