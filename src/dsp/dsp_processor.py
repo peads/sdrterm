@@ -25,13 +25,14 @@ from scipy import signal
 
 from dsp.data_processor import DataProcessor
 from dsp.demodulation import amDemod, fmDemod, realDemod
+from dsp.iq_correction import IQCorrection
 from dsp.util import applyFilters, cnormalize, convertDeinterlRealToComplex, \
     generateBroadcastOutputFilter, generateFmOutputFilters, shiftFreq
 from misc.general_util import deinterleave, vprint, printException
 
 
 class DspProcessor(DataProcessor):
-    _FILTER_DEGREE = 4
+    _FILTER_DEGREE = 8
 
     def __init__(self,
                  fs: int,
@@ -41,7 +42,8 @@ class DspProcessor(DataProcessor):
                  demod: str = None,
                  tunedFreq: int = None,
                  vfos: str = None,
-                 normalize: bool = False):
+                 normalize: bool = False,
+                 correctIq:bool = False):
 
         decimation = decimation if decimation is not None else 1
         self.outputFilters = []
@@ -61,6 +63,7 @@ class DspProcessor(DataProcessor):
         self.vfos = vfos
         self.normalize = normalize
         self.omegaOut = omegaOut
+        self.iqCorrector = IQCorrection(self.fs) if correctIq else None
 
     def setDecimation(self, decimation):
         if decimation is not None:
@@ -114,6 +117,7 @@ class DspProcessor(DataProcessor):
             raise ValueError('f is not defined')
         reader, writer = pipe
         normalize = cnormalize if self.normalize else lambda x: x
+        correctIq = self.iqCorrector.correctIq if self.iqCorrector is not None else lambda x: x
         with open(f, 'wb') as file:
             try:
                 while not isDead.value:
@@ -124,6 +128,7 @@ class DspProcessor(DataProcessor):
                     y = deinterleave(y)
                     y = convertDeinterlRealToComplex(y)
                     y = normalize(y)
+                    y = correctIq(y)
                     y = shiftFreq(y, self.centerFreq, self.fs)
                     y = signal.decimate(y, self.decimationFactor, ftype='fir')
                     y = signal.sosfilt(self.sosIn, y)
