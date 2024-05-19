@@ -6,7 +6,7 @@ from scipy import signal
 
 from dsp.dsp_processor import DspProcessor
 from dsp.util import applyFilters, cnormalize, convertDeinterlRealToComplex, shiftFreq
-from misc.general_util import deinterleave, printException
+from misc.general_util import applyIgnoreException, deinterleave, printException
 
 
 class VfoProcessor(DspProcessor):
@@ -48,13 +48,14 @@ class VfoProcessor(DspProcessor):
                     [r.get() for r in results]  # wait for any prior processing to complete
                     results = [pool.apply_async(self.handleOutput, (file.fileno(), freq, y)) for (name, file), freq in zip(namedPipes, self.vfos)]
 
-            except (EOFError, KeyboardInterrupt):
-                isDead.value = 1
+            except (EOFError, KeyboardInterrupt, BrokenPipeError):
+                pass
             except Exception as e:
                 printException(e)
             finally:
+                isDead.value = 1
                 for n, fd in namedPipes:
-                    os.close(fd.fileno())
+                    applyIgnoreException(lambda: os.close(fd.fileno()))
                     os.unlink(n)
                 reader.close()
                 print(f'File writer halted')

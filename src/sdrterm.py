@@ -83,6 +83,7 @@ class IOArgs:
         IOArgs.normalize = kwargs['normalize'] if 'normalize' in kwargs else False
         IOArgs.omegaOut = kwargs['omegaOut'] if 'omegaOut' in kwargs else None
         IOArgs.correctIq = kwargs['correctIq']
+        IOArgs.outFile = kwargs['outFile'] if 'outFile' in kwargs else None
         IOArgs.outFile = 'NUL' if 'POSIX' not in os.name and IOArgs.outFile is not None and '/dev/null' in IOArgs.outFile else IOArgs.outFile
 
         setVerbose(kwargs['verbose'] if 'verbose' in kwargs else False)

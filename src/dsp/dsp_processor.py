@@ -131,11 +131,11 @@ class DspProcessor(DataProcessor):
                     y = applyFilters(y, self.outputFilters)
                     file.write(struct.pack(len(y) * 'd', *y))
             except (EOFError, KeyboardInterrupt):
-                isDead.value = 1
+                pass
             except Exception as e:
-                isDead.value = 1
                 printException(e)
             finally:
+                isDead.value = 1
                 file.write(b'')
                 reader.close()
                 print(f'File writer halted')
