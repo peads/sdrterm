@@ -29,7 +29,7 @@ import typer
 from dsp.dsp_processor import DspProcessor
 from dsp.vfo_processor import VfoProcessor
 from misc.file_util import checkWavHeader
-from misc.general_util import eprint, printException, setVerbose
+from misc.general_util import printException, setVerbose
 from misc.read_file import readFile
 from plots.util import selectDemodulation, selectPlotType
 
@@ -38,6 +38,7 @@ from plots.util import selectDemodulation, selectPlotType
 # print(plt.get_backend(), matplotlib.__version__)
 # plt.get_backend(), matplotlib.__version__
 #
+
 
 class IOArgs:
     pl = None

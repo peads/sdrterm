@@ -6,13 +6,12 @@ from scipy import signal
 
 from dsp.dsp_processor import DspProcessor
 from dsp.util import applyFilters, cnormalize, convertDeinterlRealToComplex, shiftFreq
-from misc.general_util import deinterleave, eprint, printException
+from misc.general_util import deinterleave, printException
 
 
 class VfoProcessor(DspProcessor):
 
     def handleOutput(self, file, freq, y):
-        # with open(name, 'wb') as file:
         y = shiftFreq(y, freq, self.decimatedFs)
         y = signal.sosfilt(self.sosIn, y)
         y = self.demod(y)

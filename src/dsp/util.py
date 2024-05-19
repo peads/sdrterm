@@ -52,23 +52,6 @@ def generateDeemphFilter(fs: Real, f=7.5e-5) -> np.ndarray[any, np.number]:
     return signal.tf2sos(B, A)
 
 
-def generateInputFilters(fs: float, deg: int, omega: Number | np.number):
-    # return signal.ellip(deg, 1, 30, [1, omega],
-    return signal.butter(deg, [1, omega],
-                         btype='bandpass',
-                         analog=False,
-                         output='sos',
-                         fs=fs)
-
-
-def generateFmInputFilters(fs: float, deg: int, omega: Number | np.number = 12500):
-    return generateInputFilters(fs, deg, omega)
-
-
-def generateAmInputFilters(fs: float, deg: int, omega: Number | np.number = 10000):
-    return generateInputFilters(fs, deg, omega)
-
-
 def generateBroadcastOutputFilter(fs: float, deg: int, omega=18000):
     # return signal.ellip(deg, 1, 30, omega,
     return signal.butter(deg, omega,

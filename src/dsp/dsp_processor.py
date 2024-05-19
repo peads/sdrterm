@@ -25,8 +25,8 @@ from scipy import signal
 
 from dsp.data_processor import DataProcessor
 from dsp.demodulation import amDemod, fmDemod, realDemod
-from dsp.util import applyFilters, cnormalize, convertDeinterlRealToComplex, generateAmInputFilters, \
-    generateBroadcastOutputFilter, generateFmInputFilters, generateFmOutputFilters, shiftFreq
+from dsp.util import applyFilters, cnormalize, convertDeinterlRealToComplex, \
+    generateBroadcastOutputFilter, generateFmOutputFilters, shiftFreq
 from misc.general_util import deinterleave, vprint, printException
 
 
@@ -76,15 +76,19 @@ class DspProcessor(DataProcessor):
     def setDemod(self, fun):
         if bool(fun):
             self.demod = fun
+            self.sosIn = signal.ellip(self._FILTER_DEGREE, 1, 30, [1, self.bandwidth],
+                                      btype='bandpass',
+                                      analog=False,
+                                      output='sos',
+                                      fs=self.decimatedFs)
             return self.demod
         raise ValueError("Demodulation function is not defined")
 
     def selectOuputFm(self):
         vprint('NFM Selected')
         self.bandwidth = 12500
-        self.sosIn = generateFmInputFilters(self.decimatedFs, self._FILTER_DEGREE, self.bandwidth)
-        # self.outputFilters = [signal.ellip(self._FILTER_DEGREE, 1, 30, self.omegaOut,
-        self.outputFilters = [signal.butter(self._FILTER_DEGREE, self.omegaOut,
+        self.outputFilters = [signal.ellip(self._FILTER_DEGREE, 1, 30, self.omegaOut,
+        # self.outputFilters = [signal.butter(self._FILTER_DEGREE, self.omegaOut,
                                             btype='lowpass',
                                             analog=False,
                                             output='sos',
@@ -94,7 +98,6 @@ class DspProcessor(DataProcessor):
     def selectOuputWfm(self):
         vprint('WFM Selected')
         self.bandwidth = 15000
-        self.sosIn = generateFmInputFilters(self.decimatedFs, self._FILTER_DEGREE, self.bandwidth)
         self.outputFilters = generateFmOutputFilters(self.decimatedFs >> 1, self._FILTER_DEGREE,
                                                      18000)
         self.setDemod(fmDemod)
@@ -102,7 +105,6 @@ class DspProcessor(DataProcessor):
     def selectOuputAm(self):
         vprint('AM Selected')
         self.bandwidth = 10000
-        self.sosIn = generateAmInputFilters(self.decimatedFs, self._FILTER_DEGREE, self.bandwidth)
         self.outputFilters = [generateBroadcastOutputFilter(self.decimatedFs, self._FILTER_DEGREE)]
         self.setDemod(amDemod)
 

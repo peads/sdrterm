@@ -30,7 +30,7 @@ from matplotlib import pyplot as plt
 from dsp.data_processor import DataProcessor
 from dsp.iq_correction import IQCorrection
 from dsp.util import shiftFreq
-from misc.general_util import eprint, vprint, printException
+from misc.general_util import vprint, printException
 
 
 class Plot(DataProcessor, ABC):
@@ -56,6 +56,7 @@ class Plot(DataProcessor, ABC):
         self.close = None
         self.correctIq = kwargs['iq']
         self.iqCorrector = IQCorrection(self.fs) if self.correctIq else None
+        self.processor = kwargs['processor'] if 'processor' in kwargs.keys() else None
 
     @abstractmethod
     def animate(self, y: list | np.ndarray):
