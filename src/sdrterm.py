@@ -67,7 +67,7 @@ class IOArgs:
         IOArgs.inFile = kwargs['inFile']
         IOArgs.outFile = kwargs['outFile']
         IOArgs.dec = kwargs['dec'] if 'dec' in kwargs else None
-        IOArgs.center = float(kwargs['center'])
+        IOArgs.center = kwargs['center']
         IOArgs.tuned = kwargs['tuned'] if 'tuned' in kwargs else None
         if 'vfos' in kwargs and kwargs['vfos'] is not None:
             vfos = kwargs['vfos']
@@ -143,8 +143,18 @@ def closePipes(pipes: Iterable):
         w.close()
 
 
+# def validateInputOptions(ctx: typer.Context, _: typer.CallbackParam, file: str) -> str:
+#     isRaw = not checkForWavHeader(file)
+#     bits = ctx.params['bits'] if 'bits' in ctx.params else None
+#     enc = ctx.params['enc'] if 'enc' in ctx.params else None
+#     fs = ctx.params['fs'] if 'fs' in ctx.params else None
+#     if isRaw and bits is None and enc is None and fs is None:
+#         raise typer.BadParameter('Sampling rate, encoding type and bit-size are required for raw pcm input')
+#     return file
+
+
 def main(fs: Annotated[int, typer.Option('--sampling-rate', '--fs', show_default=False, help='Sampling frequency in Samples/s')] = None,
-         center: Annotated[str, typer.Option('--center-frequency', '-c', help='Offset from tuned frequency in Hz')] = '0',
+         center: Annotated[float, typer.Option('--center-frequency', '-c', help='Offset from tuned frequency in Hz')] = 0,
          inFile: Annotated[str, typer.Option('--input', '-i', show_default='stdin', help='Input device')] = None,
          outFile: Annotated[str, typer.Option('--output', '-o', show_default='stdout', help='Output device')] = None,
          pl: Annotated[str, typer.Option('--plot', help='1D-Comma-separated value of plot type(s)')] = None,
