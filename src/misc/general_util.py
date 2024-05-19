@@ -22,8 +22,33 @@ import traceback
 from typing import Callable
 
 
+class __VerbosePrint:
+    __verbose = False
+
+    @property
+    def verbose(self):
+        return self.__verbose
+
+    @verbose.setter
+    def verbose(self, value):
+        self.__verbose = value
+
+    @verbose.deleter
+    def verbose(self):
+        del self.__verbose
+
+    @classmethod
+    def vprint(cls, *args, **kwargs):
+        if cls.verbose:
+            eprint(*args, **kwargs)
+
+
 def eprint(*args, **kwargs):
     return print(*args, file=sys.stderr, **kwargs)
+
+
+def vprint(*args, **kwargs):
+    __VerbosePrint.vprint(*args, **kwargs)
 
 
 def interleave(x: list, y: list) -> list:
@@ -46,3 +71,7 @@ def applyIgnoreException(func: Callable[[], None]):
         func()
     except Exception:
         pass
+
+
+def setVerbose(verbose: bool):
+    __VerbosePrint.verbose = verbose

@@ -25,16 +25,17 @@ class VfoProcessor(DspProcessor):
             raise ValueError('f is not defined')
         reader, writer = pipe
         normalize = cnormalize if self.normalize else lambda x: x
+        n = len(self.vfos)
 
         namedPipes = []
-        for i in range(len(self.vfos)):
-            # uid = uuid.uuid4()
-            name = "/tmp/pipe-" + str(i)  # str(uid)
+        for i in range(n):
+            name = "/tmp/pipe-" + str(i)
             os.mkfifo(name)
             namedPipes.append((name, open(name, 'wb', os.O_WRONLY | os.O_NONBLOCK)))
 
-        with Pool(processes=len(self.vfos) - 1) as pool:
+        with Pool(processes=n) as pool:
             try:
+                results = []
                 while not isDead.value:
                     writer.close()
                     y = reader.recv()
@@ -45,12 +46,8 @@ class VfoProcessor(DspProcessor):
                     y = normalize(y)
                     y = shiftFreq(y, self.centerFreq, self.fs)
                     y = signal.decimate(y, self.decimationFactor, ftype='fir')
+                    [r.get() for r in results]  # wait for any prior processing to complete
                     results = [pool.apply_async(self.handleOutput, (file.fileno(), freq, y)) for (name, file), freq in zip(namedPipes, self.vfos)]
-                    # y = signal.sosfilt(self.sosIn, y)
-                    # y = self.demod(y)
-                    # y = applyFilters(y, self.outputFilters)
-                    # file.write(struct.pack(len(y) * 'd', *y))
-                    results = [r.get() for r in results]
 
             except (EOFError, KeyboardInterrupt):
                 isDead.value = 1
@@ -61,4 +58,4 @@ class VfoProcessor(DspProcessor):
                     os.close(fd.fileno())
                     os.unlink(n)
                 reader.close()
-                eprint(f'File writer halted')
+                print(f'File writer halted')

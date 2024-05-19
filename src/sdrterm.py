@@ -29,10 +29,9 @@ import typer
 from dsp.dsp_processor import DspProcessor
 from dsp.vfo_processor import VfoProcessor
 from misc.file_util import checkWavHeader
-from misc.general_util import eprint, printException
+from misc.general_util import eprint, printException, setVerbose
 from misc.read_file import readFile
 from plots.util import selectDemodulation, selectPlotType
-
 
 # matplotlib.use('QtAgg')
 # print(plt.rcParams['backend'])
@@ -83,8 +82,9 @@ class IOArgs:
         IOArgs.normalize = kwargs['normalize'] if 'normalize' in kwargs else False
         IOArgs.omegaOut = kwargs['omegaOut'] if 'omegaOut' in kwargs else None
         IOArgs.correctIq = kwargs['correctIq']
+        IOArgs.outFile = 'NUL' if 'POSIX' not in os.name and IOArgs.outFile is not None and '/dev/null' in IOArgs.outFile else IOArgs.outFile
 
-        IOArgs.outFile = 'NUL' if IOArgs.outFile is not None and '/dev/null' in IOArgs.outFile and 'POSIX' not in os.name else IOArgs.outFile
+        setVerbose(kwargs['verbose'] if 'verbose' in kwargs else False)
         IOArgs.initParameters()
         IOArgs.initIOHandlers()
         IOArgs.isDead.value = 0
@@ -110,7 +110,7 @@ class IOArgs:
         r, w = Pipe(False)
         fileWriter = Process(target=processor.processData,
                              args=(cls.isDead, (r, w), cls.outFile,))
-        writerUuid = IOArgs.addConsumer(fileWriter, (r, w), uuid=UUID(int=1))
+        writerUuid = IOArgs.addConsumer(fileWriter, (r, w))
         fileWriter.name = "File writer-" + str(writerUuid)
 
         if cls.pl is not None and len(cls.pl) > 0:
@@ -140,7 +140,7 @@ def closePipes(pipes: Iterable):
         w.close()
 
 
-def main(fs: Annotated[int, typer.Option(show_default=False, help='Sampling frequency in Samples/s')] = None,
+def main(fs: Annotated[int, typer.Option('--sampling-rate', '--fs', show_default=False, help='Sampling frequency in Samples/s')] = None,
          center: Annotated[str, typer.Option('--center-frequency', '-c', help='Offset from tuned frequency in Hz')] = '0',
          inFile: Annotated[str, typer.Option('--input', '-i', show_default='stdin', help='Input device')] = None,
          outFile: Annotated[str, typer.Option('--output', '-o', show_default='stdout', help='Output device')] = None,
@@ -155,7 +155,8 @@ def main(fs: Annotated[int, typer.Option(show_default=False, help='Sampling freq
          omegaOut: Annotated[int, typer.Option('--omega-out', '-m', help='Cutoff frequency in Hz')] = 9500,
          correct_iq: Annotated[bool, typer.Option(help='Toggle iq correction for visualization')] = False,
          use_file_buffer: Annotated[bool, typer.Option(help="Toggle buffering full file to memory before processing. Obviously, this doesn't include when reading from stdin")] = True,
-         simo: Annotated[bool, typer.Option(help='EXPERIMENTAL enable using named pipes to output data processed from multiple channels specified by the vfos option')] = False):
+         simo: Annotated[bool, typer.Option(help='EXPERIMENTAL enable using named pipes to output data processed from multiple channels specified by the vfos option')] = False,
+         verbose: Annotated[bool, typer.Option('--verbose', '-v', help='Toggle verbose output')] = False):
 
     processes: dict[UUID, Process] = {}
     pipes: dict[UUID, Pipe] = {}
@@ -177,7 +178,8 @@ def main(fs: Annotated[int, typer.Option(show_default=False, help='Sampling freq
                     enc=enc,
                     normalize=normalize,
                     correctIq=correct_iq,
-                    simo=simo)
+                    simo=simo,
+                    verbose=verbose)
     try:
         for proc in processes.values():
             proc.start()
@@ -195,7 +197,7 @@ def main(fs: Annotated[int, typer.Option(show_default=False, help='Sampling freq
         printException(e)
     finally:
         isDead.value = 1
-        eprint('Main halted')
+        print('Main halted')
 
 
 if __name__ == '__main__':
