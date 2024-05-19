@@ -32,7 +32,7 @@ from misc.general_util import deinterleave, vprint, printException
 
 
 class DspProcessor(DataProcessor):
-    _FILTER_DEGREE = 8
+    _FILTER_DEGREE = 4
 
     def __init__(self,
                  fs: int,
@@ -61,9 +61,9 @@ class DspProcessor(DataProcessor):
         self.bandwidth = None
         self.tunedFreq = tunedFreq
         self.vfos = vfos
-        self.normalize = normalize
         self.omegaOut = omegaOut
-        self.iqCorrector = IQCorrection(self.fs) if correctIq else None
+        self.normalize = cnormalize if normalize else lambda x: x
+        self.correctIq = IQCorrection(self.decimatedFs).correctIq if correctIq else lambda x: x
 
     def setDecimation(self, decimation):
         if decimation is not None:
@@ -116,8 +116,6 @@ class DspProcessor(DataProcessor):
                 or self.demod is None:
             raise ValueError('f is not defined')
         reader, writer = pipe
-        normalize = cnormalize if self.normalize else lambda x: x
-        correctIq = self.iqCorrector.correctIq if self.iqCorrector is not None else lambda x: x
         with open(f, 'wb') as file:
             try:
                 while not isDead.value:
@@ -127,8 +125,8 @@ class DspProcessor(DataProcessor):
                         break
                     y = deinterleave(y)
                     y = convertDeinterlRealToComplex(y)
-                    y = normalize(y)
-                    y = correctIq(y)
+                    y = self.normalize(y)
+                    y = self.correctIq(y)
                     y = shiftFreq(y, self.centerFreq, self.fs)
                     y = signal.decimate(y, self.decimationFactor, ftype='fir')
                     y = signal.sosfilt(self.sosIn, y)
