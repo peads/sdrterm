@@ -22,6 +22,7 @@ import struct
 from typing import Iterable
 
 import numpy as np
+from click import BadParameter
 
 from misc.general_util import vprint
 
@@ -45,14 +46,12 @@ TYPES = dict(((8, ((SIGNED, 'b'), (UNSIGNED, 'B'))),
 
 
 def parseRawType(bits, enc, fs):
-    if fs is None or fs < 1:
-        raise ValueError('fs is required for raw input')
+    if fs is None or fs < 1 \
+            or enc is None or bits is None:
+        raise BadParameter('Sampling rate, encoding type and bit-size are required for raw pcm input')
     fs = int(fs)
-    if bits is None and enc is None:
-        result = zipRet((0, 0, 0, fs, 0, 0, (3, 'd')))
-        result['dataOffset'] = 0
-        return result
-    elif len(enc) < 2:
+
+    if len(enc) < 2:
         bits = int(np.log2(int(bits)) - 3)
         result = zipRet((0, 0, 0, fs, 0, 0, (bits, enc)))
         result['dataOffset'] = 0
