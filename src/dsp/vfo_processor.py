@@ -1,12 +1,14 @@
 import os
 import struct
+from functools import partial
 from multiprocessing import Pool
+import signal as s
 
 from scipy import signal
 
 from dsp.dsp_processor import DspProcessor
-from dsp.util import applyFilters, cnormalize, convertDeinterlRealToComplex, shiftFreq
-from misc.general_util import applyIgnoreException, deinterleave, printException
+from dsp.util import applyFilters, shiftFreq
+from misc.general_util import applyIgnoreException, deinterleave, printException, eprint
 
 
 class VfoProcessor(DspProcessor):
@@ -19,11 +21,11 @@ class VfoProcessor(DspProcessor):
         return os.write(file, struct.pack(len(y) * 'd', *y))
 
     def processData(self, isDead, pipe, f) -> None:
+        s.signal(s.SIGINT, s.SIG_IGN)  # https://stackoverflow.com/a/68695455/8372013
         if f is None or (isinstance(f, str)) and len(f) < 1 \
                 or self.demod is None:
             raise ValueError('f is not defined')
         reader, writer = pipe
-        normalize = cnormalize if self.normalize else lambda x: x
         n = len(self.vfos)
 
         namedPipes = []
@@ -32,30 +34,33 @@ class VfoProcessor(DspProcessor):
             os.mkfifo(name)
             namedPipes.append((name, open(name, 'wb', os.O_WRONLY | os.O_NONBLOCK)))
 
-        with Pool(processes=n) as pool:
-            try:
-                results = []
-                while not isDead.value:
-                    writer.close()
-                    y = reader.recv()
-                    if y is None or len(y) < 1:
-                        break
-                    y = deinterleave(y)
-                    y = convertDeinterlRealToComplex(y)
-                    y = normalize(y)
-                    y = shiftFreq(y, self.centerFreq, self.fs)
-                    y = signal.decimate(y, self.decimationFactor, ftype='fir')
-                    [r.get() for r in results]  # wait for any prior processing to complete
-                    results = [pool.apply_async(self.handleOutput, (file.fileno(), freq, y)) for (name, file), freq in zip(namedPipes, self.vfos)]
-
-            except (EOFError, KeyboardInterrupt, BrokenPipeError):
-                pass
-            except Exception as e:
-                printException(e)
-            finally:
-                isDead.value = 1
-                for n, fd in namedPipes:
-                    applyIgnoreException(lambda: os.close(fd.fileno()))
-                    os.unlink(n)
-                reader.close()
-                print(f'File writer halted')
+        try:
+            with Pool(maxtasksperchild=128) as pool:
+                    results = []
+                    while not isDead.value:
+                        writer.close()
+                        y = reader.recv()
+                        if y is None or len(y) < 1:
+                            break
+                        y = deinterleave(y)
+                        if self.correctIq is not None:
+                            y = self.correctIq.correctIq(y)
+                        y = shiftFreq(y, self.centerFreq, self.fs)
+                        y = signal.decimate(y, self.decimationFactor, ftype='fir')
+                        [r.get() for r in results]  # wait for any prior processing to complete
+                        results = [pool.apply_async(self.handleOutput, (file.fileno(), freq, y), error_callback=eprint) for
+                                   (name, file), freq in zip(namedPipes, self.vfos)]
+        except (EOFError, KeyboardInterrupt, BrokenPipeError):
+            pass
+        except Exception as e:
+            printException(e)
+        finally:
+            isDead.value = 1
+            pool.close()
+            pool.join()
+            for n, fd in namedPipes:
+                applyIgnoreException(partial(os.write, fd.fileno(), b''))
+                applyIgnoreException(partial(os.close, fd.fileno()))
+                os.unlink(n)
+            reader.close()
+            print(f'File writer halted')

@@ -23,11 +23,6 @@ import numpy as np
 from scipy import signal
 
 
-def convertDeinterlRealToComplex(y: list[Number] | np.ndarray[any, np.real]) -> \
-        np.ndarray[any, np.complex_]:
-    return np.array([re + 1j * im for re, im in zip(y[:len(y) // 2], y[len(y) // 2:])])
-
-
 def shiftFreq(y: np.ndarray[any, np.complex_] | list[Complex], freq: Real, fs: Real) -> np.ndarray[
     any, np.complex_]:
     if not freq or not fs:

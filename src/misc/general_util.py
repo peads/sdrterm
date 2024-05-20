@@ -19,11 +19,15 @@
 #
 import sys
 import traceback
+from numbers import Number
 from typing import Callable
+
+import numpy as np
 
 
 class __VerbosePrint:
     __verbose = False
+    __trace = False
 
     @property
     def verbose(self):
@@ -37,9 +41,26 @@ class __VerbosePrint:
     def verbose(self):
         del self.__verbose
 
+    @property
+    def trace(self):
+        return self.__trace
+
+    @trace.setter
+    def trace(self, value):
+        self.__verbose = self.__trace = value
+
+    @trace.deleter
+    def trace(self):
+        del self.__trace
+
     @classmethod
     def vprint(cls, *args, **kwargs):
         if cls.verbose:
+            eprint(*args, **kwargs)
+
+    @classmethod
+    def tprint(cls, *args, **kwargs):
+        if cls.trace:
             eprint(*args, **kwargs)
 
 
@@ -51,14 +72,27 @@ def vprint(*args, **kwargs):
     __VerbosePrint.vprint(*args, **kwargs)
 
 
+def tprint(*args, **kwargs):
+    __VerbosePrint.tprint(*args, **kwargs)
+
+
 def interleave(x: list, y: list) -> list:
     out = [x for xs in zip(x, y) for x in xs]
     return out
 
 
-def deinterleave(y: list) -> list:
-    y = [y[i::2] for i in range(2)]
-    return y[0] + y[1]
+# def convertDeinterlRealToComplex(y: np.ndarray[any, np.real]) -> np.ndarray:
+#     return np.array([re + 1j * im for re, im in zip(y[:len(y) // 2], y[len(y) // 2:])])
+#
+#
+# def deinterleave(y: list) -> list:
+#     y = [y[i::2] for i in range(2)]
+#     return y[0] + y[1]
+
+
+def deinterleave(y: list[Number] | np.ndarray[any, np.number]) -> np.ndarray[any, np.complex_]:
+    y = [a + 1j * b for a, b in zip(y[::2], y[1::2])]
+    return np.array(y)
 
 
 def printException(e):
@@ -75,3 +109,11 @@ def applyIgnoreException(func: Callable[[], None]):
 
 def setVerbose(verbose: bool):
     __VerbosePrint.verbose = verbose
+
+
+def setTrace(trace: bool):
+    __VerbosePrint.trace = trace
+
+
+def poolErrorCallback(value):
+    eprint(value)

@@ -6,15 +6,19 @@ from functools import partial
 from multiprocessing import Pipe, Process, Value
 from uuid import UUID
 
+import numpy as np
+
 from misc.general_util import applyIgnoreException, vprint, printException
 
 
-def readFile(wordtype, fullFileRead: bool, isDead: Value, pipes: dict[UUID, Pipe],
+def readFile(wordtype, fs: int, fullFileRead: bool, isDead: Value, pipes: dict[UUID, Pipe],
              processes: dict[UUID, Process], f: str, offset=0, readSize=8192):
-    MIN_BUF_SIZE = 16
     bitdepth, structtype = wordtype
     readSize <<= bitdepth
-    with open(f, 'rb') as ff:
+    # ((x Samples/sec) * (y bytes/Sample)) * (1/(2^b * y) 1/bytes) * z seconds == 2^(-b) * x * z == (x * z) >> b
+    # e.g., (fs S/s * 0.5 s) >> b == fs >> (1 + b)
+    bufSize = fs >> int(2 + np.log2(readSize))
+    with open(f, 'rb') if sys.stdin.fileno() != f else open(f, 'rb', closefd=False) as ff:
         if sys.stdin.fileno() == ff.fileno() or not fullFileRead:
             file = ff
         else:
@@ -32,7 +36,7 @@ def readFile(wordtype, fullFileRead: bool, isDead: Value, pipes: dict[UUID, Pipe
         try:
             data = bytearray()
             while not isDead.value:
-                for _ in range(MIN_BUF_SIZE):
+                for _ in range(bufSize):
                     y = file.read(readSize)
                     if len(y) < 1:
                         break
