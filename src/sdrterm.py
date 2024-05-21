@@ -29,7 +29,7 @@ import typer
 from dsp.dsp_processor import DspProcessor
 from dsp.vfo_processor import VfoProcessor
 from misc.file_util import checkWavHeader
-from misc.general_util import printException, setVerbose
+from misc.general_util import printException, setVerbose, vprint, setTrace
 from misc.read_file import readFile
 from plots.util import selectDemodulation, selectPlotType
 
@@ -60,6 +60,7 @@ class IOArgs:
     correctIq = None
     simo = None
     fileInfo = None
+    processor = None
 
     def __init__(self, **kwargs):
         IOArgs.simo = kwargs['simo']
@@ -87,6 +88,7 @@ class IOArgs:
         IOArgs.outFile = 'NUL' if 'POSIX' not in os.name and IOArgs.outFile is not None and '/dev/null' in IOArgs.outFile else IOArgs.outFile
 
         setVerbose(kwargs['verbose'] if 'verbose' in kwargs else False)
+        setTrace(kwargs['trace'] if 'trace' in kwargs else False)
         IOArgs.initParameters()
         IOArgs.initIOHandlers()
         IOArgs.isDead.value = 0
@@ -101,7 +103,7 @@ class IOArgs:
     @classmethod
     def initIOHandlers(cls):
         processor = VfoProcessor if hasattr(os, 'mkfifo') and cls.simo and cls.vfos else DspProcessor
-        processor = processor(decimation=cls.dec,
+        cls.processor = processor = processor(decimation=cls.dec,
                               centerFreq=cls.center,
                               tunedFreq=cls.tuned,
                               vfos=cls.vfos,
@@ -167,9 +169,10 @@ def main(fs: Annotated[int, typer.Option('--sampling-rate', '--fs', show_default
          normalize: Annotated[bool, typer.Option(help='Toggle normalizing input analytic signal')] = False,
          omegaOut: Annotated[int, typer.Option('--omega-out', '-m', help='Cutoff frequency in Hz')] = 9500,
          correct_iq: Annotated[bool, typer.Option(help='Toggle iq correction')] = False,
-         use_file_buffer: Annotated[bool, typer.Option(help="Toggle buffering full file to memory before processing. Obviously, this doesn't include when reading from stdin")] = True,
+         use_file_buffer: Annotated[bool, typer.Option(help="Toggle buffering full file to memory before processing. Obviously, this doesn't include when reading from stdin")] = False,
          simo: Annotated[bool, typer.Option(help='EXPERIMENTAL enable using named pipes to output data processed from multiple channels specified by the vfos option')] = False,
-         verbose: Annotated[bool, typer.Option('--verbose', '-v', help='Toggle verbose output')] = False):
+         verbose: Annotated[bool, typer.Option('--verbose', '-v', help='Toggle verbose output')] = False,
+         trace: Annotated[bool, typer.Option('--trace', '-vv', help='Toggle extra verbose output')] = False):
 
     processes: dict[UUID, Process] = {}
     pipes: dict[UUID, Pipe] = {}
@@ -192,24 +195,30 @@ def main(fs: Annotated[int, typer.Option('--sampling-rate', '--fs', show_default
                     normalize=normalize,
                     correctIq=correct_iq,
                     simo=simo,
-                    verbose=verbose)
+                    verbose=verbose,
+                    trace=trace)
     try:
         for proc in processes.values():
             proc.start()
 
+        vprint(IOArgs.processor)
         readFile(processes=processes,
                  pipes=pipes,
                  isDead=isDead,
                  offset=ioArgs.fileInfo['dataOffset'],
                  wordtype=ioArgs.fileInfo['bitsPerSample'],
                  f=ioArgs.inFile,
-                 fullFileRead=use_file_buffer)
+                 fullFileRead=use_file_buffer,
+                 fs=ioArgs.fs)
     except KeyboardInterrupt:
         pass
     except Exception as e:
         printException(e)
     finally:
         isDead.value = 1
+        for proc in processes.values():
+            proc.join()
+            proc.close()
         print('Main halted')
 
 
