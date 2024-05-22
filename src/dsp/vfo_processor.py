@@ -21,7 +21,8 @@ class VfoProcessor(DspProcessor):
         return os.write(file, struct.pack(len(y) * 'd', *y))
 
     def processData(self, isDead, pipe, f) -> None:
-        s.signal(s.SIGINT, s.SIG_IGN)  # https://stackoverflow.com/a/68695455/8372013
+        if 'posix' in os.name:
+            s.signal(s.SIGINT, s.SIG_IGN)  # https://stackoverflow.com/a/68695455/8372013
         if f is None or (isinstance(f, str)) and len(f) < 1 \
                 or self.demod is None:
             raise ValueError('f is not defined')

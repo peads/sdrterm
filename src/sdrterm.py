@@ -18,10 +18,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-import os
 from multiprocessing import Pipe, Process, Value
-from typing import Annotated, Iterable
-from uuid import UUID, uuid4
+from typing import Annotated
+from uuid import UUID
 
 import typer
 
@@ -45,16 +44,16 @@ def main(fs: Annotated[int, typer.Option('--sampling-rate', '--fs', show_default
          dm: Annotated[str, typer.Option('--demod', help='Demodulation type')] = 'fm',
          tuned: Annotated[int, typer.Option('--tuned-frequency', '-t', help='Tuned frequency in Hz')] = None,
          vfos: Annotated[str, typer.Option(help='1D-Comma-separated value of offsets from center frequency to process in addition to center in Hz')] = None,
-         dec: Annotated[int, typer.Option('--decimation', help='Log2 of decimation factor (i.e. x where 2^x is the decimation factor))')] = 1,
+         dec: Annotated[int, typer.Option('--decimation', help='Log2 of decimation factor (i.e. x where 2^x is the decimation factor))')] = 2,
          bits: Annotated[int, typer.Option('--bits-per-sample', '-b', help='Bits per sample (ignored if wav file)')] = None,
          enc:  Annotated[str, typer.Option('--encoding', '-e', help='Binary encoding (ignored if wav file)')] = None,
          normalize: Annotated[bool, typer.Option(help='Toggle normalizing input analytic signal')] = False,
          omegaOut: Annotated[int, typer.Option('--omega-out', '-m', help='Cutoff frequency in Hz')] = 9500,
          correct_iq: Annotated[bool, typer.Option(help='Toggle iq correction')] = False,
-         use_file_buffer: Annotated[bool, typer.Option(help="Toggle buffering full file to memory before processing. Obviously, this doesn't include when reading from stdin")] = False,
          simo: Annotated[bool, typer.Option(help='EXPERIMENTAL enable using named pipes to output data processed from multiple channels specified by the vfos option')] = False,
          verbose: Annotated[bool, typer.Option('--verbose', '-v', help='Toggle verbose output')] = False,
-         trace: Annotated[bool, typer.Option(help='Toggle extra verbose output')] = False):
+         trace: Annotated[bool, typer.Option(help='Toggle extra verbose output')] = False,
+         read_size: Annotated[int, typer.Option(help='Size in bytes read per iteration')] = 8192):
 
     processes: dict[UUID, Process] = {}
     pipes: dict[UUID, Pipe] = {}
@@ -90,8 +89,8 @@ def main(fs: Annotated[int, typer.Option('--sampling-rate', '--fs', show_default
                  offset=ioArgs.fileInfo['dataOffset'],
                  wordtype=ioArgs.fileInfo['bitsPerSample'],
                  f=ioArgs.inFile,
-                 fullFileRead=use_file_buffer,
-                 fs=ioArgs.fs)
+                 fs=ioArgs.fs,
+                 readSize=read_size)
     except KeyboardInterrupt:
         pass
     except Exception as e:

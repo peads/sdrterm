@@ -33,12 +33,9 @@ class WaterfallPlot(Plot):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        showFps = kwargs['showFps'] if 'showFps' in kwargs.keys() else False
         self.t = 0
         self.dt = 1
         self.text_fps = None
-        self.draw = self.drawWithFps if showFps else self.drawNormal
-        self.showFps = showFps
         self._SFT = ShortTimeFFT.from_window(('kaiser', 5),
                                              self.fs,
                                              self.NPERSEG,
@@ -47,19 +44,16 @@ class WaterfallPlot(Plot):
                                              fft_mode='centered',
                                              scale_to='magnitude',
                                              phase_shift=None)
-        self.xticks = (-1 / 2 + np.arange(1 / 8, 1, 1 / 8)) * self.fs
+        # self.xticks = (-1 / 2 + np.arange(1 / 8, 1, 1 / 8)) * self.fs
 
     def initPlot(self):
         super().initPlot()
         self.fig, self.ax = plt.subplots()
-        if self.showFps:
-            self.text_fps = self.ax.text(0, 1, "FPS: ", bbox=dict(boxstyle="round",
-                                                                  ec=(1., 0.5, 0.5),
-                                                                  fc=(1., 0.8, 0.8), ))
 
-        xlabels = [str(round(x, 3)) for x in self.xticks / self.fs + self.tunedFreq / 10E+5]
+        xticks = (-1 / 2 + np.arange(0, 9/8, 1 / 8)) * self.fs
+        xlabels = [str(round(x, 3)) for x in xticks / self.fs + self.tunedFreq / 10E+5]
         self.ax.set_yticks([])
-        self.ax.set_xticks(self.xticks, xlabels)
+        self.ax.set_xticks(xticks, xlabels)
         if self.tunedFreq:
             self.ax.set_xlabel(f'{self.tunedFreq / 10E+5} [MHz]')
         plt.ioff()
@@ -67,13 +61,8 @@ class WaterfallPlot(Plot):
         self.initBlit()
         # self.fig.canvas.mpl_connect('resize_event', self.resize)
 
-    def drawNormal(self):
+    def draw(self):
         self.ax.draw_artist(self.ln)
-
-    def drawWithFps(self):
-        self.text_fps.set_text('FPS: {:.2f}'.format(1. / self.dt), )
-        self.ax.draw_artist(self.ln)
-        self.ax.draw_artist(self.text_fps)
 
     # def resize(self, _):
     #     self.ax.set_xticks(self.xticks)
@@ -90,14 +79,14 @@ class WaterfallPlot(Plot):
             self.dt = time.perf_counter() - self.t
             self.t = time.perf_counter()
 
-        if not self.isInit:
-            self.initPlot()
-
         Zxx = self._SFT.stft(y)
         pad_xextent = (self.NFFT - self.NOOVERLAP) / (self.fs * 2)
         extent = xmin, xmax, fmin, fmax = self._SFT.extent(len(y), center_bins=True)
         xmin -= pad_xextent
         xmax += pad_xextent
+
+        if not self.isInit:
+            self.initPlot()
 
         self.fig.canvas.restore_region(self.bg)
         self.ln = self.ax.imshow(np.flipud(10. * np.log10(np.abs(Zxx).T)),

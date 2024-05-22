@@ -17,13 +17,16 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
+import os
+import signal as s
 from functools import partial
 from itertools import chain
+from multiprocessing import Pool
 
 import matplotlib.pyplot as plt
 import numpy as np
 from matplotlib.gridspec import SubplotSpec
-from scipy import fft, signal
+from scipy import fft
 
 from dsp.util import shiftFreq
 from plots.abstract_plot import Plot
@@ -36,6 +39,7 @@ class MultiVFOPlot(Plot):
         if self.vfos is None:
             raise ValueError('vfos not specified')
         self.axes = None
+        self.pool = None
 
     def initPlot(self):
         super().initPlot()
@@ -86,22 +90,34 @@ class MultiVFOPlot(Plot):
     def shiftVfos(y, fs, freq):
         return shiftFreq(y, freq, fs)
 
+    def close(self):
+        super().close()
+        if hasattr(self, 'pool'):
+            self.pool.close()
+            self.pool.join()
+            del self.pool
+
     def animate(self, y):
+
+        if not self.isInit:
+            if 'posix' in os.name:
+                s.signal(s.SIGINT, s.SIG_IGN)  # https://stackoverflow.com/a/68695455/8372013
+            self.pool = Pool(maxtasksperchild=128)
+
+        shift = self.pool.map_async(partial(self.shiftVfos, y, self.fs), self.vfos)
+        fftData = fft.fft(shift.get(), norm='forward')
+        fftData = fft.fftshift(fftData)
+        amps = np.abs(fftData)
+        amps = np.sqrt(amps * amps)
+        freq = fft.fftfreq(len(y), 1 / self.fs)
+        freq = fft.fftshift(freq)
+
         if not self.isInit:
             self.initPlot()
 
         self.fig.canvas.restore_region(self.bg)
-        # shift = [shiftFreq(y, vfo, self.fs) for vfo in self.vfos]
-        shift = self.pool.map_async(partial(self.shiftVfos, y, self.fs), self.vfos)
-        fftData1 = fft.fft(shift.get(), norm='forward')
-        fftData1 = fft.fftshift(fftData1)
-        amps1 = np.abs(fftData1)
-        amps1 = np.sqrt(amps1 * amps1)
-        freq = fft.fftfreq(len(y), 1 / self.fs)
-        freq = fft.fftshift(freq)
-
         for i in range(0, len(self.vfos)):
-            self.ln[i].set_ydata(amps1[i])
+            self.ln[i].set_ydata(amps[i])
             self.ln[i].set_xdata(freq)
             self.axes[i].draw_artist(self.ln[i])
 

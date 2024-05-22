@@ -42,6 +42,7 @@ def selectPlotType(plotType: string, processor: DspProcessor, dataType=None, iq=
     # stupid python not having switch fall-thru >:(
     if plotType == "ps" or plotType == "power":
         return PowerSpectrumPlot(fs=processor.fs,
+                                 processor=processor,
                                  centerFreq=processor.centerFreq,
                                  tunedFreq=processor.tunedFreq,
                                  bandwidth=processor.bandwidth,

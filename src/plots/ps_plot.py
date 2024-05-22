@@ -29,16 +29,15 @@ class PowerSpectrumPlot(Plot):
 
     def __init__(self, **kwargs):
         super().__init__(**kwargs)
-        self.xticks = (-1 / 2 + np.arange(1 / 8, 1, 1 / 8)) * self.fs
 
     def initPlot(self):
         super().initPlot()
         self.fig, self.ax = plt.subplots()
         self.ln, = self.ax.plot(0, 0)
         self.ax.set_ylim(-2, 2.5)
-        self.ax.set_xlim(self.xticks[0], self.xticks[-1])
-        xlabels = [str(round(x, 3)) for x in self.xticks / self.fs + self.tunedFreq / 10E+5]
-        self.ax.set_xticks(self.xticks, xlabels)
+        xticks = (-1 / 2 + np.arange(0, 9/8, 1 / 8)) * self.fs
+        xlabels = [str(round(x, 3)) for x in xticks / self.fs + self.tunedFreq / 10E+5]
+        self.ax.set_xticks(xticks, xlabels)
         if self.tunedFreq:
             self.ax.set_xlabel(f'{self.tunedFreq / 10E+5} [MHz]')
         plt.ioff()

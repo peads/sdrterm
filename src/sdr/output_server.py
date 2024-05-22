@@ -20,24 +20,24 @@
 import multiprocessing
 import os
 import socket
+from multiprocessing import Value
 from queue import Empty
 from threading import Condition, Thread
-from multiprocessing import Value
 
 from misc.general_util import applyIgnoreException, printException
 from sdr.util import findPort
 
 
 class OutputServer:
-    BUF_SIZE = 128
 
     def __init__(self,
                  host='localhost',
-                 port=findPort()):
+                 port=findPort(),
+                 writeSize=262144):
         self.host = host
         self.port = port
         self.clients: multiprocessing.Queue = multiprocessing.Queue(maxsize=os.cpu_count())
-        self.dataType = 'B'
+        self.writeSize = writeSize
 
     def close(self, exitFlag: Value) -> None:
         if exitFlag.value:
@@ -60,7 +60,7 @@ class OutputServer:
 
     def feedClients(self, recvSckt: socket.socket, exitFlag: Value) -> None:
         processingList = []
-        ii = range(self.BUF_SIZE >> 2)
+        ii = range(self.writeSize >> 13)
         try:
             data = bytearray()
             while not exitFlag.value:

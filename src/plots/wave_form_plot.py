@@ -39,7 +39,9 @@
 
 import matplotlib.pyplot as plt
 import numpy as np
+from scipy import signal
 
+from dsp.util import applyFilters
 from plots.abstract_plot import Plot
 
 
@@ -53,17 +55,23 @@ class WaveFormPlot(Plot):
         super().initPlot()
         self.fig, self.ax = plt.subplots()
         self.ln, = self.ax.plot(0, 0)
+        self.ax.set_xlim(0, n)
+        self.ax.set_ylim(-2, 2)
+        self.xdata = np.arange(n)
         plt.ioff()
         plt.show(block=False)
-        self.ax.set_xlim(0, n)
-        self.ax.set_ylim(-1, 1)
-        self.xdata = np.arange(n)
         self.initBlit()
 
     def animate(self, y):
-        n = len(y)
+        if self.processor.decimation > 1:
+            y = signal.decimate(y, self.processor.decimation, ftype='fir')
+
+        y = signal.sosfilt(self.processor.sosIn, y)
+        y = self.processor.demod(y)
+        y = applyFilters(y, self.processor.outputFilters)
+
         if not self.isInit:
-            self.initPlot(n)
+            self.initPlot(len(y))
 
         self.fig.canvas.restore_region(self.bg)
         self.ln.set_ydata(y)

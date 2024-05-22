@@ -18,6 +18,7 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
 import json
+import os
 import signal as s
 import struct
 import sys
@@ -42,7 +43,7 @@ def handleException(isDead, e):
 
 
 class DspProcessor(DataProcessor):
-    _FILTER_DEGREE = 8
+    _FILTER_DEGREE = 2
 
     def __init__(self,
                  fs: int,
@@ -144,22 +145,20 @@ class DspProcessor(DataProcessor):
     def processChunk(self, y):
         try:
             y = deinterleave(y)
+
             if self.correctIq is not None:
                 y = self.correctIq.correctIq(y)
+
             y = shiftFreq(y, self.centerFreq, self.__fs)
+
             if self.__decimationFactor > 1:
                 y = signal.decimate(y, self.__decimationFactor, ftype='fir')
+
             y = signal.sosfilt(self.sosIn, y)
             y = self.demod(y)
             y = applyFilters(y, self.outputFilters)
-            # return signal.qspline1d_eval(
-            #     signal.qspline1d(y),
-            #     np.arange(0, len(y)))
-            return signal.cspline1d_eval(
-                signal.cspline1d(y),
-                np.arange(0, len(y)))
-            # return signal.medfilt(y)
-            # return signal.wiener(y)
+
+            return signal.savgol_filter(y, 14, self._FILTER_DEGREE)
         except KeyboardInterrupt:
             pass
         except Exception as e:
@@ -169,7 +168,8 @@ class DspProcessor(DataProcessor):
 
     def processData(self, isDead, pipe, f) -> None:
         reader, writer = pipe
-        s.signal(s.SIGINT, s.SIG_IGN)
+        if 'posix' in os.name:
+            s.signal(s.SIGINT, s.SIG_IGN)  # https://stackoverflow.com/a/68695455/8372013
 
         try:
             with open(f, 'wb') if f is not None else open(sys.stdout.fileno(), 'wb',
