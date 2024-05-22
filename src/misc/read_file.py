@@ -8,7 +8,7 @@ from uuid import UUID
 
 import numpy as np
 
-from misc.general_util import applyIgnoreException, vprint, printException
+from misc.general_util import applyIgnoreException, printException, tprint, vprint
 
 
 def readFile(wordtype, fs: int, fullFileRead: bool, isDead: Value, pipes: dict[UUID, Pipe],
@@ -18,12 +18,13 @@ def readFile(wordtype, fs: int, fullFileRead: bool, isDead: Value, pipes: dict[U
     # ((x Samples/sec) * (y bytes/Sample)) * (1/(2^b * y) 1/bytes) * z seconds == 2^(-b) * x * z == (x * z) >> b
     # e.g., (fs S/s * 0.5 s) >> b == fs >> (1 + b)
     bufSize = fs >> int(2 + np.log2(readSize))
-    with open(f, 'rb') if sys.stdin.fileno() != f else open(f, 'rb', closefd=False) as ff:
+    with open(f, 'rb') if f is not None else open(sys.stdin.fileno(), 'rb', closefd=False) as ff:
+        tprint(f'{f} {ff}')
         if sys.stdin.fileno() == ff.fileno() or not fullFileRead:
             file = ff
         else:
             vprint('Reading full file to memory')
-            if os.name != 'POSIX':
+            if 'posix' not in os.name:
                 file = mmap.mmap(ff.fileno(), 0, access=mmap.ACCESS_READ)
             else:
                 file = mmap.mmap(ff.fileno(), 0, prot=mmap.PROT_READ)

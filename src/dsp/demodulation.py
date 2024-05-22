@@ -17,10 +17,11 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
+from typing import Any
 
 import numpy as np
 from numpy import ndarray
-from scipy import signal
+from scipy import fft, signal
 
 
 def fmDemod(data: np.ndarray[any, np.complex_]) -> np.ndarray[any, np.real]:
@@ -38,9 +39,13 @@ def amDemod(data: np.ndarray[any, np.complex_]) -> np.ndarray[any, np.real]:
     return np.abs(data)
 
 
-def realDemod(data: np.ndarray[any, np.complex_]) -> ndarray[any, np.real]:
+def realOutput(data: np.ndarray[any, np.complex_]) -> ndarray[any, np.real]:
     return np.real(data)
 
 
-def imagData(data: np.ndarray[any, np.complex_]) -> ndarray[any, np.real]:
+def imagOutput(data: np.ndarray[any, np.complex_]) -> ndarray[any, np.real]:
     return np.imag(data)
+
+
+def absFftOutput(data: np.ndarray[any, np.complex_]) -> ndarray[any, np.real]:
+    return np.abs(fft.fft(data))

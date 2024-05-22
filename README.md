@@ -17,7 +17,7 @@ python -m venv .venv
 .venv/bin/activate
 
 python setup.py egg_info
-pip install -r src/sdrterm.egg-info
+pip install -r src/sdrterm.egg-info/requires.txt
 ...
 deactivate
 ```

@@ -19,140 +19,22 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
 import os
-import sys
 from multiprocessing import Pipe, Process, Value
 from typing import Annotated, Iterable
 from uuid import UUID, uuid4
 
 import typer
 
-from dsp.dsp_processor import DspProcessor
-from dsp.vfo_processor import VfoProcessor
-from misc.file_util import checkWavHeader
-from misc.general_util import printException, setVerbose, vprint, setTrace
+from misc.general_util import printException, vprint
+from misc.io_args import IOArgs
 from misc.read_file import readFile
-from plots.util import selectDemodulation, selectPlotType
+
 
 # matplotlib.use('QtAgg')
 # print(plt.rcParams['backend'])
 # print(plt.get_backend(), matplotlib.__version__)
 # plt.get_backend(), matplotlib.__version__
 #
-
-
-class IOArgs:
-    pl = None
-    pipes = None
-    processes = None
-    dm = None
-    normalize = None
-    vfos = None
-    tuned = None
-    center = None
-    dec = None
-    enc = None
-    bits = None
-    fs = None
-    outFile = None
-    inFile = None
-    isDead = None
-    omegaOut = None
-    correctIq = None
-    simo = None
-    fileInfo = None
-    processor = None
-
-    def __init__(self, **kwargs):
-        IOArgs.simo = kwargs['simo']
-        IOArgs.fs = kwargs['fs'] if 'fs' in kwargs else None
-        IOArgs.inFile = kwargs['inFile']
-        IOArgs.outFile = kwargs['outFile']
-        IOArgs.dec = kwargs['dec'] if 'dec' in kwargs else None
-        IOArgs.center = kwargs['center']
-        IOArgs.tuned = kwargs['tuned'] if 'tuned' in kwargs else None
-        if 'vfos' in kwargs and kwargs['vfos'] is not None:
-            vfos = kwargs['vfos']
-            IOArgs.vfos = [float(x) for x in vfos.split(',')]
-            IOArgs.vfos.append(0)
-        IOArgs.dm = kwargs['dm'] if 'dm' in kwargs else None
-        IOArgs.processes = kwargs['processes']
-        IOArgs.pipes = kwargs['pipes']
-        IOArgs.pl = kwargs['pl'] if 'pl' in kwargs else None
-        IOArgs.isDead = kwargs['isDead']
-        IOArgs.bits = kwargs['bits'] if 'bits' in kwargs else None
-        IOArgs.enc = kwargs['enc'] if 'enc' in kwargs else None
-        IOArgs.normalize = kwargs['normalize'] if 'normalize' in kwargs else False
-        IOArgs.omegaOut = kwargs['omegaOut'] if 'omegaOut' in kwargs else None
-        IOArgs.correctIq = kwargs['correctIq']
-        IOArgs.outFile = kwargs['outFile'] if 'outFile' in kwargs else None
-        IOArgs.outFile = 'NUL' if 'POSIX' not in os.name and IOArgs.outFile is not None and '/dev/null' in IOArgs.outFile else IOArgs.outFile
-
-        setVerbose(kwargs['verbose'] if 'verbose' in kwargs else False)
-        setTrace(kwargs['trace'] if 'trace' in kwargs else False)
-        IOArgs.initParameters()
-        IOArgs.initIOHandlers()
-        IOArgs.isDead.value = 0
-
-    @classmethod
-    def initParameters(cls):
-        cls.inFile = sys.stdin.fileno() if cls.inFile is None else cls.inFile
-        cls.outFile = sys.stdout.fileno() if cls.outFile is None else cls.outFile
-        cls.fileInfo = checkWavHeader(cls.inFile, cls.fs, cls.bits, cls.enc)
-        cls.fs = cls.fileInfo['sampRate']
-
-    @classmethod
-    def initIOHandlers(cls):
-        processor = VfoProcessor if hasattr(os, 'mkfifo') and cls.simo and cls.vfos else DspProcessor
-        cls.processor = processor = processor(decimation=cls.dec,
-                              centerFreq=cls.center,
-                              tunedFreq=cls.tuned,
-                              vfos=cls.vfos,
-                              fs=cls.fs,
-                              normalize=cls.normalize,
-                              omegaOut=cls.omegaOut,
-                              correctIq=cls.correctIq)
-        selectDemodulation(cls.dm, processor)()
-        r, w = Pipe(False)
-        fileWriter = Process(target=processor.processData,
-                             args=(cls.isDead, (r, w), cls.outFile,))
-        writerUuid = IOArgs.addConsumer(fileWriter, (r, w))
-        fileWriter.name = "File writer-" + str(writerUuid)
-
-        if cls.pl is not None and len(cls.pl) > 0:
-            for p in cls.pl.split(','):
-                psplot = selectPlotType(p, processor, cls.fileInfo['bitsPerSample'][1], cls.correctIq)
-                r, w = Pipe(False)
-                plotter = Process(target=psplot.processData,
-                                  args=(cls.isDead, (r, w)))
-                plotUuid = IOArgs.addConsumer(plotter, (r, w), uuid=psplot.uuid)
-                plotter.name = "Plotter-" + str(plotUuid)
-
-    @classmethod
-    def addConsumer(cls, proc: Process,
-                    pipe: Pipe,
-                    uuid: UUID = None):
-        if uuid is None:
-            uuid = uuid4()
-
-        cls.processes[uuid] = proc
-        cls.pipes[uuid] = pipe
-        return uuid
-
-
-def closePipes(pipes: Iterable):
-    for r, w in pipes:
-        r.close()
-        w.close()
-
-
-# def validateInputOptions(ctx: typer.Context, _: typer.CallbackParam, file: str) -> str:
-#     isRaw = not checkForWavHeader(file)
-#     bits = ctx.params['bits'] if 'bits' in ctx.params else None
-#     enc = ctx.params['enc'] if 'enc' in ctx.params else None
-#     fs = ctx.params['fs'] if 'fs' in ctx.params else None
-#     if isRaw and bits is None and enc is None and fs is None:
-#         raise typer.BadParameter('Sampling rate, encoding type and bit-size are required for raw pcm input')
-#     return file
 
 
 def main(fs: Annotated[int, typer.Option('--sampling-rate', '--fs', show_default=False, help='Sampling frequency in Samples/s')] = None,
@@ -163,7 +45,7 @@ def main(fs: Annotated[int, typer.Option('--sampling-rate', '--fs', show_default
          dm: Annotated[str, typer.Option('--demod', help='Demodulation type')] = 'fm',
          tuned: Annotated[int, typer.Option('--tuned-frequency', '-t', help='Tuned frequency in Hz')] = None,
          vfos: Annotated[str, typer.Option(help='1D-Comma-separated value of offsets from center frequency to process in addition to center in Hz')] = None,
-         dec: Annotated[int, typer.Option('--decimation', help='Log2 of decimation factor (i.e. x where 2^x is the decimation factor))')] = None,
+         dec: Annotated[int, typer.Option('--decimation', help='Log2 of decimation factor (i.e. x where 2^x is the decimation factor))')] = 1,
          bits: Annotated[int, typer.Option('--bits-per-sample', '-b', help='Bits per sample (ignored if wav file)')] = None,
          enc:  Annotated[str, typer.Option('--encoding', '-e', help='Binary encoding (ignored if wav file)')] = None,
          normalize: Annotated[bool, typer.Option(help='Toggle normalizing input analytic signal')] = False,
@@ -172,7 +54,7 @@ def main(fs: Annotated[int, typer.Option('--sampling-rate', '--fs', show_default
          use_file_buffer: Annotated[bool, typer.Option(help="Toggle buffering full file to memory before processing. Obviously, this doesn't include when reading from stdin")] = False,
          simo: Annotated[bool, typer.Option(help='EXPERIMENTAL enable using named pipes to output data processed from multiple channels specified by the vfos option')] = False,
          verbose: Annotated[bool, typer.Option('--verbose', '-v', help='Toggle verbose output')] = False,
-         trace: Annotated[bool, typer.Option('--trace', '-vv', help='Toggle extra verbose output')] = False):
+         trace: Annotated[bool, typer.Option(help='Toggle extra verbose output')] = False):
 
     processes: dict[UUID, Process] = {}
     pipes: dict[UUID, Pipe] = {}

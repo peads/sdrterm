@@ -58,6 +58,7 @@ class WaterfallPlot(Plot):
                                                                   fc=(1., 0.8, 0.8), ))
 
         xlabels = [str(round(x, 3)) for x in self.xticks / self.fs + self.tunedFreq / 10E+5]
+        self.ax.set_yticks([])
         self.ax.set_xticks(self.xticks, xlabels)
         if self.tunedFreq:
             self.ax.set_xlabel(f'{self.tunedFreq / 10E+5} [MHz]')

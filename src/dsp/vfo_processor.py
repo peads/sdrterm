@@ -1,14 +1,14 @@
 import os
+import signal as s
 import struct
 from functools import partial
 from multiprocessing import Pool
-import signal as s
 
 from scipy import signal
 
 from dsp.dsp_processor import DspProcessor
 from dsp.util import applyFilters, shiftFreq
-from misc.general_util import applyIgnoreException, deinterleave, printException, eprint
+from misc.general_util import applyIgnoreException, deinterleave, eprint, printException
 
 
 class VfoProcessor(DspProcessor):
@@ -36,20 +36,21 @@ class VfoProcessor(DspProcessor):
 
         try:
             with Pool(maxtasksperchild=128) as pool:
-                    results = []
-                    while not isDead.value:
-                        writer.close()
-                        y = reader.recv()
-                        if y is None or len(y) < 1:
-                            break
-                        y = deinterleave(y)
-                        if self.correctIq is not None:
-                            y = self.correctIq.correctIq(y)
-                        y = shiftFreq(y, self.centerFreq, self.fs)
-                        y = signal.decimate(y, self.decimationFactor, ftype='fir')
-                        [r.get() for r in results]  # wait for any prior processing to complete
-                        results = [pool.apply_async(self.handleOutput, (file.fileno(), freq, y), error_callback=eprint) for
-                                   (name, file), freq in zip(namedPipes, self.vfos)]
+                results = []
+                while not isDead.value:
+                    writer.close()
+                    y = reader.recv()
+                    if y is None or len(y) < 1:
+                        break
+                    y = deinterleave(y)
+                    if self.correctIq is not None:
+                        y = self.correctIq.correctIq(y)
+                    y = shiftFreq(y, self.centerFreq, self.fs)
+                    y = signal.decimate(y, self.decimation, ftype='fir')
+                    [r.get() for r in results]  # wait for any prior processing to complete
+                    results = [pool.apply_async(self.handleOutput, (file.fileno(), freq, y),
+                                                error_callback=eprint) for
+                               (name, file), freq in zip(namedPipes, self.vfos)]
         except (EOFError, KeyboardInterrupt, BrokenPipeError):
             pass
         except Exception as e:
@@ -58,6 +59,7 @@ class VfoProcessor(DspProcessor):
             isDead.value = 1
             pool.close()
             pool.join()
+            del pool
             for n, fd in namedPipes:
                 applyIgnoreException(partial(os.write, fd.fileno(), b''))
                 applyIgnoreException(partial(os.close, fd.fileno()))

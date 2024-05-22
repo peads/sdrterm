@@ -21,6 +21,7 @@ import multiprocessing
 from abc import ABC, abstractmethod
 from typing import Iterable
 from uuid import uuid4
+import signal as s
 
 import matplotlib as mpl
 import matplotlib.style as mplstyle
@@ -30,7 +31,7 @@ from matplotlib import pyplot as plt
 from dsp.data_processor import DataProcessor
 from dsp.iq_correction import IQCorrection
 from dsp.util import shiftFreq
-from misc.general_util import vprint, printException
+from misc.general_util import printException, vprint
 
 
 class Plot(DataProcessor, ABC):
@@ -58,6 +59,7 @@ class Plot(DataProcessor, ABC):
         self.correctIq = kwargs['iq']
         self.iqCorrector = IQCorrection(self.fs) if self.correctIq else None
         self.processor = kwargs['processor'] if 'processor' in kwargs.keys() else None
+        self.pool = None
 
     @abstractmethod
     def animate(self, y: list | np.ndarray):
@@ -84,21 +86,24 @@ class Plot(DataProcessor, ABC):
             self.fig.canvas.blit(self.fig.bbox)
         self.fig.canvas.mpl_connect('close_event', self.onClose)
         self.isInit = True
+        self.fig.canvas.manager.set_window_title(type(self).__name__)
 
     def processData(self, isDead, pipe, _=None) -> None:
         reader, writer = pipe
+        s.signal(s.SIGINT, s.SIG_IGN)  # https://stackoverflow.com/a/68695455/8372013
         try:
-            while not (self._isDead or isDead.value):
-                writer.close()
-                y = reader.recv()
-                if y is None or len(y) < 1:
-                    break
-                y = np.array(y)
-                y = y[0::2] + 1j * y[1::2]
-                if self.correctIq:
-                    y = self.iqCorrector.correctIq(y)
-                y = shiftFreq(y, self.centerFreq, self.fs)
-                self.animate(y)
+            with multiprocessing.Pool(maxtasksperchild=128) as self.pool:
+                while not (self._isDead or isDead.value):
+                    writer.close()
+                    y = reader.recv()
+                    if y is None or len(y) < 1:
+                        break
+                    y = np.array(y)
+                    y = y[0::2] + 1j * y[1::2]
+                    if self.correctIq:
+                        y = self.iqCorrector.correctIq(y)
+                    y = shiftFreq(y, self.centerFreq, self.fs)
+                    self.animate(y)
         except EOFError:
             pass
         except KeyboardInterrupt:
@@ -111,4 +116,7 @@ class Plot(DataProcessor, ABC):
                 isDead.value = 1
             self._isDead = True
             reader.close()
+            self.pool.close()
+            self.pool.join()
+            del self.pool
             vprint(f'Figure {type(self).__name__}-{self.uuid} halted')

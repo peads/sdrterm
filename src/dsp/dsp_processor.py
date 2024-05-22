@@ -18,7 +18,6 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
 import json
-import os
 import signal as s
 import struct
 import sys
@@ -29,10 +28,17 @@ import numpy as np
 from scipy import signal
 
 from dsp.data_processor import DataProcessor
-from dsp.demodulation import amDemod, fmDemod, realDemod
+from dsp.demodulation import amDemod, fmDemod, realOutput
 from dsp.iq_correction import IQCorrection
 from dsp.util import applyFilters, generateBroadcastOutputFilter, generateFmOutputFilters, shiftFreq
-from misc.general_util import deinterleave, vprint, printException, eprint, applyIgnoreException
+from misc.general_util import applyIgnoreException, deinterleave, eprint, printException, tprint, \
+    vprint
+
+
+def handleException(isDead, e):
+    isDead.value = 1
+    if not isinstance(e, KeyboardInterrupt):
+        printException(e)
 
 
 class DspProcessor(DataProcessor):
@@ -40,53 +46,74 @@ class DspProcessor(DataProcessor):
 
     def __init__(self,
                  fs: int,
-                 decimation: int,
                  centerFreq: float,
                  omegaOut: int,
                  demod: str = None,
                  tunedFreq: int = None,
                  vfos: str = None,
                  correctIq: bool = False,
-                 **kwargs):
+                 decimation: int = 1,
+                 **_):
 
-        decimation = decimation if decimation is not None else 1
+        decimation = decimation if decimation is not None else 2
         self.outputFilters = []
         self.sosIn = None
-        self.fs = fs
-        self.decimationFactor = decimation if decimation is not None and decimation > 0 else (
-                np.floor(np.log2(fs / 1000)) - 8)
-        self.logDecimationFactor = self.decimationFactor
-        self.decimatedFs = fs >> int(
-            np.round(self.decimationFactor)) if self.decimationFactor > 0 else fs
-        self.decimationFactor = 1 << int(np.round(self.decimationFactor))
-        self.isRunning = True
+        self.__decimatedFs = self.__fs = fs
+        self.__decimationFactor = decimation
+        self.__decimatedFs //= decimation
         self.centerFreq = centerFreq
-        self.demod = demod if demod is not None else realDemod
+        self.demod = demod if demod is not None else realOutput
         self.bandwidth = None
         self.tunedFreq = tunedFreq
         self.vfos = vfos
         self.omegaOut = omegaOut
-        self.correctIq = IQCorrection(self.decimatedFs) if correctIq else None
+        self.correctIq = IQCorrection(self.__decimatedFs) if correctIq else None
 
-    def setDecimation(self, decimation):
-        if decimation is not None:
-            self.decimationFactor = decimation
-        else:
-            self.decimationFactor = np.floor(np.log2(self.fs / 1000)) - 8
+    @property
+    def fs(self):
+        return self.__fs
 
-        self.decimationFactor = int(np.round(self.decimationFactor))
-        self.logDecimationFactor = self.decimationFactor
-        self.decimatedFs = self.fs >> self.logDecimationFactor if self.logDecimationFactor > 0 else self.fs
-        self.decimationFactor = 1 << self.logDecimationFactor
+    @fs.setter
+    def fs(self, fs):
+        self.__fs = fs
+        self.__decimatedFs = fs // self.__decimationFactor
+
+    @fs.deleter
+    def fs(self):
+        del self.__fs
+
+    @property
+    def decimation(self):
+        return self.__decimationFactor
+
+    @decimation.deleter
+    def decimation(self):
+        del self.__decimationFactor
+
+    @decimation.setter
+    def decimation(self, decimation):
+        if not decimation or decimation < 2:
+            raise ValueError("Decimation must be at least 2.")
+        self.__decimationFactor = decimation
+        self.__decimatedFs = self.__fs // decimation
+        self.correctIq = IQCorrection(self.__decimatedFs) if self.correctIq else None
+
+    @property
+    def decimatedFs(self):
+        return self.__decimatedFs
+
+    @decimatedFs.deleter
+    def decimatedFs(self):
+        del self.__decimatedFs
 
     def setDemod(self, fun):
         if bool(fun):
             self.demod = fun
-            self.sosIn = signal.ellip(self._FILTER_DEGREE, 1, 30, [1, self.bandwidth],
+            self.sosIn = signal.ellip(self._FILTER_DEGREE, 1, 30, [1, self.bandwidth >> 1],
                                       btype='bandpass',
                                       analog=False,
                                       output='sos',
-                                      fs=self.decimatedFs)
+                                      fs=self.__decimatedFs)
             return self.demod
         raise ValueError("Demodulation function is not defined")
 
@@ -94,34 +121,45 @@ class DspProcessor(DataProcessor):
         vprint('NFM Selected')
         self.bandwidth = 12500
         self.outputFilters = [signal.ellip(self._FILTER_DEGREE, 1, 30, self.omegaOut,
-                                           # self.outputFilters = [signal.butter(self._FILTER_DEGREE, self.omegaOut,
                                            btype='lowpass',
                                            analog=False,
                                            output='sos',
-                                           fs=self.decimatedFs)]
+                                           fs=self.__decimatedFs)]
         self.setDemod(fmDemod)
 
     def selectOuputWfm(self):
         vprint('WFM Selected')
         self.bandwidth = 15000
-        self.outputFilters = generateFmOutputFilters(self.decimatedFs, self._FILTER_DEGREE,
+        self.outputFilters = generateFmOutputFilters(self.__decimatedFs, self._FILTER_DEGREE,
                                                      18000)
         self.setDemod(fmDemod)
 
     def selectOuputAm(self):
         vprint('AM Selected')
         self.bandwidth = 10000
-        self.outputFilters = [generateBroadcastOutputFilter(self.decimatedFs, self._FILTER_DEGREE)]
+        self.outputFilters = [
+            generateBroadcastOutputFilter(self.__decimatedFs, self._FILTER_DEGREE)]
         self.setDemod(amDemod)
 
     def processChunk(self, y):
         try:
-            y = shiftFreq(y, self.centerFreq, self.fs)
-            y = signal.decimate(y, self.decimationFactor, ftype='fir')
+            y = deinterleave(y)
+            if self.correctIq is not None:
+                y = self.correctIq.correctIq(y)
+            y = shiftFreq(y, self.centerFreq, self.__fs)
+            if self.__decimationFactor > 1:
+                y = signal.decimate(y, self.__decimationFactor, ftype='fir')
             y = signal.sosfilt(self.sosIn, y)
             y = self.demod(y)
             y = applyFilters(y, self.outputFilters)
-            return y
+            # return signal.qspline1d_eval(
+            #     signal.qspline1d(y),
+            #     np.arange(0, len(y)))
+            return signal.cspline1d_eval(
+                signal.cspline1d(y),
+                np.arange(0, len(y)))
+            # return signal.medfilt(y)
+            # return signal.wiener(y)
         except KeyboardInterrupt:
             pass
         except Exception as e:
@@ -129,44 +167,30 @@ class DspProcessor(DataProcessor):
             printException(e)
         return None
 
-    def handleException(self, isDead, e):
-        isDead.value = 1
-        if not isinstance(e, KeyboardInterrupt):
-            printException(e)
-
     def processData(self, isDead, pipe, f) -> None:
-        if f is None or (isinstance(f, str)) and len(f) < 1 \
-                or self.demod is None:
-            raise ValueError('f is not defined')
         reader, writer = pipe
         s.signal(s.SIGINT, s.SIG_IGN)
 
         try:
-            with open(f, 'wb') if f != sys.stdout.fileno() else open(f, 'wb', closefd=False) as file:
+            with open(f, 'wb') if f is not None else open(sys.stdout.fileno(), 'wb',
+                                                          closefd=False) as file:
+                tprint(f'{f} {file}')
                 with Pool(maxtasksperchild=128) as pool:
-                    chunks = []
-                    perCpu = 1 / os.cpu_count()
+                    data = []
                     while not isDead.value:
                         writer.close()
-                        y = reader.recv()
+                        for _ in range(self.__decimationFactor):
+                            y = reader.recv()
+                            if y is None or len(y) < 1:
+                                break
+                            data.append(y)
 
-                        if y is None or len(y) < 1:
+                        if data is None or len(data) < 1:
                             break
 
-                        y = deinterleave(y)
-                        if self.correctIq is not None:
-                            y = self.correctIq.correctIq(y)
-                        n = len(y)
-                        stride = int(n * perCpu)
-                        for i in range(0, n, stride):
-                            chunks.append(pool.apply_async(self.processChunk,
-                                                           args=(y[i:i + stride],),
-                                                           error_callback=partial(self.handleException, isDead)))
-
-                        for chunk in chunks:
-                            data = chunk.get()
-                            file.write(struct.pack(len(data) * 'd', *data))
-                        chunks.clear()
+                        y = np.array(pool.map_async(self.processChunk, data).get()).flatten()
+                        file.write(struct.pack(len(y) * 'd', *y))
+                        data.clear()
         except (EOFError, KeyboardInterrupt, BrokenPipeError):
             pass
         except Exception as e:
@@ -175,14 +199,18 @@ class DspProcessor(DataProcessor):
             isDead.value = 1
             pool.close()
             pool.join()
+            del pool
             applyIgnoreException(partial(file.write, b''))
             reader.close()
             print(f'File writer halted')
 
     def __repr__(self):
-        return json.dumps({key: value for key, value in self.__dict__.items()
-                           if not key.startswith('__')
-                           and not callable(value)
-                           and not isinstance(value, np.ndarray)
-                           and not isinstance(value, IQCorrection)
-                           and key not in {'outputFilters'}}, indent=2)
+        d = {key: value for key, value in self.__dict__.items()
+             if not key.startswith('_')
+             and not callable(value)
+             and not isinstance(value, np.ndarray)
+             and not isinstance(value, IQCorrection)
+             and key not in {'outputFilters'}}
+        d['fs'] = self.fs
+        d['decimatedFs'] = self.decimatedFs
+        return json.dumps(d, indent=2)

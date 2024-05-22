@@ -22,6 +22,7 @@ import socket
 from contextlib import closing
 from multiprocessing import Value
 from threading import Condition
+from typing import Annotated
 
 import typer
 
@@ -33,19 +34,19 @@ from sdr.output_server import OutputServer
 from sdr.rtl_tcp_commands import RtlTcpCommands
 
 
-def main(host: str, port: str):
-    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as sckt:
-        with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as ss:
-            iport = int(port)
-            sckt.connect((host, iport))
-            cmdr = ControlRtlTcp(sckt)
+def main(host: Annotated[str, typer.Argument(help='Address of remote rtl_tcp server')],
+         port: Annotated[int, typer.Argument(help='Port of remote rtl_tcp server')]) -> None:
+    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as signalSckt:
+        with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as outputSckt:
+            signalSckt.connect((host, port))
+            cmdr = ControlRtlTcp(signalSckt)
             isDead = Value('b', 0)
             isDead.value = 0
             isConnected = Condition()
-            server = OutputServer(iport, host='0.0.0.0')
+            server = OutputServer(host='0.0.0.0')
 
             with isConnected:
-                st, pt = server.initServer(sckt, ss, isConnected, isDead)
+                st, pt = server.initServer(signalSckt, outputSckt, isConnected, isDead)
                 st.start()
                 isConnected.wait()
                 pt.start()
@@ -56,7 +57,7 @@ def main(host: str, port: str):
                     try:
                         print('Available commands are:\n')
                         [print(f'{e.value}\t{e.name}') for e in RtlTcpCommands]
-                        print(f'\nAccepting connections on port {server.serverport}\n')
+                        print(f'\nAccepting connections on port {server.port}\n')
                         inp = input(
                             'Provide a space-delimited, command-value pair (e.g. SET_GAIN 1):\n')
                         if ('q' == inp or 'Q' == inp or 'quit' in inp.lower()
@@ -81,8 +82,8 @@ def main(host: str, port: str):
                 printException(e)
             finally:
                 isDead.value = 1
-                applyIgnoreException(lambda: sckt.shutdown(socket.SHUT_RDWR))
-                applyIgnoreException(lambda: ss.shutdown(socket.SHUT_RDWR))
+                applyIgnoreException(lambda: signalSckt.shutdown(socket.SHUT_RDWR))
+                applyIgnoreException(lambda: outputSckt.shutdown(socket.SHUT_RDWR))
                 st.join(0.1)
                 pt.join(0.1)
                 print('UI halted')
