@@ -70,7 +70,7 @@ class MultiVFOPlot(Plot):
                     xlabels = [str(round(x, 1)) for x in ax.get_xticks() / self.bandwidth + (
                             self.tunedFreq + self.vfos[pos]) / 10E+5]
                     ax.set_xticks(xticks, xlabels)
-                    ax.set_ylim(0, 10)
+                    ax.set_ylim(-4, 2.5)
                     ax.set_xlabel(f'{label} [MHz]')
         plt.ioff()
         plt.show(block=False)
@@ -108,7 +108,7 @@ class MultiVFOPlot(Plot):
         fftData = fft.fft(shift.get(), norm='forward')
         fftData = fft.fftshift(fftData)
         amps = np.abs(fftData)
-        amps = np.sqrt(amps * amps)
+        amps = np.log10(amps * amps)
         freq = fft.fftfreq(len(y), 1 / self.fs)
         freq = fft.fftshift(freq)
 

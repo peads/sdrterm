@@ -34,7 +34,7 @@ class PowerSpectrumPlot(Plot):
         super().initPlot()
         self.fig, self.ax = plt.subplots()
         self.ln, = self.ax.plot(0, 0)
-        self.ax.set_ylim(-2, 2.5)
+        self.ax.set_ylim(-4, 2.5)
         xticks = (-1 / 2 + np.arange(0, 9/8, 1 / 8)) * self.fs
         xlabels = [str(round(x, 3)) for x in xticks / self.fs + self.tunedFreq / 10E+5]
         self.ax.set_xticks(xticks, xlabels)
@@ -50,7 +50,7 @@ class PowerSpectrumPlot(Plot):
         fftData = fft.fft(y, norm='forward')
         fftData = fft.fftshift(fftData)
         amps = np.abs(fftData)
-        amps = np.log10(np.sqrt(amps * amps))
+        amps = np.log10(amps * amps)
         freq = fft.fftfreq(len(y), 1 / self.fs)
         freq = fft.fftshift(freq)
 
