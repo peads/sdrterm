@@ -66,7 +66,7 @@ class IOArgs:
         IOArgs.tuned = kwargs['tuned'] if 'tuned' in kwargs else None
         if 'vfos' in kwargs and kwargs['vfos'] is not None:
             vfos = kwargs['vfos']
-            IOArgs.vfos = [float(x) for x in vfos.split(',')]
+            IOArgs.vfos = [float(x) for x in vfos.split(',') if x is not None and len(x) > 0]
             IOArgs.vfos.append(0)
         IOArgs.dm = kwargs['dm'] if 'dm' in kwargs else None
         IOArgs.processes = kwargs['processes']
