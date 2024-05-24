@@ -1,4 +1,3 @@
-import os
 import struct
 import sys
 from functools import partial
