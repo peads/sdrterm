@@ -20,39 +20,36 @@
 import multiprocessing
 import os
 import socket
+from multiprocessing import Value
 from queue import Empty
-from threading import Thread
+from threading import Condition, Thread
 
 from misc.general_util import applyIgnoreException, printException
 from sdr.util import findPort
 
 
 class OutputServer:
-    BUF_SIZE = 128
 
     def __init__(self,
-                 port: int,
-                 # exitFlag: Value,
                  host='localhost',
-                 serverhost='localhost',
-                 serverport=findPort()):
+                 port=findPort(),
+                 writeSize=262144):
         self.host = host
         self.port = port
-        self.serverport = serverport
-        self.serverhost = serverhost
         self.clients: multiprocessing.Queue = multiprocessing.Queue(maxsize=os.cpu_count())
-        self.dataType = 'B'
+        self.writeSize = writeSize
 
-    def close(self, exitFlag):
+    def close(self, exitFlag: Value) -> None:
         if exitFlag.value:
             try:
                 exitFlag.value = 1
 
                 for i in range(self.clients.qsize()):
                     try:
-                        cs = self.clients.get_nowait()
-                        cs.shutdown(socket.SHUT_RDWR)
-                        cs.close()
+                        clientSckt = self.clients.get_nowait()
+                        clientSckt.send(b'')
+                        clientSckt.shutdown(socket.SHUT_RDWR)
+                        clientSckt.close()
                     except Empty:
                         break
                     finally:
@@ -61,26 +58,27 @@ class OutputServer:
             except Exception as e:
                 printException(e)
 
-    def consume(self, rs, exitFlag):
+    def feedClients(self, recvSckt: socket.socket, exitFlag: Value) -> None:
         processingList = []
-        ii = range(self.BUF_SIZE >> 2)
+        ii = range(self.writeSize >> 13)
         try:
             data = bytearray()
             while not exitFlag.value:
                 for _ in ii:
-                    inp = rs.recv(8192)
+                    inp = recvSckt.recv(8192)
                     if inp is None or not len(inp):
                         break
                     data.extend(inp)
                 try:
                     while not exitFlag.value:
-                        cs = self.clients.get_nowait()
+                        clientSckt = self.clients.get_nowait()
                         try:
-                            cs.sendall(data)
-                            processingList.append(cs)
-                        except (ConnectionAbortedError, BlockingIOError, ConnectionResetError, ConnectionAbortedError, EOFError, BrokenPipeError) as e:
-                            applyIgnoreException(lambda: cs.shutdown(socket.SHUT_RDWR))
-                            cs.close()
+                            clientSckt.sendall(data)
+                            processingList.append(clientSckt)
+                        except (ConnectionAbortedError, BlockingIOError, ConnectionResetError,
+                                ConnectionAbortedError, EOFError, BrokenPipeError) as e:
+                            applyIgnoreException(lambda: clientSckt.shutdown(socket.SHUT_RDWR))
+                            clientSckt.close()
                             print(f'Client disconnected {e}')
                 except Empty:
                     pass
@@ -91,24 +89,24 @@ class OutputServer:
                 data.clear()
         except (EOFError, ConnectionResetError, ConnectionAbortedError):
             pass
-        except Exception as ex:
-            printException(ex)
+        except Exception as e:
+            printException(e)
         finally:
             self.close(exitFlag)
             print('Consumer halted')
 
-    def listen(self, ss, isConnected, exitFlag):
+    def listen(self, serverSckt: socket.socket, isConnected: Condition, exitFlag: Value) -> None:
         with isConnected:
-            ss.bind((self.host, self.serverport))
-            ss.listen(1)
+            serverSckt.bind((self.host, self.port))
+            serverSckt.listen(1)
             isConnected.notify()
 
         try:
             while not exitFlag.value:
-                (cs, address) = ss.accept()
-                cs.setblocking(False)
+                (clientSckt, address) = serverSckt.accept()
+                # cs.setblocking(False)
                 print(f'Connection request from: {address}')
-                self.clients.put(cs)
+                self.clients.put(clientSckt)
         except OSError:
             pass
         except Exception as ex:
@@ -119,7 +117,11 @@ class OutputServer:
             self.close(exitFlag)
             print('Listener halted')
 
-    def initServer(self, s, ss, isConnected, exitFlag):
-        st = Thread(target=self.listen, args=(ss, isConnected, exitFlag))
-        pt = Thread(target=self.consume, args=(s, exitFlag))
+    def initServer(self,
+                   serverSckt: socket.socket,
+                   listenerSckt: socket.socket,
+                   isConnected: Condition,
+                   exitFlag: Value) -> (Thread, Thread):
+        st = Thread(target=self.listen, args=(listenerSckt, isConnected, exitFlag))
+        pt = Thread(target=self.feedClients, args=(serverSckt, exitFlag))
         return st, pt

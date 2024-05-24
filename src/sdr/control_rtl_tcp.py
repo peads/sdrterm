@@ -18,9 +18,12 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
 from struct import error as StructError, pack
-
-from exceptions.unrecognized_input import UnrecognizedInputError
 from sdr.rtl_tcp_commands import RtlTcpCommands
+
+
+class UnrecognizedInputError(Exception):
+    def __init__(self, msg: str, e: Exception = None):
+        super().__init__(f'{msg}, {e}')
 
 
 class ControlRtlTcp:

@@ -30,7 +30,7 @@ from matplotlib import pyplot as plt
 from dsp.data_processor import DataProcessor
 from dsp.iq_correction import IQCorrection
 from dsp.util import shiftFreq
-from misc.general_util import vprint, printException
+from misc.general_util import deinterleave, printException, vprint
 
 
 class Plot(DataProcessor, ABC):
@@ -54,7 +54,6 @@ class Plot(DataProcessor, ABC):
         self.uuid = uuid4()
         self.vfos = kwargs['vfos'] if 'vfos' in kwargs.keys() and kwargs[
             'vfos'] is not None and len(kwargs['vfos']) > 1 else None
-        self.close = None
         self.correctIq = kwargs['iq']
         self.iqCorrector = IQCorrection(self.fs) if self.correctIq else None
         self.processor = kwargs['processor'] if 'processor' in kwargs.keys() else None
@@ -68,8 +67,11 @@ class Plot(DataProcessor, ABC):
         mpl.rcParams['toolbar'] = 'None'
         mplstyle.use('fast')
 
-    def onClose(self, _):
+    def close(self):
         self._isDead = True
+
+    def onClose(self, _):
+        self.close()
         vprint(f'Window {type(self).__name__}: {self.fig}-{self.uuid} closed')
 
     def initBlit(self):
@@ -84,6 +86,7 @@ class Plot(DataProcessor, ABC):
             self.fig.canvas.blit(self.fig.bbox)
         self.fig.canvas.mpl_connect('close_event', self.onClose)
         self.isInit = True
+        self.fig.canvas.manager.set_window_title(type(self).__name__)
 
     def processData(self, isDead, pipe, _=None) -> None:
         reader, writer = pipe
@@ -93,22 +96,18 @@ class Plot(DataProcessor, ABC):
                 y = reader.recv()
                 if y is None or len(y) < 1:
                     break
-                y = np.array(y)
-                y = y[0::2] + 1j * y[1::2]
+                y = deinterleave(y)
                 if self.correctIq:
                     y = self.iqCorrector.correctIq(y)
                 y = shiftFreq(y, self.centerFreq, self.fs)
                 self.animate(y)
-        except EOFError:
-            pass
         except KeyboardInterrupt:
-            isDead.value = 1
+            pass
         except Exception as e:
-            isDead.value = 1
             printException(e)
         finally:
+            self.close()
             if 'spawn' not in multiprocessing.get_start_method():
                 isDead.value = 1
-            self._isDead = True
             reader.close()
             vprint(f'Figure {type(self).__name__}-{self.uuid} halted')
