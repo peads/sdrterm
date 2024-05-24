@@ -26,8 +26,7 @@ from typing import Annotated
 
 import typer
 
-from exceptions.server_interrupt import ServerInterruptError
-from exceptions.unrecognized_input import UnrecognizedInputError
+from sdr.control_rtl_tcp import UnrecognizedInputError
 from misc.general_util import applyIgnoreException, printException
 from sdr.control_rtl_tcp import ControlRtlTcp
 from sdr.output_server import OutputServer
@@ -90,7 +89,4 @@ def main(host: Annotated[str, typer.Argument(help='Address of remote rtl_tcp ser
 
 
 if __name__ == "__main__":
-    try:
-        typer.run(main)
-    except ServerInterruptError:
-        pass
+    typer.run(main)
