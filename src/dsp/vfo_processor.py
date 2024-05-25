@@ -15,7 +15,7 @@ from sdr.output_server import OutputServer, Receiver
 
 
 class PipeReceiver(Receiver):
-    def __init__(self, pipe: Pipe, N: int):
+    def __init__(self, pipe: Pipe):
         receiver, writer = pipe
         super().__init__(receiver)
 
@@ -38,13 +38,14 @@ class VfoProcessor(DspProcessor):
         inReader, inWriter = pipe
 
         outReader, outWriter = outPipe = Pipe(False)
+        pool = None
         try:
             with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as listenerSckt:
                 isConnected = Condition()
                 server = OutputServer(host='0.0.0.0')
 
                 with isConnected:
-                    lt, ft = server.initServer(PipeReceiver(outPipe, len(self.vfos)), listenerSckt, isConnected, isDead)
+                    lt, ft = server.initServer(PipeReceiver(outPipe), listenerSckt, isConnected, isDead)
                     lt.start()
                     isConnected.wait()
                     ft.start()
@@ -66,14 +67,13 @@ class VfoProcessor(DspProcessor):
                         y = signal.decimate(y, self.decimation, ftype='fir')
                         results = pool.map_async(partial(self.processVfoChunk, y), self.vfos).get()
                         [outWriter.send(r) for r in results]  # wait for any prior processing to complete
+                    pool.join()
         except (EOFError, KeyboardInterrupt, BrokenPipeError):
             pass
         except Exception as e:
             printException(e)
         finally:
             isDead.value = 1
-            pool.close()
-            pool.join()
             del pool
             inReader.close()
             outReader.close()
