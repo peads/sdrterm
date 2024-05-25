@@ -143,7 +143,7 @@ class DspProcessor(DataProcessor):
             generateBroadcastOutputFilter(self.__decimatedFs, self._FILTER_DEGREE)]
         self.setDemod(amDemod)
 
-    def processChunk(self, y):
+    def processChunk(self, y: list):
         try:
             y = deinterleave(y)
 
@@ -178,9 +178,10 @@ class DspProcessor(DataProcessor):
                                                           closefd=False) as file:
                 tprint(f'{f} {file}')
                 with Pool() as pool:
+                    ii = range(os.cpu_count())
                     while not isDead.value:
                         writer.close()
-                        for _ in range(self.__decimationFactor):
+                        for _ in ii:
                             y = reader.recv()
                             if y is None or not len(y):
                                 break
