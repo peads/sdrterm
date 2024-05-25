@@ -195,9 +195,6 @@ class DspProcessor(DataProcessor):
         except (EOFError, KeyboardInterrupt, BrokenPipeError):
             pass
         except Exception as e:
-            eprint(len(data))
-            for d in data:
-                eprint(len(d))
             printException(e)
         finally:
             isDead.value = 1

@@ -102,7 +102,6 @@ class OutputServer:
         try:
             while not exitFlag.value:
                 (clientSckt, address) = listenerSckt.accept()
-                # cs.setblocking(False)
                 vprint(f'Connection request from: {address}')
                 self.clients.put(clientSckt)
         except OSError:
