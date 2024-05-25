@@ -159,7 +159,7 @@ class DspProcessor(DataProcessor):
             y = self.demod(y)
             y = applyFilters(y, self.outputFilters)
 
-            return signal.savgol_filter(y, 14, self._FILTER_DEGREE)
+            return y
         except KeyboardInterrupt:
             pass
         except Exception as e:
@@ -190,7 +190,9 @@ class DspProcessor(DataProcessor):
                         if data is None or not len(data):
                             break
 
-                        y = list(itertools.chain.from_iterable(pool.map_async(self.processChunk, data).get()))
+                        y = pool.map_async(self.processChunk, data)
+                        y = list(itertools.chain.from_iterable(y.get()))
+                        y = signal.savgol_filter(y, 14, self._FILTER_DEGREE)
                         file.write(struct.pack(len(y) * 'd', *y))
                         data.clear()
         except (EOFError, KeyboardInterrupt, BrokenPipeError):
