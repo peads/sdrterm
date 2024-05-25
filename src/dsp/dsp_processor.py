@@ -17,13 +17,14 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
+import itertools
 import json
 import os
 import signal as s
 import struct
 import sys
 from functools import partial
-from multiprocessing import Pool
+from multiprocessing import Pool, Value, Pipe
 
 import numpy as np
 from scipy import signal
@@ -166,34 +167,37 @@ class DspProcessor(DataProcessor):
             printException(e)
         return None
 
-    def processData(self, isDead, pipe, f) -> None:
+    def processData(self, isDead: Value, pipe: Pipe, f) -> None:
         reader, writer = pipe
         if 'posix' in os.name:
             s.signal(s.SIGINT, s.SIG_IGN)  # https://stackoverflow.com/a/68695455/8372013
 
+        data = []
         try:
             with open(f, 'wb') if f is not None else open(sys.stdout.fileno(), 'wb',
                                                           closefd=False) as file:
                 tprint(f'{f} {file}')
-                with Pool(maxtasksperchild=128) as pool:
-                    data = []
+                with Pool() as pool:
                     while not isDead.value:
                         writer.close()
                         for _ in range(self.__decimationFactor):
                             y = reader.recv()
-                            if y is None or len(y) < 1:
+                            if y is None or not len(y):
                                 break
                             data.append(y)
 
-                        if data is None or len(data) < 1:
+                        if data is None or not len(data):
                             break
 
-                        y = np.array(pool.map_async(self.processChunk, data).get()).flatten()
+                        y = list(itertools.chain.from_iterable(pool.map_async(self.processChunk, data).get()))
                         file.write(struct.pack(len(y) * 'd', *y))
                         data.clear()
         except (EOFError, KeyboardInterrupt, BrokenPipeError):
             pass
         except Exception as e:
+            eprint(len(data))
+            for d in data:
+                eprint(len(d))
             printException(e)
         finally:
             isDead.value = 1

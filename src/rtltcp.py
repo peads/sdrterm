@@ -26,11 +26,34 @@ from typing import Annotated
 
 import typer
 
-from sdr.control_rtl_tcp import UnrecognizedInputError
 from misc.general_util import applyIgnoreException, printException
 from sdr.control_rtl_tcp import ControlRtlTcp
-from sdr.output_server import OutputServer, SocketReceiver
+from sdr.control_rtl_tcp import UnrecognizedInputError
+from sdr.output_server import OutputServer, Receiver
 from sdr.rtl_tcp_commands import RtlTcpCommands
+
+
+class __SocketReceiver(Receiver):
+
+    def __init__(self, receiver: socket.socket,
+                 writeSize=262144, readSize=8192):
+        super().__init__(receiver)
+        self.readSize = readSize
+        self.data = bytearray()
+        self.chunks = range(writeSize // readSize)
+
+    def receive(self):
+        for _ in self.chunks:
+            try:
+                inp = self.receiver.recv(self.readSize)
+            except BrokenPipeError:
+                return b''
+            if inp is None or not len(inp):
+                break
+            self.data.extend(inp)
+        result = bytes(self.data)
+        self.data.clear()
+        return result
 
 
 def main(host: Annotated[str, typer.Argument(help='Address of remote rtl_tcp server')],
@@ -45,7 +68,7 @@ def main(host: Annotated[str, typer.Argument(help='Address of remote rtl_tcp ser
             server = OutputServer(host='0.0.0.0')
 
             with isConnected:
-                st, pt = server.initServer(SocketReceiver(recvSckt), listenerSckt, isConnected, isDead)
+                st, pt = server.initServer(__SocketReceiver(recvSckt), listenerSckt, isConnected, isDead)
                 st.start()
                 isConnected.wait()
                 pt.start()

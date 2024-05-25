@@ -102,7 +102,7 @@ class MultiVFOPlot(Plot):
         if not self.isInit:
             if 'posix' in os.name:
                 s.signal(s.SIGINT, s.SIG_IGN)  # https://stackoverflow.com/a/68695455/8372013
-            self.pool = Pool(maxtasksperchild=128)
+            self.pool = Pool()
 
         shift = self.pool.map_async(partial(self.shiftVfos, y, self.fs), self.vfos)
         fftData = fft.fft(shift.get(), norm='forward')
