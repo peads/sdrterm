@@ -29,23 +29,23 @@ import typer
 from sdr.control_rtl_tcp import UnrecognizedInputError
 from misc.general_util import applyIgnoreException, printException
 from sdr.control_rtl_tcp import ControlRtlTcp
-from sdr.output_server import OutputServer
+from sdr.output_server import OutputServer, SocketReceiver
 from sdr.rtl_tcp_commands import RtlTcpCommands
 
 
 def main(host: Annotated[str, typer.Argument(help='Address of remote rtl_tcp server')],
          port: Annotated[int, typer.Argument(help='Port of remote rtl_tcp server')]) -> None:
-    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as signalSckt:
-        with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as outputSckt:
-            signalSckt.connect((host, port))
-            cmdr = ControlRtlTcp(signalSckt)
+    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as recvSckt:
+        with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as listenerSckt:
+            recvSckt.connect((host, port))
+            cmdr = ControlRtlTcp(recvSckt)
             isDead = Value('b', 0)
             isDead.value = 0
             isConnected = Condition()
             server = OutputServer(host='0.0.0.0')
 
             with isConnected:
-                st, pt = server.initServer(signalSckt, outputSckt, isConnected, isDead)
+                st, pt = server.initServer(SocketReceiver(recvSckt), listenerSckt, isConnected, isDead)
                 st.start()
                 isConnected.wait()
                 pt.start()
@@ -81,8 +81,8 @@ def main(host: Annotated[str, typer.Argument(help='Address of remote rtl_tcp ser
                 printException(e)
             finally:
                 isDead.value = 1
-                applyIgnoreException(lambda: signalSckt.shutdown(socket.SHUT_RDWR))
-                applyIgnoreException(lambda: outputSckt.shutdown(socket.SHUT_RDWR))
+                applyIgnoreException(lambda: recvSckt.shutdown(socket.SHUT_RDWR))
+                applyIgnoreException(lambda: listenerSckt.shutdown(socket.SHUT_RDWR))
                 st.join(0.1)
                 pt.join(0.1)
                 print('UI halted')

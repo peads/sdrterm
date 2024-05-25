@@ -20,12 +20,33 @@
 import multiprocessing
 import os
 import socket
+from abc import ABC, abstractmethod
 from multiprocessing import Value
 from queue import Empty
 from threading import Condition, Thread
 
 from misc.general_util import applyIgnoreException, printException
 from sdr.util import findPort
+
+
+class Receiver(ABC):
+
+    def __init__(self, receiver):
+        self.receiver = receiver
+
+    @abstractmethod
+    def receive(self):
+        pass
+
+
+class SocketReceiver(Receiver):
+
+    def __init__(self, receiver: socket.socket, readSize=8192):
+        super().__init__(receiver)
+        self.readSize = readSize
+
+    def receive(self):
+        return self.receiver.recv(self.readSize)
 
 
 class OutputServer:
@@ -43,29 +64,33 @@ class OutputServer:
         if exitFlag.value:
             try:
                 exitFlag.value = 1
-
-                for i in range(self.clients.qsize()):
-                    try:
-                        clientSckt = self.clients.get_nowait()
-                        clientSckt.send(b'')
-                        clientSckt.shutdown(socket.SHUT_RDWR)
-                        clientSckt.close()
-                    except Empty:
-                        break
-                    finally:
-                        self.clients.close()
-                        del self.clients
+                if hasattr(self, 'clients'):
+                    for i in range(self.clients.qsize()):
+                        try:
+                            clientSckt = self.clients.get_nowait()
+                            clientSckt.send(b'')
+                            clientSckt.shutdown(socket.SHUT_RDWR)
+                            clientSckt.close()
+                        except Empty:
+                            break
+                    self.clients.close()
+                    del self.clients
             except Exception as e:
                 printException(e)
 
-    def feedClients(self, recvSckt: socket.socket, exitFlag: Value) -> None:
+    def feedClients(self, recvSckt: Receiver, exitFlag: Value) -> None:
         processingList = []
         ii = range(self.writeSize >> 13)
         try:
             data = bytearray()
             while not exitFlag.value:
                 for _ in ii:
-                    inp = recvSckt.recv(8192)
+                    try:
+                        inp = recvSckt.receive()
+                    except BrokenPipeError:
+                        data.clear()
+                        data += b''
+                        break
                     if inp is None or not len(inp):
                         break
                     data.extend(inp)
@@ -95,15 +120,15 @@ class OutputServer:
             self.close(exitFlag)
             print('Consumer halted')
 
-    def listen(self, serverSckt: socket.socket, isConnected: Condition, exitFlag: Value) -> None:
+    def listen(self, listenerSckt: socket.socket, isConnected: Condition, exitFlag: Value) -> None:
         with isConnected:
-            serverSckt.bind((self.host, self.port))
-            serverSckt.listen(1)
+            listenerSckt.bind((self.host, self.port))
+            listenerSckt.listen(1)
             isConnected.notify()
 
         try:
             while not exitFlag.value:
-                (clientSckt, address) = serverSckt.accept()
+                (clientSckt, address) = listenerSckt.accept()
                 # cs.setblocking(False)
                 print(f'Connection request from: {address}')
                 self.clients.put(clientSckt)
@@ -118,10 +143,10 @@ class OutputServer:
             print('Listener halted')
 
     def initServer(self,
-                   serverSckt: socket.socket,
+                   recvSckt: Receiver,
                    listenerSckt: socket.socket,
                    isConnected: Condition,
                    exitFlag: Value) -> (Thread, Thread):
         st = Thread(target=self.listen, args=(listenerSckt, isConnected, exitFlag))
-        pt = Thread(target=self.feedClients, args=(serverSckt, exitFlag))
+        pt = Thread(target=self.feedClients, args=(recvSckt, exitFlag))
         return st, pt
