@@ -93,7 +93,7 @@ class IOArgs:
         if not cls.simo:
             processor = DspProcessor
         else:
-            if not (cls.vfos and hasattr(os, 'mkfifo')):
+            if not cls.vfos:
                 raise ValueError("simo mode cannot be used without the vfos option")
             processor = VfoProcessor
         cls.processor = processor = processor(decimation=cls.dec,

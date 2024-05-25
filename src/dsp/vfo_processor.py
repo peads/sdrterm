@@ -1,57 +1,71 @@
 import os
 import signal as s
-import struct
+import socket
+from contextlib import closing
 from functools import partial
-from multiprocessing import Pool
+from multiprocessing import Pool, Pipe, Value, Condition
 
+import numpy as np
 from scipy import signal
 
 from dsp.dsp_processor import DspProcessor
 from dsp.util import applyFilters, shiftFreq
-from misc.general_util import applyIgnoreException, deinterleave, eprint, printException
+from misc.general_util import deinterleave, eprint, printException
+from sdr.output_server import OutputServer, Receiver
+
+
+class PipeReceiver(Receiver):
+    def __init__(self, pipe: Pipe, N: int):
+        receiver, writer = pipe
+        super().__init__(receiver)
+
+    def receive(self):
+        return self.receiver.recv()
 
 
 class VfoProcessor(DspProcessor):
 
-    def handleOutput(self, file, freq, y):
+    def processVfoChunk(self, y, freq) -> np.ndarray[any, np.real]:
         y = shiftFreq(y, freq, self.decimatedFs)
         y = signal.sosfilt(self.sosIn, y)
         y = self.demod(y)
-        y = applyFilters(y, self.outputFilters)
-        return os.write(file, struct.pack(len(y) * 'd', *y))
+        return applyFilters(y, self.outputFilters)
 
-    def processData(self, isDead, pipe, f) -> None:
+    def processData(self, isDead: Value, pipe: Pipe, _) -> None:
         if 'posix' in os.name:
             s.signal(s.SIGINT, s.SIG_IGN)  # https://stackoverflow.com/a/68695455/8372013
-        if f is None or (isinstance(f, str)) and len(f) < 1 \
-                or self.demod is None:
-            raise ValueError('f is not defined')
-        reader, writer = pipe
-        n = len(self.vfos)
 
-        namedPipes = []
-        for i in range(n):
-            name = "/tmp/pipe-" + str(i)
-            os.mkfifo(name)
-            namedPipes.append((name, open(name, 'wb', os.O_WRONLY | os.O_NONBLOCK)))
+        inReader, inWriter = pipe
 
+        outReader, outWriter = outPipe = Pipe(False)
         try:
-            with Pool(maxtasksperchild=128) as pool:
-                results = []
-                while not isDead.value:
-                    writer.close()
-                    y = reader.recv()
-                    if y is None or len(y) < 1:
-                        break
-                    y = deinterleave(y)
-                    if self.correctIq is not None:
-                        y = self.correctIq.correctIq(y)
-                    y = shiftFreq(y, self.centerFreq, self.fs)
-                    y = signal.decimate(y, self.decimation, ftype='fir')
-                    [r.get() for r in results]  # wait for any prior processing to complete
-                    results = [pool.apply_async(self.handleOutput, (file.fileno(), freq, y),
-                                                error_callback=eprint) for
-                               (name, file), freq in zip(namedPipes, self.vfos)]
+            with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as listenerSckt:
+                isConnected = Condition()
+                server = OutputServer(host='0.0.0.0')
+
+                with isConnected:
+                    lt, ft = server.initServer(PipeReceiver(outPipe, len(self.vfos)), listenerSckt, isConnected, isDead)
+                    lt.start()
+                    isConnected.wait()
+                    ft.start()
+                del isConnected
+
+                with Pool() as pool:
+                    eprint(f'\nAccepting connections on port {server.port}\n')
+                    while not isDead.value:
+                        inWriter.close()
+                        y = inReader.recv()
+                        if y is None or len(y) < 1:
+                            break
+
+                        y = deinterleave(y)
+                        if self.correctIq is not None:
+                            y = self.correctIq.correctIq(y)
+                        y = shiftFreq(y, self.centerFreq, self.fs)
+
+                        y = signal.decimate(y, self.decimation, ftype='fir')
+                        results = pool.map_async(partial(self.processVfoChunk, y), self.vfos).get()
+                        [outWriter.send(r) for r in results]  # wait for any prior processing to complete
         except (EOFError, KeyboardInterrupt, BrokenPipeError):
             pass
         except Exception as e:
@@ -61,9 +75,7 @@ class VfoProcessor(DspProcessor):
             pool.close()
             pool.join()
             del pool
-            for n, fd in namedPipes:
-                applyIgnoreException(partial(os.write, fd.fileno(), b''))
-                applyIgnoreException(partial(os.close, fd.fileno()))
-                os.unlink(n)
-            reader.close()
+            inReader.close()
+            outReader.close()
+            outWriter.close()
             print(f'File writer halted')
