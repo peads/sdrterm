@@ -26,7 +26,7 @@ from typing import Annotated
 
 import typer
 
-from misc.general_util import applyIgnoreException, printException
+from misc.general_util import applyIgnoreException, printException, eprint
 from sdr.control_rtl_tcp import ControlRtlTcp
 from sdr.control_rtl_tcp import UnrecognizedInputError
 from sdr.output_server import OutputServer, Receiver
@@ -60,6 +60,7 @@ def main(host: Annotated[str, typer.Argument(help='Address of remote rtl_tcp ser
          port: Annotated[int, typer.Argument(help='Port of remote rtl_tcp server')]) -> None:
     with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as recvSckt:
         with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as listenerSckt:
+            recvSckt.settimeout(1)
             recvSckt.connect((host, port))
             cmdr = ControlRtlTcp(recvSckt)
             isDead = Value('b', 0)
@@ -100,6 +101,8 @@ def main(host: Annotated[str, typer.Argument(help='Address of remote rtl_tcp ser
                                 print(f'ERROR: Input invalid: {cmd}: {param}. Please try again')
                     except (UnrecognizedInputError, ValueError, KeyError) as ex:
                         print(f'ERROR: Input invalid: {ex}. Please try again')
+            except (ConnectionResetError, ConnectionAbortedError):
+                eprint(f'Connection lost')
             except Exception as e:
                 printException(e)
             finally:
