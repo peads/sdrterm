@@ -98,8 +98,7 @@ def main(fs: Annotated[int, typer.Option('--sampling-rate', '--fs', show_default
     finally:
         isDead.value = 1
         for proc in processes.values():
-            proc.join()
-            proc.close()
+            proc.terminate()
         print('Main halted')
 
 

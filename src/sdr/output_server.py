@@ -98,7 +98,7 @@ class OutputServer:
                 closeSocket(clientSckt)
             except FileNotFoundError:
                 pass
-            except (Empty, ValueError): # OSError
+            except (Empty, ValueError, OSError, TypeError):
                 break
             except Exception as e:
                 printException(e)
