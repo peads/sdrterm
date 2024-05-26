@@ -21,9 +21,10 @@ import multiprocessing
 import os
 import socket
 from abc import ABC, abstractmethod
-from multiprocessing import Value, Pipe
+from concurrent.futures import ThreadPoolExecutor
+from multiprocessing import Value
 from queue import Empty
-from threading import Condition, Thread
+from threading import Thread, Barrier, BrokenBarrierError
 
 from misc.general_util import applyIgnoreException, printException, vprint, eprint
 from sdr.util import findPort
@@ -31,8 +32,21 @@ from sdr.util import findPort
 
 class Receiver(ABC):
 
-    def __init__(self, receiver):
+    def __init__(self, receiver, barrier=Barrier(2)):
         self.receiver = receiver
+        self._barrier = barrier
+
+    @property
+    def barrier(self):
+        return self._barrier
+
+    @barrier.setter
+    def barrier(self, _):
+        raise NotImplemented("Receiver does not allow setting barrier")
+
+    @barrier.deleter
+    def barrier(self):
+        del self._barrier
 
     @abstractmethod
     def receive(self):
@@ -48,7 +62,8 @@ class OutputServer:
         self.port = port
         self.clients: multiprocessing.Queue = multiprocessing.Queue(maxsize=os.cpu_count())
 
-    def close(self, exitFlag: Value) -> None:
+    def close(self, exitFlag: Value, isConnected: Barrier) -> None:
+        isConnected.abort()
         if not exitFlag.value:
             exitFlag.value = 1
             try:
@@ -65,9 +80,7 @@ class OutputServer:
             except Exception as e:
                 printException(e)
 
-    def feed(self, recvSckt: Receiver, isConnected: Condition, exitFlag: Value) -> None:
-        with isConnected:
-            isConnected.wait()
+    def feed(self, recvSckt: Receiver, exitFlag: Value) -> None:
         processingList = []
         try:
             while not exitFlag.value:
@@ -78,7 +91,7 @@ class OutputServer:
                             clientSckt.sendall(recvSckt.receive())
                             processingList.append(clientSckt)
                         except (ConnectionAbortedError, BlockingIOError, ConnectionResetError,
-                                ConnectionAbortedError, EOFError, BrokenPipeError) as e:
+                                ConnectionAbortedError, EOFError, BrokenPipeError, BrokenBarrierError) as e:
                             applyIgnoreException(lambda: clientSckt.shutdown(socket.SHUT_RDWR))
                             clientSckt.close()
                             eprint(f'Client disconnected {e}')
@@ -92,20 +105,23 @@ class OutputServer:
         except Exception as e:
             printException(e)
         finally:
-            self.close(exitFlag)
+            self.close(exitFlag, recvSckt.barrier)
             print('Feeder halted')
 
-    def listen(self, listenerSckt: socket.socket, isConnected: Condition, exitFlag: Value) -> None:
-        with isConnected:
-            listenerSckt.bind((self.host, self.port))
-            listenerSckt.listen(1)
-            isConnected.notify()
+    def listen(self, listenerSckt: socket.socket, isConnected: Barrier, exitFlag: Value) -> None:
+        # with isConnected:
+        listenerSckt.bind((self.host, self.port))
+        listenerSckt.listen(1)
 
         try:
-            while not exitFlag.value:
-                (clientSckt, address) = listenerSckt.accept()
-                vprint(f'Connection request from: {address}')
-                self.clients.put(clientSckt)
+            with ThreadPoolExecutor(max_workers=isConnected.parties) as pool:
+                while not exitFlag.value:
+                    (clientSckt, address) = listenerSckt.accept()
+                    vprint(f'Connection request from: {address}')
+                    self.clients.put(clientSckt)
+                    if not isConnected.broken:
+                        pool.submit(isConnected.wait)
+                pool.shutdown()
         except OSError:
             pass
         except Exception as ex:
@@ -113,14 +129,13 @@ class OutputServer:
             if not ('An operation was attempted on something that is not a socket' in e):
                 printException(ex)
         finally:
-            self.close(exitFlag)
+            self.close(exitFlag, isConnected)
             print('Listener halted')
 
     def initServer(self,
                    recvSckt: Receiver,
                    listenerSckt: socket.socket,
-                   isConnected: Condition,
                    exitFlag: Value) -> (Thread, Thread):
-        listenerThread = Thread(target=self.listen, args=(listenerSckt, isConnected, exitFlag))
-        feedThread = Thread(target=self.feed, args=(recvSckt, isConnected, exitFlag))
+        listenerThread = Thread(target=self.listen, args=(listenerSckt, recvSckt.barrier, exitFlag))
+        feedThread = Thread(target=self.feed, args=(recvSckt, exitFlag))
         return listenerThread, feedThread

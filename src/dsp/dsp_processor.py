@@ -25,6 +25,7 @@ import struct
 import sys
 from functools import partial
 from multiprocessing import Pool, Value, Pipe
+from typing import Callable
 
 import numpy as np
 from scipy import signal
@@ -50,21 +51,21 @@ class DspProcessor(DataProcessor):
                  fs: int,
                  centerFreq: float,
                  omegaOut: int,
-                 demod: str = None,
-                 tunedFreq: int = None,
-                 vfos: str = None,
-                 correctIq: bool = False,
-                 decimation: int = 1,
+                 tunedFreq: int,
+                 vfos: str,
+                 correctIq: bool,
+                 decimation: int,
+                 demod: Callable[[np.ndarray[any, np.complex_]], np.ndarray] = realOutput,
                  **_):
 
-        decimation = decimation if decimation is not None else 2
+        # decimation = decimation if decimation is not None else 2
         self.outputFilters = []
         self.sosIn = None
         self.__decimatedFs = self.__fs = fs
         self.__decimationFactor = decimation
         self.__decimatedFs //= decimation
         self.centerFreq = centerFreq
-        self.demod = demod if demod is not None else realOutput
+        self.demod = demod
         self.bandwidth = None
         self.tunedFreq = tunedFreq
         self.vfos = vfos

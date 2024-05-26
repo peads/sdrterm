@@ -21,7 +21,6 @@
 import socket
 from contextlib import closing
 from multiprocessing import Value
-from threading import Condition
 from typing import Annotated
 
 import typer
@@ -43,6 +42,9 @@ class __SocketReceiver(Receiver):
         self.chunks = range(writeSize // readSize)
 
     def receive(self):
+        if not self._barrier.broken:
+            self._barrier.wait()
+            self._barrier.abort()
         for _ in self.chunks:
             try:
                 inp = self.receiver.recv(self.readSize)
@@ -65,13 +67,11 @@ def main(host: Annotated[str, typer.Argument(help='Address of remote rtl_tcp ser
             cmdr = ControlRtlTcp(recvSckt)
             isDead = Value('b', 0)
             isDead.value = 0
-            isConnected = Condition()
             server = OutputServer(host='0.0.0.0')
 
-            st, pt = server.initServer(__SocketReceiver(recvSckt), listenerSckt, isConnected, isDead)
+            st, pt = server.initServer(__SocketReceiver(recvSckt), listenerSckt, isDead)
             pt.start()
             st.start()
-            del isConnected
 
             try:
                 while not isDead.value:

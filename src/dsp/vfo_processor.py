@@ -4,6 +4,8 @@ import socket
 from contextlib import closing
 from functools import partial
 from multiprocessing import Pool, Pipe, Value, Condition
+from threading import Barrier
+from typing import Callable
 
 import numpy as np
 from scipy import signal
@@ -15,15 +17,37 @@ from sdr.output_server import OutputServer, Receiver
 
 
 class PipeReceiver(Receiver):
-    def __init__(self, pipe: Pipe):
+    def __init__(self, pipe: Pipe, vfos: int):
         receiver, writer = pipe
-        super().__init__(receiver)
+        super().__init__(receiver, Barrier(vfos))
 
     def receive(self):
+        if not self._barrier.broken:
+            self._barrier.wait()
+            self._barrier.abort()
         return self.receiver.recv()
 
 
 class VfoProcessor(DspProcessor):
+
+    def __init__(self,
+                 fs: int,
+                 centerFreq: float,
+                 omegaOut: int,
+                 tunedFreq: int,
+                 vfos: str,
+                 correctIq: bool,
+                 decimation: int,
+                 **kwargs):
+        if not vfos or len(vfos) < 1:
+            raise ValueError("simo mode cannot be used without the vfos option")
+        super().__init__(fs=fs,
+                         centerFreq=centerFreq,
+                         omegaOut=omegaOut,
+                         tunedFreq=tunedFreq,
+                         vfos=vfos,
+                         correctIq=correctIq,
+                         decimation=decimation, **kwargs)
 
     def processVfoChunk(self, y, freq) -> np.ndarray[any, np.real]:
         y = shiftFreq(y, freq, self.decimatedFs)
@@ -38,18 +62,13 @@ class VfoProcessor(DspProcessor):
         inReader, inWriter = pipe
 
         outReader, outWriter = outPipe = Pipe(False)
-        pool = None
         try:
             with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as listenerSckt:
-                isConnected = Condition()
                 server = OutputServer(host='0.0.0.0')
 
-                with isConnected:
-                    lt, ft = server.initServer(PipeReceiver(outPipe), listenerSckt, isConnected, isDead)
-                    lt.start()
-                    isConnected.wait()
-                    ft.start()
-                del isConnected
+                lt, ft = server.initServer(PipeReceiver(outPipe, len(self.vfos)), listenerSckt, isDead)
+                ft.start()
+                lt.start()
 
                 with Pool() as pool:
                     eprint(f'\nAccepting connections on port {server.port}\n')
