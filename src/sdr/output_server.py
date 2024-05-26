@@ -65,7 +65,9 @@ class OutputServer:
             except Exception as e:
                 printException(e)
 
-    def feed(self, recvSckt: Receiver, exitFlag: Value) -> None:
+    def feed(self, recvSckt: Receiver, isConnected: Condition, exitFlag: Value) -> None:
+        with isConnected:
+            isConnected.wait()
         processingList = []
         try:
             while not exitFlag.value:
@@ -120,5 +122,5 @@ class OutputServer:
                    isConnected: Condition,
                    exitFlag: Value) -> (Thread, Thread):
         listenerThread = Thread(target=self.listen, args=(listenerSckt, isConnected, exitFlag))
-        feedThread = Thread(target=self.feed, args=(recvSckt, exitFlag))
+        feedThread = Thread(target=self.feed, args=(recvSckt, isConnected, exitFlag))
         return listenerThread, feedThread

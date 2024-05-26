@@ -68,11 +68,9 @@ def main(host: Annotated[str, typer.Argument(help='Address of remote rtl_tcp ser
             isConnected = Condition()
             server = OutputServer(host='0.0.0.0')
 
-            with isConnected:
-                st, pt = server.initServer(__SocketReceiver(recvSckt), listenerSckt, isConnected, isDead)
-                st.start()
-                isConnected.wait()
-                pt.start()
+            st, pt = server.initServer(__SocketReceiver(recvSckt), listenerSckt, isConnected, isDead)
+            pt.start()
+            st.start()
             del isConnected
 
             try:
