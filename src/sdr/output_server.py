@@ -96,14 +96,10 @@ class OutputServer:
             try:
                 clientSckt = self.clients.get_nowait()
                 closeSocket(clientSckt)
-            except Empty:
+            except FileNotFoundError:
+                pass
+            except (Empty, ValueError): # OSError
                 break
-            # except (OSError, ValueError) as ex:
-            #     e = str(ex)
-            #     if not ('is closed' in e or 'handle is invalid' in e):
-            #         printException(ex)
-            #     else:
-            #         break
             except Exception as e:
                 printException(e)
                 break
@@ -129,7 +125,7 @@ class OutputServer:
                 for c in processingList:
                     self.clients.put(c)
                 processingList.clear()
-        except (EOFError, ConnectionResetError, ConnectionAbortedError):
+        except (ValueError, OSError, EOFError, ConnectionResetError, ConnectionAbortedError):
             pass
         except Exception as e:
             printException(e)
@@ -138,7 +134,6 @@ class OutputServer:
             print('Feeder halted')
 
     def listen(self, listenerSckt: socket.socket, isConnected: Barrier, exitFlag: Value) -> None:
-        # with isConnected:
         listenerSckt.bind((self.host, self.port))
         listenerSckt.listen(1)
 

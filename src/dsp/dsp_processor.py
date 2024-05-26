@@ -33,7 +33,7 @@ from dsp.data_processor import DataProcessor
 from dsp.demodulation import amDemod, fmDemod, realOutput
 from dsp.iq_correction import IQCorrection
 from dsp.util import applyFilters, generateBroadcastOutputFilter, generateFmOutputFilters, shiftFreq
-from misc.general_util import applyIgnoreException, deinterleave, eprint, printException, tprint, \
+from misc.general_util import applyIgnoreException, deinterleave, printException, tprint, \
     vprint, initializer
 
 
@@ -161,11 +161,7 @@ class DspProcessor(DataProcessor):
 
             return y
         except KeyboardInterrupt:
-            pass
-        except Exception as e:
-            eprint(f'Chunk processing encountered: {e}')
-            printException(e)
-        return None
+            return None
 
     def processData(self, isDead: Value, pipe: Pipe, f) -> None:
         reader, writer = pipe
@@ -175,7 +171,7 @@ class DspProcessor(DataProcessor):
             with open(f, 'wb') if f is not None else open(sys.stdout.fileno(), 'wb',
                                                           closefd=False) as file:
                 tprint(f'{f} {file}')
-                with Pool(initializer=initializer) as pool:
+                with Pool(initializer=initializer, initargs=(isDead,)) as pool:
                     ii = range(os.cpu_count())
                     while not isDead.value:
                         writer.close()

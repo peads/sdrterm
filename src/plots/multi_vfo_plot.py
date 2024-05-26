@@ -90,11 +90,10 @@ class MultiVFOPlot(Plot):
         try:
             return shiftFreq(y, freq, fs)
         except KeyboardInterrupt:
-            pass
-        return None
+            return None
 
     def processData(self, isDead, pipe, ex=None) -> None:
-        with Pool(initializer=initializer) as self._pool:
+        with Pool(initializer=initializer, initargs=(isDead,)) as self._pool:
             super().processData(isDead, pipe, ex)
 
     def animate(self, y):

@@ -21,6 +21,7 @@ import signal as s
 import socket
 import sys
 import traceback
+from multiprocessing import Condition
 from numbers import Number
 from typing import Callable
 
@@ -84,11 +85,10 @@ def poolErrorCallback(value):
     eprint(value)
 
 
-def initializer(*_):
-    def handleSignal(signum, __):
-        eprint("signal", signum)
-        raise KeyboardInterrupt
-
+def initializer(isDead: Condition):
+    def handleSignal(_, __):
+        isDead.value = 1
+        # raise KeyboardInterrupt
     s.signal(s.SIGINT, handleSignal)
 
 

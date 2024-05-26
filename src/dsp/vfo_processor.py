@@ -57,8 +57,7 @@ class VfoProcessor(DspProcessor):
             y = self.demod(y)
             return applyFilters(y, self.outputFilters)
         except KeyboardInterrupt:
-            pass
-        return None
+            return None
 
     def processData(self, isDead: Value, pipe: Pipe, _) -> None:
         inReader, inWriter = pipe
@@ -66,7 +65,7 @@ class VfoProcessor(DspProcessor):
         try:
             with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as listenerSckt:
                 with PipeReceiver(outPipe, len(self.vfos)) as recvSckt:
-                    with Pool(initializer=initializer) as pool:
+                    with Pool(initializer=initializer, initargs=(isDead,)) as pool:
 
                         server = OutputServer(host='0.0.0.0')
                         lt, ft = server.initServer(recvSckt, listenerSckt, isDead)
@@ -88,7 +87,6 @@ class VfoProcessor(DspProcessor):
                             y = signal.decimate(y, self.decimation, ftype='fir')
                             results = pool.map_async(partial(self.processVfoChunk, y), self.vfos)
                             [outWriter.send(r) for r in results.get()]
-                    pool.terminate()
         except (EOFError, KeyboardInterrupt, BrokenPipeError):
             pass
         except Exception as e:
