@@ -71,7 +71,8 @@ class VfoProcessor(DspProcessor):
 
     def processVfoChunk(self, y, freq) -> np.ndarray[any, np.real] | None:
         try:
-            y = shiftFreq(y, freq, self.decimatedFs)
+            y = shiftFreq(y, freq, self.fs)
+            y = signal.decimate(y, self.decimation, ftype='fir')
             y = signal.sosfilt(self.sosIn, y)
             y = self.demod(y)
             return applyFilters(y, self.outputFilters)
@@ -103,7 +104,6 @@ class VfoProcessor(DspProcessor):
                                 y = self.correctIq.correctIq(y)
                             y = shiftFreq(y, self.centerFreq, self.fs)
 
-                            y = signal.decimate(y, self.decimation, ftype='fir')
                             results = pool.map_async(partial(self.processVfoChunk, y), self.vfos)
                             [outWriter.send(r) for r in results.get()]
         except (EOFError, KeyboardInterrupt, BrokenPipeError):
