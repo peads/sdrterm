@@ -90,12 +90,7 @@ class IOArgs:
 
     @classmethod
     def initIOHandlers(cls):
-        if not cls.simo:
-            processor = DspProcessor
-        else:
-            if not (cls.vfos and hasattr(os, 'mkfifo')):
-                raise ValueError("simo mode cannot be used without the vfos option")
-            processor = VfoProcessor
+        processor = DspProcessor if not cls.simo else VfoProcessor
         cls.processor = processor = processor(decimation=cls.dec,
                                               centerFreq=cls.center,
                                               tunedFreq=cls.tuned,

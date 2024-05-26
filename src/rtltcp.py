@@ -21,35 +21,59 @@
 import socket
 from contextlib import closing
 from multiprocessing import Value
-from threading import Condition
 from typing import Annotated
 
 import typer
 
-from sdr.control_rtl_tcp import UnrecognizedInputError
-from misc.general_util import applyIgnoreException, printException
+from misc.general_util import printException, eprint, closeSocket
 from sdr.control_rtl_tcp import ControlRtlTcp
-from sdr.output_server import OutputServer
+from sdr.control_rtl_tcp import UnrecognizedInputError
+from sdr.output_server import OutputServer, Receiver
 from sdr.rtl_tcp_commands import RtlTcpCommands
+
+
+class __SocketReceiver(Receiver):
+
+    def __init__(self, writeSize=262144, readSize=8192):
+        super().__init__(socket.socket(socket.AF_INET, socket.SOCK_STREAM))
+        self.readSize = readSize
+        self.data = bytearray()
+        self.chunks = range(writeSize // readSize)
+
+    def __exit__(self, *ex):
+        closeSocket(self._receiver)
+
+    def receive(self):
+        if not self._barrier.broken:
+            self._barrier.wait()
+            self._barrier.abort()
+        for _ in self.chunks:
+            try:
+                inp = self.receiver.recv(self.readSize)
+            except BrokenPipeError:
+                return b''
+            if inp is None or not len(inp):
+                break
+            self.data.extend(inp)
+        result = bytes(self.data)
+        self.data.clear()
+        return result
 
 
 def main(host: Annotated[str, typer.Argument(help='Address of remote rtl_tcp server')],
          port: Annotated[int, typer.Argument(help='Port of remote rtl_tcp server')]) -> None:
-    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as signalSckt:
-        with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as outputSckt:
-            signalSckt.connect((host, port))
-            cmdr = ControlRtlTcp(signalSckt)
+    with __SocketReceiver() as recvSckt:
+        with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as listenerSckt:
+            recvSckt.receiver.settimeout(1)
+            recvSckt.receiver.connect((host, port))
+            cmdr = ControlRtlTcp(recvSckt.receiver)
             isDead = Value('b', 0)
             isDead.value = 0
-            isConnected = Condition()
             server = OutputServer(host='0.0.0.0')
 
-            with isConnected:
-                st, pt = server.initServer(signalSckt, outputSckt, isConnected, isDead)
-                st.start()
-                isConnected.wait()
-                pt.start()
-            del isConnected
+            st, pt = server.initServer(recvSckt, listenerSckt, isDead)
+            pt.start()
+            st.start()
 
             try:
                 while not isDead.value:
@@ -77,12 +101,13 @@ def main(host: Annotated[str, typer.Argument(help='Address of remote rtl_tcp ser
                                 print(f'ERROR: Input invalid: {cmd}: {param}. Please try again')
                     except (UnrecognizedInputError, ValueError, KeyError) as ex:
                         print(f'ERROR: Input invalid: {ex}. Please try again')
+            except (ConnectionResetError, ConnectionAbortedError):
+                eprint(f'Connection lost')
             except Exception as e:
                 printException(e)
             finally:
                 isDead.value = 1
-                applyIgnoreException(lambda: signalSckt.shutdown(socket.SHUT_RDWR))
-                applyIgnoreException(lambda: outputSckt.shutdown(socket.SHUT_RDWR))
+                closeSocket(listenerSckt)
                 st.join(0.1)
                 pt.join(0.1)
                 print('UI halted')

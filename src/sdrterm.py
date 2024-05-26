@@ -48,12 +48,12 @@ def main(fs: Annotated[int, typer.Option('--sampling-rate', '--fs', show_default
          bits: Annotated[int, typer.Option('--bits-per-sample', '-b', help='Bits per sample (ignored if wav file)')] = None,
          enc:  Annotated[str, typer.Option('--encoding', '-e', help='Binary encoding (ignored if wav file)')] = None,
          normalize: Annotated[bool, typer.Option(help='Toggle normalizing input analytic signal')] = False,
-         omegaOut: Annotated[int, typer.Option('--omega-out', '-m', help='Cutoff frequency in Hz')] = 9500,
+         omegaOut: Annotated[int, typer.Option('--omega-out', '-m', help='Cutoff frequency in Hz')] = 12500,
          correct_iq: Annotated[bool, typer.Option(help='Toggle iq correction')] = False,
          simo: Annotated[bool, typer.Option(help='EXPERIMENTAL enable using named pipes to output data processed from multiple channels specified by the vfos option')] = False,
          verbose: Annotated[bool, typer.Option('--verbose', '-v', help='Toggle verbose output')] = False,
          trace: Annotated[bool, typer.Option(help='Toggle extra verbose output')] = False,
-         read_size: Annotated[int, typer.Option(help='Size in bytes read per iteration')] = 8192):
+         read_size: Annotated[int, typer.Option(help='Size in bytes read per iteration')] = 65536):
 
     processes: dict[UUID, Process] = {}
     pipes: dict[UUID, Pipe] = {}
@@ -98,10 +98,11 @@ def main(fs: Annotated[int, typer.Option('--sampling-rate', '--fs', show_default
     finally:
         isDead.value = 1
         for proc in processes.values():
-            proc.join()
-            proc.close()
+            proc.terminate()
         print('Main halted')
 
 
 if __name__ == '__main__':
+    # if 'spawn' in get_all_start_methods():
+    #     set_start_method('spawn')
     typer.run(main)

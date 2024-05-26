@@ -17,8 +17,11 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
+import signal as s
+import socket
 import sys
 import traceback
+from multiprocessing import Condition
 from numbers import Number
 from typing import Callable
 
@@ -80,3 +83,34 @@ def traceOn():
 
 def poolErrorCallback(value):
     eprint(value)
+
+
+def initializer(isDead: Condition):
+    def handleSignal(_, __):
+        isDead.value = 1
+        # raise KeyboardInterrupt
+    s.signal(s.SIGINT, handleSignal)
+
+
+def prevent_out_of_context_execution(method):
+    def decorator(self, *args, **kwargs):
+        if not self._inside_context:
+            raise AttributeError(f"{method.__name__} may only be invoked from inside context.")
+        return method(self, *args, **kwargs)
+
+    return decorator
+
+
+def remove_context(method):
+    def decorator(self, *args, **kwargs):
+        self._inside_context = False
+        self._barrier.abort()
+        return method(self, *args, **kwargs)
+
+    return decorator
+
+
+def closeSocket(clientSckt):
+    applyIgnoreException(lambda: clientSckt.send(b''))
+    applyIgnoreException(lambda: clientSckt.shutdown(socket.SHUT_RDWR))
+    applyIgnoreException(clientSckt.close)

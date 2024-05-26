@@ -17,13 +17,14 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
+import itertools
 import json
 import os
-import signal as s
 import struct
 import sys
 from functools import partial
-from multiprocessing import Pool
+from multiprocessing import Pool, Value, Pipe
+from typing import Callable
 
 import numpy as np
 from scipy import signal
@@ -32,8 +33,8 @@ from dsp.data_processor import DataProcessor
 from dsp.demodulation import amDemod, fmDemod, realOutput
 from dsp.iq_correction import IQCorrection
 from dsp.util import applyFilters, generateBroadcastOutputFilter, generateFmOutputFilters, shiftFreq
-from misc.general_util import applyIgnoreException, deinterleave, eprint, printException, tprint, \
-    vprint
+from misc.general_util import applyIgnoreException, deinterleave, printException, tprint, \
+    vprint, initializer
 
 
 def handleException(isDead, e):
@@ -49,21 +50,21 @@ class DspProcessor(DataProcessor):
                  fs: int,
                  centerFreq: float,
                  omegaOut: int,
-                 demod: str = None,
-                 tunedFreq: int = None,
-                 vfos: str = None,
-                 correctIq: bool = False,
-                 decimation: int = 1,
+                 tunedFreq: int,
+                 vfos: str,
+                 correctIq: bool,
+                 decimation: int,
+                 demod: Callable[[np.ndarray[any, np.complex_]], np.ndarray] = realOutput,
                  **_):
 
-        decimation = decimation if decimation is not None else 2
+        # decimation = decimation if decimation is not None else 2
         self.outputFilters = []
         self.sosIn = None
         self.__decimatedFs = self.__fs = fs
         self.__decimationFactor = decimation
         self.__decimatedFs //= decimation
         self.centerFreq = centerFreq
-        self.demod = demod if demod is not None else realOutput
+        self.demod = demod
         self.bandwidth = None
         self.tunedFreq = tunedFreq
         self.vfos = vfos
@@ -142,7 +143,7 @@ class DspProcessor(DataProcessor):
             generateBroadcastOutputFilter(self.__decimatedFs, self._FILTER_DEGREE)]
         self.setDemod(amDemod)
 
-    def processChunk(self, y):
+    def processChunk(self, y: list) -> np.ndarray[any, np.real] | None:
         try:
             y = deinterleave(y)
 
@@ -158,37 +159,34 @@ class DspProcessor(DataProcessor):
             y = self.demod(y)
             y = applyFilters(y, self.outputFilters)
 
-            return signal.savgol_filter(y, 14, self._FILTER_DEGREE)
+            return y
         except KeyboardInterrupt:
-            pass
-        except Exception as e:
-            eprint(f'Chunk processing encountered: {e}')
-            printException(e)
-        return None
+            return None
 
-    def processData(self, isDead, pipe, f) -> None:
+    def processData(self, isDead: Value, pipe: Pipe, f) -> None:
         reader, writer = pipe
-        if 'posix' in os.name:
-            s.signal(s.SIGINT, s.SIG_IGN)  # https://stackoverflow.com/a/68695455/8372013
 
+        data = []
         try:
             with open(f, 'wb') if f is not None else open(sys.stdout.fileno(), 'wb',
                                                           closefd=False) as file:
                 tprint(f'{f} {file}')
-                with Pool(maxtasksperchild=128) as pool:
-                    data = []
+                with Pool(initializer=initializer, initargs=(isDead,)) as pool:
+                    ii = range(os.cpu_count())
                     while not isDead.value:
                         writer.close()
-                        for _ in range(self.__decimationFactor):
+                        for _ in ii:
                             y = reader.recv()
-                            if y is None or len(y) < 1:
+                            if y is None or not len(y):
                                 break
                             data.append(y)
 
-                        if data is None or len(data) < 1:
+                        if data is None or not len(data):
                             break
 
-                        y = np.array(pool.map_async(self.processChunk, data).get()).flatten()
+                        y = pool.map_async(self.processChunk, data)
+                        y = list(itertools.chain.from_iterable(y.get()))
+                        y = signal.savgol_filter(y, 14, self._FILTER_DEGREE)
                         file.write(struct.pack(len(y) * 'd', *y))
                         data.clear()
         except (EOFError, KeyboardInterrupt, BrokenPipeError):

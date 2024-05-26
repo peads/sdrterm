@@ -20,93 +20,131 @@
 import multiprocessing
 import os
 import socket
-from multiprocessing import Value
+from abc import ABC, abstractmethod
+from concurrent.futures import ThreadPoolExecutor
+from multiprocessing import Value, Queue
 from queue import Empty
-from threading import Condition, Thread
+from threading import Thread, Barrier, BrokenBarrierError
 
-from misc.general_util import applyIgnoreException, printException
+from misc.general_util import printException, eprint, prevent_out_of_context_execution, \
+    remove_context, closeSocket
 from sdr.util import findPort
+
+
+class Receiver(ABC):
+
+    def __init__(self, receiver, barrier=Barrier(2)):
+        self._receiver = receiver
+        self._barrier = barrier
+        self._inside_context = False
+
+    def __enter__(self):
+        self._inside_context = True
+        return self
+
+    @remove_context
+    @abstractmethod
+    def __exit__(self, *exc):
+        pass
+
+    @property
+    @prevent_out_of_context_execution
+    def barrier(self):
+        return self._barrier
+
+    @barrier.setter
+    @prevent_out_of_context_execution
+    def barrier(self, _):
+        raise NotImplemented("Receiver does not allow setting barrier")
+
+    @barrier.deleter
+    @prevent_out_of_context_execution
+    def barrier(self):
+        del self._barrier
+
+    @property
+    @prevent_out_of_context_execution
+    def receiver(self):
+        return self._receiver
+
+    @receiver.setter
+    @prevent_out_of_context_execution
+    def receiver(self, _):
+        raise NotImplemented("Receiver does not allow setting barrier")
+
+    @receiver.deleter
+    @prevent_out_of_context_execution
+    def receiver(self):
+        del self._receiver
+
+    @abstractmethod
+    @prevent_out_of_context_execution
+    def receive(self):
+        pass
 
 
 class OutputServer:
 
-    def __init__(self,
-                 host='localhost',
-                 port=findPort(),
-                 writeSize=262144):
+    def __init__(self, host='localhost', port=findPort()):
         self.host = host
         self.port = port
-        self.clients: multiprocessing.Queue = multiprocessing.Queue(maxsize=os.cpu_count())
-        self.writeSize = writeSize
+        self.clients: Queue = multiprocessing.Queue(maxsize=os.cpu_count())
 
     def close(self, exitFlag: Value) -> None:
-        if exitFlag.value:
+        exitFlag.value = 1
+        while 1:
             try:
-                exitFlag.value = 1
-
-                for i in range(self.clients.qsize()):
-                    try:
-                        clientSckt = self.clients.get_nowait()
-                        clientSckt.send(b'')
-                        clientSckt.shutdown(socket.SHUT_RDWR)
-                        clientSckt.close()
-                    except Empty:
-                        break
-                    finally:
-                        self.clients.close()
-                        del self.clients
+                clientSckt = self.clients.get_nowait()
+                closeSocket(clientSckt)
+            except FileNotFoundError:
+                pass
+            except (Empty, ValueError, OSError, TypeError):
+                break
             except Exception as e:
                 printException(e)
+                break
+        self.clients.close()
+        self.clients.join_thread()
 
-    def feedClients(self, recvSckt: socket.socket, exitFlag: Value) -> None:
+    def feed(self, recvSckt: Receiver, exitFlag: Value) -> None:
         processingList = []
-        ii = range(self.writeSize >> 13)
         try:
-            data = bytearray()
             while not exitFlag.value:
-                for _ in ii:
-                    inp = recvSckt.recv(8192)
-                    if inp is None or not len(inp):
-                        break
-                    data.extend(inp)
                 try:
                     while not exitFlag.value:
                         clientSckt = self.clients.get_nowait()
                         try:
-                            clientSckt.sendall(data)
+                            clientSckt.sendall(recvSckt.receive())
                             processingList.append(clientSckt)
                         except (ConnectionAbortedError, BlockingIOError, ConnectionResetError,
-                                ConnectionAbortedError, EOFError, BrokenPipeError) as e:
-                            applyIgnoreException(lambda: clientSckt.shutdown(socket.SHUT_RDWR))
-                            clientSckt.close()
-                            print(f'Client disconnected {e}')
+                                ConnectionAbortedError, EOFError, BrokenPipeError, BrokenBarrierError) as e:
+                            closeSocket(clientSckt)
+                            eprint(f'Client disconnected {e}')
                 except Empty:
                     pass
                 for c in processingList:
                     self.clients.put(c)
-
                 processingList.clear()
-                data.clear()
-        except (EOFError, ConnectionResetError, ConnectionAbortedError):
+        except (ValueError, OSError, EOFError, ConnectionResetError, ConnectionAbortedError):
             pass
         except Exception as e:
             printException(e)
         finally:
             self.close(exitFlag)
-            print('Consumer halted')
+            print('Feeder halted')
 
-    def listen(self, serverSckt: socket.socket, isConnected: Condition, exitFlag: Value) -> None:
-        with isConnected:
-            serverSckt.bind((self.host, self.port))
-            serverSckt.listen(1)
-            isConnected.notify()
+    def listen(self, listenerSckt: socket.socket, isConnected: Barrier, exitFlag: Value) -> None:
+        listenerSckt.bind((self.host, self.port))
+        listenerSckt.listen(1)
 
         try:
-            while not exitFlag.value:
-                (clientSckt, address) = serverSckt.accept()
-                # cs.setblocking(False)
-                print(f'Connection request from: {address}')
-                self.clients.put(clientSckt)
+            with ThreadPoolExecutor(max_workers=isConnected.parties) as pool:
+                while not exitFlag.value:
+                    (clientSckt, address) = listenerSckt.accept()
+                    eprint(f'Connection request from: {address}')
+                    self.clients.put(clientSckt)
+                    if not isConnected.broken:
+                        pool.submit(isConnected.wait)
         except OSError:
             pass
         except Exception as ex:
@@ -118,10 +156,9 @@ class OutputServer:
             print('Listener halted')
 
     def initServer(self,
-                   serverSckt: socket.socket,
+                   recvSckt: Receiver,
                    listenerSckt: socket.socket,
-                   isConnected: Condition,
                    exitFlag: Value) -> (Thread, Thread):
-        st = Thread(target=self.listen, args=(listenerSckt, isConnected, exitFlag))
-        pt = Thread(target=self.feedClients, args=(serverSckt, exitFlag))
-        return st, pt
+        listenerThread = Thread(target=self.listen, args=(listenerSckt, recvSckt.barrier, exitFlag))
+        feedThread = Thread(target=self.feed, args=(recvSckt, exitFlag))
+        return listenerThread, feedThread
