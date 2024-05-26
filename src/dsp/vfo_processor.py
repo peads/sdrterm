@@ -9,7 +9,7 @@ from scipy import signal
 
 from dsp.dsp_processor import DspProcessor
 from dsp.util import applyFilters, shiftFreq
-from misc.general_util import deinterleave, eprint, printException, applyIgnoreException
+from misc.general_util import deinterleave, eprint, printException, initializer, closeSocket
 from sdr.output_server import OutputServer, Receiver
 
 
@@ -21,7 +21,6 @@ class PipeReceiver(Receiver):
     def __exit__(self, *ex):
         self.__writer.close()
         self._receiver.close()
-        self._barrier.abort()
 
     def receive(self):
         if not self._barrier.broken:
@@ -67,7 +66,7 @@ class VfoProcessor(DspProcessor):
         try:
             with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as listenerSckt:
                 with PipeReceiver(outPipe, len(self.vfos)) as recvSckt:
-                    with Pool() as pool:
+                    with Pool(initializer=initializer) as pool:
 
                         server = OutputServer(host='0.0.0.0')
                         lt, ft = server.initServer(recvSckt, listenerSckt, isDead)
@@ -99,5 +98,5 @@ class VfoProcessor(DspProcessor):
             inReader.close()
             outReader.close()
             outWriter.close()
-            applyIgnoreException(lambda: listenerSckt.shutdown(socket.SHUT_RDWR))
+            closeSocket(listenerSckt)
             print(f'Multi-VFO writer halted')

@@ -25,7 +25,7 @@ from typing import Annotated
 
 import typer
 
-from misc.general_util import applyIgnoreException, printException, eprint
+from misc.general_util import printException, eprint, closeSocket
 from sdr.control_rtl_tcp import ControlRtlTcp
 from sdr.control_rtl_tcp import UnrecognizedInputError
 from sdr.output_server import OutputServer, Receiver
@@ -41,9 +41,7 @@ class __SocketReceiver(Receiver):
         self.chunks = range(writeSize // readSize)
 
     def __exit__(self, *ex):
-        applyIgnoreException(lambda: self._receiver.shutdown(socket.SHUT_RDWR))
-        self._receiver.close()
-        self._barrier.abort()
+        closeSocket(self._receiver)
 
     def receive(self):
         if not self._barrier.broken:
@@ -109,7 +107,7 @@ def main(host: Annotated[str, typer.Argument(help='Address of remote rtl_tcp ser
                 printException(e)
             finally:
                 isDead.value = 1
-                applyIgnoreException(lambda: listenerSckt.shutdown(socket.SHUT_RDWR))
+                closeSocket(listenerSckt)
                 st.join(0.1)
                 pt.join(0.1)
                 print('UI halted')

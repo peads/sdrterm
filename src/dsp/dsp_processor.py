@@ -34,7 +34,7 @@ from dsp.demodulation import amDemod, fmDemod, realOutput
 from dsp.iq_correction import IQCorrection
 from dsp.util import applyFilters, generateBroadcastOutputFilter, generateFmOutputFilters, shiftFreq
 from misc.general_util import applyIgnoreException, deinterleave, eprint, printException, tprint, \
-    vprint
+    vprint, initializer
 
 
 def handleException(isDead, e):
@@ -175,7 +175,7 @@ class DspProcessor(DataProcessor):
             with open(f, 'wb') if f is not None else open(sys.stdout.fileno(), 'wb',
                                                           closefd=False) as file:
                 tprint(f'{f} {file}')
-                with Pool() as pool:
+                with Pool(initializer=initializer) as pool:
                     ii = range(os.cpu_count())
                     while not isDead.value:
                         writer.close()

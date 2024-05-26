@@ -26,25 +26,11 @@ from multiprocessing import Value, Queue
 from queue import Empty
 from threading import Thread, Barrier, BrokenBarrierError
 
-from misc.general_util import applyIgnoreException, printException, eprint
+from misc.general_util import printException, eprint, prevent_out_of_context_execution, \
+    remove_context, closeSocket
 from sdr.util import findPort
 
 
-def prevent_out_of_context_execution(method):
-    def decorator(self, *args, **kwargs):
-        if not self._inside_context:
-            raise AttributeError(f"{method.__name__} may only be invoked from inside context.")
-        return method(self, *args, **kwargs)
-
-    return decorator
-
-
-def remove_context(method):
-    def decorator(self, *args, **kwargs):
-        self._inside_context = False
-        return method(self, *args, **kwargs)
-
-    return decorator
 class Receiver(ABC):
 
     def __init__(self, receiver, barrier=Barrier(2)):
@@ -109,19 +95,18 @@ class OutputServer:
         while 1:
             try:
                 clientSckt = self.clients.get_nowait()
-                clientSckt.send(b'')
-                clientSckt.shutdown(socket.SHUT_RDWR)
-                clientSckt.close()
+                closeSocket(clientSckt)
             except Empty:
                 break
-            except (OSError, ValueError) as ex:
-                e = str(ex)
-                if not ('is closed' in e or 'handle is invalid' in e):
-                    printException(ex)
-                else:
-                    break
+            # except (OSError, ValueError) as ex:
+            #     e = str(ex)
+            #     if not ('is closed' in e or 'handle is invalid' in e):
+            #         printException(ex)
+            #     else:
+            #         break
             except Exception as e:
                 printException(e)
+                break
         self.clients.close()
         self.clients.join_thread()
 
@@ -137,8 +122,7 @@ class OutputServer:
                             processingList.append(clientSckt)
                         except (ConnectionAbortedError, BlockingIOError, ConnectionResetError,
                                 ConnectionAbortedError, EOFError, BrokenPipeError, BrokenBarrierError) as e:
-                            applyIgnoreException(lambda: clientSckt.shutdown(socket.SHUT_RDWR))
-                            clientSckt.close()
+                            closeSocket(clientSckt)
                             eprint(f'Client disconnected {e}')
                 except Empty:
                     pass

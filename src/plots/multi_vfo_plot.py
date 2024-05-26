@@ -27,6 +27,7 @@ from matplotlib.gridspec import SubplotSpec
 from scipy import fft
 
 from dsp.util import shiftFreq
+from misc.general_util import initializer
 from plots.abstract_plot import Plot
 
 
@@ -93,7 +94,7 @@ class MultiVFOPlot(Plot):
         return None
 
     def processData(self, isDead, pipe, ex=None) -> None:
-        with Pool() as self._pool:
+        with Pool(initializer=initializer) as self._pool:
             super().processData(isDead, pipe, ex)
 
     def animate(self, y):
