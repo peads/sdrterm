@@ -34,12 +34,16 @@ from sdr.rtl_tcp_commands import RtlTcpCommands
 
 class __SocketReceiver(Receiver):
 
-    def __init__(self, receiver: socket.socket,
-                 writeSize=262144, readSize=8192):
-        super().__init__(receiver)
+    def __init__(self, writeSize=262144, readSize=8192):
+        super().__init__(socket.socket(socket.AF_INET, socket.SOCK_STREAM))
         self.readSize = readSize
         self.data = bytearray()
         self.chunks = range(writeSize // readSize)
+
+    def __exit__(self, *ex):
+        applyIgnoreException(lambda: self._receiver.shutdown(socket.SHUT_RDWR))
+        self._receiver.close()
+        self._barrier.abort()
 
     def receive(self):
         if not self._barrier.broken:
@@ -60,16 +64,16 @@ class __SocketReceiver(Receiver):
 
 def main(host: Annotated[str, typer.Argument(help='Address of remote rtl_tcp server')],
          port: Annotated[int, typer.Argument(help='Port of remote rtl_tcp server')]) -> None:
-    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as recvSckt:
+    with __SocketReceiver() as recvSckt:
         with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as listenerSckt:
-            recvSckt.settimeout(1)
-            recvSckt.connect((host, port))
-            cmdr = ControlRtlTcp(recvSckt)
+            recvSckt.receiver.settimeout(1)
+            recvSckt.receiver.connect((host, port))
+            cmdr = ControlRtlTcp(recvSckt.receiver)
             isDead = Value('b', 0)
             isDead.value = 0
             server = OutputServer(host='0.0.0.0')
 
-            st, pt = server.initServer(__SocketReceiver(recvSckt), listenerSckt, isDead)
+            st, pt = server.initServer(recvSckt, listenerSckt, isDead)
             pt.start()
             st.start()
 
@@ -105,7 +109,6 @@ def main(host: Annotated[str, typer.Argument(help='Address of remote rtl_tcp ser
                 printException(e)
             finally:
                 isDead.value = 1
-                applyIgnoreException(lambda: recvSckt.shutdown(socket.SHUT_RDWR))
                 applyIgnoreException(lambda: listenerSckt.shutdown(socket.SHUT_RDWR))
                 st.join(0.1)
                 pt.join(0.1)

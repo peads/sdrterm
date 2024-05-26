@@ -17,8 +17,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-import os
-import signal as s
 from functools import partial
 from itertools import chain
 from multiprocessing import Pool
@@ -39,7 +37,7 @@ class MultiVFOPlot(Plot):
         if self.vfos is None:
             raise ValueError('vfos not specified')
         self.axes = None
-        self.pool = None
+        self._pool = None
 
     def initPlot(self):
         super().initPlot()
@@ -88,23 +86,18 @@ class MultiVFOPlot(Plot):
 
     @staticmethod
     def shiftVfos(y, fs, freq):
-        return shiftFreq(y, freq, fs)
+        try:
+            return shiftFreq(y, freq, fs)
+        except KeyboardInterrupt:
+            pass
+        return None
 
-    def close(self):
-        super().close()
-        if hasattr(self, 'pool'):
-            self.pool.close()
-            self.pool.join()
-            del self.pool
+    def processData(self, isDead, pipe, ex=None) -> None:
+        with Pool() as self._pool:
+            super().processData(isDead, pipe, ex)
 
     def animate(self, y):
-
-        if not self.isInit:
-            if 'posix' in os.name:
-                s.signal(s.SIGINT, s.SIG_IGN)  # https://stackoverflow.com/a/68695455/8372013
-            self.pool = Pool()
-
-        shift = self.pool.map_async(partial(self.shiftVfos, y, self.fs), self.vfos)
+        shift = self._pool.map_async(partial(self.shiftVfos, y, self.fs), self.vfos)
         fftData = fft.fft(shift.get(), norm='forward')
         fftData = fft.fftshift(fftData)
         amps = np.abs(fftData)

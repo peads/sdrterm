@@ -18,7 +18,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-from multiprocessing import Pipe, Process, Value
+import os
+import signal as s
+from multiprocessing import Pipe, Process, Value, get_all_start_methods, set_start_method
 from typing import Annotated
 from uuid import UUID
 
@@ -104,4 +106,8 @@ def main(fs: Annotated[int, typer.Option('--sampling-rate', '--fs', show_default
 
 
 if __name__ == '__main__':
+    if 'spawn' in get_all_start_methods():
+        set_start_method('spawn')
+    if 'posix' in os.name:
+        s.signal(s.SIGINT, s.SIG_IGN)  # https://stackoverflow.com/a/68695455/8372013
     typer.run(main)

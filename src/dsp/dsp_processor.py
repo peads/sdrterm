@@ -20,7 +20,6 @@
 import itertools
 import json
 import os
-import signal as s
 import struct
 import sys
 from functools import partial
@@ -144,7 +143,7 @@ class DspProcessor(DataProcessor):
             generateBroadcastOutputFilter(self.__decimatedFs, self._FILTER_DEGREE)]
         self.setDemod(amDemod)
 
-    def processChunk(self, y: list):
+    def processChunk(self, y: list) -> np.ndarray[any, np.real] | None:
         try:
             y = deinterleave(y)
 
@@ -170,8 +169,6 @@ class DspProcessor(DataProcessor):
 
     def processData(self, isDead: Value, pipe: Pipe, f) -> None:
         reader, writer = pipe
-        if 'posix' in os.name:
-            s.signal(s.SIGINT, s.SIG_IGN)  # https://stackoverflow.com/a/68695455/8372013
 
         data = []
         try:
