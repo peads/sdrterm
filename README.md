@@ -28,10 +28,15 @@ deactivate
 # Example
 ### sdrterm.py
 #### Sample rate: 1024k
-#### Input data type: 8-bit unsigned-int
+#### Data type: 8-bit unsigned-int
 #### Input: stdin
 #### Output: stdout
+#### Plots: ps - power spectrum
 `nc <host> <port> | python src/sdrterm.py --fs=1024000 -b8 -eB --plot=ps | ...`
+#### Input file.wav
+#### Output: /dev/null
+#### Plots: ps - power spectrum, water - waterfall
+`python src/sdrterm.py -i file.wav --plot=ps,water -o /dev/null`
 
 Further options can be found via `python src/sdrterm.py --help`
 ### rtltcp.py
