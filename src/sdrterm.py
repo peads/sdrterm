@@ -33,7 +33,6 @@ from misc.read_file import readFile
 # print(plt.rcParams['backend'])
 # print(plt.get_backend(), matplotlib.__version__)
 # plt.get_backend(), matplotlib.__version__
-#
 
 
 def main(fs: Annotated[int, typer.Option('--sampling-rate', '--fs', show_default=False, help='Sampling frequency in Samples/s')] = None,
@@ -44,13 +43,13 @@ def main(fs: Annotated[int, typer.Option('--sampling-rate', '--fs', show_default
          dm: Annotated[str, typer.Option('--demod', help='Demodulation type')] = 'fm',
          tuned: Annotated[int, typer.Option('--tuned-frequency', '-t', help='Tuned frequency in Hz')] = None,
          vfos: Annotated[str, typer.Option(help='1D-Comma-separated value of offsets from center frequency to process in addition to center in Hz')] = None,
-         dec: Annotated[int, typer.Option('--decimation', help='Log2 of decimation factor (i.e. x where 2^x is the decimation factor))')] = 2,
+         dec: Annotated[int, typer.Option('--decimation', help='Decimation factor')] = 2,
          bits: Annotated[int, typer.Option('--bits-per-sample', '-b', help='Bits per sample (ignored if wav file)')] = None,
          enc:  Annotated[str, typer.Option('--encoding', '-e', help='Binary encoding (ignored if wav file)')] = None,
          normalize: Annotated[bool, typer.Option(help='Toggle normalizing input analytic signal')] = False,
          omegaOut: Annotated[int, typer.Option('--omega-out', '-m', help='Cutoff frequency in Hz')] = 12500,
          correct_iq: Annotated[bool, typer.Option(help='Toggle iq correction')] = False,
-         simo: Annotated[bool, typer.Option(help='EXPERIMENTAL enable using named pipes to output data processed from multiple channels specified by the vfos option')] = False,
+         simo: Annotated[bool, typer.Option(help='EXPERIMENTAL enable using sockets to output data processed from multiple channels specified by the vfos option')] = False,
          verbose: Annotated[bool, typer.Option('--verbose', '-v', help='Toggle verbose output')] = False,
          trace: Annotated[bool, typer.Option(help='Toggle extra verbose output')] = False,
          read_size: Annotated[int, typer.Option(help='Size in bytes read per iteration')] = 65536):
