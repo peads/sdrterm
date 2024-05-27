@@ -95,6 +95,9 @@ class MultiVFOPlot(Plot):
     def processData(self, isDead, pipe, ex=None) -> None:
         with Pool(initializer=initializer, initargs=(isDead,)) as self._pool:
             super().processData(isDead, pipe, ex)
+            self._pool.close()
+            self._pool.join()
+        del self._pool
 
     def animate(self, y):
         shift = self._pool.map_async(partial(self.shiftVfos, y, self.fs), self.vfos)

@@ -31,7 +31,7 @@ class WaveFormPlot(Plot):
         super().__init__(**kwargs)
         self.xdata = None
 
-    def initPlot(self, n):
+    def initPlot(self, n=1000):
         super().initPlot()
         self.fig, self.ax = plt.subplots()
         self.ln, = self.ax.plot(0, 0)

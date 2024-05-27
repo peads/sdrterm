@@ -18,21 +18,16 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-from multiprocessing import Pipe, Process, Value
+from multiprocessing import Pipe, Value
+from threading import Thread
 from typing import Annotated
 from uuid import UUID
 
 import typer
 
-from misc.general_util import printException, vprint
+from misc.general_util import printException, vprint, applyIgnoreException
 from misc.io_args import IOArgs
 from misc.read_file import readFile
-
-
-# matplotlib.use('QtAgg')
-# print(plt.rcParams['backend'])
-# print(plt.get_backend(), matplotlib.__version__)
-# plt.get_backend(), matplotlib.__version__
 
 
 def main(fs: Annotated[int, typer.Option('--sampling-rate', '--fs', show_default=False, help='Sampling frequency in Samples/s')] = None,
@@ -54,7 +49,7 @@ def main(fs: Annotated[int, typer.Option('--sampling-rate', '--fs', show_default
          trace: Annotated[bool, typer.Option(help='Toggle extra verbose output')] = False,
          read_size: Annotated[int, typer.Option(help='Size in bytes read per iteration')] = 65536):
 
-    processes: dict[UUID, Process] = {}
+    processes: dict[UUID, any] = {}
     pipes: dict[UUID, Pipe] = {}
     isDead = Value('i', 0)
     ioArgs = IOArgs(fs=fs,
@@ -97,7 +92,10 @@ def main(fs: Annotated[int, typer.Option('--sampling-rate', '--fs', show_default
     finally:
         isDead.value = 1
         for proc in processes.values():
-            proc.terminate()
+            if isinstance(proc, Thread):
+                applyIgnoreException(lambda: proc.join(0.01))
+            else:
+                applyIgnoreException(proc.terminate)
         print('Main halted')
 
 

@@ -19,9 +19,12 @@
 #
 import multiprocessing
 from abc import ABC, abstractmethod
+from multiprocessing.pool import MaybeEncodingError
+from tkinter import TclError
 from typing import Iterable
 from uuid import uuid4
 
+import matplotlib
 import matplotlib as mpl
 import matplotlib.style as mplstyle
 import numpy as np
@@ -30,7 +33,7 @@ from matplotlib import pyplot as plt
 from dsp.data_processor import DataProcessor
 from dsp.iq_correction import IQCorrection
 from dsp.util import shiftFreq
-from misc.general_util import deinterleave, printException, vprint
+from misc.general_util import deinterleave, printException, vprint, applyIgnoreException
 
 
 class Plot(DataProcessor, ABC):
@@ -58,25 +61,36 @@ class Plot(DataProcessor, ABC):
         self.iqCorrector = IQCorrection(self.fs) if self.correctIq else None
         self.processor = kwargs['processor'] if 'processor' in kwargs.keys() else None
 
+    @staticmethod
+    def default_style(method):
+        def decorator(self, *args, **kwargs):
+            # matplotlib.use('WxAgg')
+            # vprint(plt.rcParams['backend'])
+            # vprint(plt.get_backend(), matplotlib.__version__)
+            # plt.get_backend(), matplotlib.__version__
+            mpl.rcParams['toolbar'] = 'None'
+            mplstyle.use('fast')
+
+            return method(self, *args, **kwargs)
+
+        return decorator
+
     @abstractmethod
     def animate(self, y: list | np.ndarray):
         pass
 
+    @default_style
     @abstractmethod
     def initPlot(self, *args, **kwargs):
-        mpl.rcParams['toolbar'] = 'None'
-        mplstyle.use('fast')
-
-    def close(self):
-        self._isDead = True
+        pass
 
     def onClose(self, _):
-        self.close()
+        self._isDead = True
         vprint(f'Window {type(self).__name__}: {self.fig}-{self.uuid} closed')
 
     def initBlit(self):
-        mpl.rcParams['toolbar'] = 'None'
-        mplstyle.use('fast')
+        # mpl.rcParams['toolbar'] = 'None'
+        # mplstyle.use('fast')
         plt.pause(0.1)
         isIterable = isinstance(self.ln, Iterable)
         self.bg = self.fig.canvas.copy_from_bbox(self.fig.bbox)
@@ -101,13 +115,14 @@ class Plot(DataProcessor, ABC):
                     y = self.iqCorrector.correctIq(y)
                 y = shiftFreq(y, self.centerFreq, self.fs)
                 self.animate(y)
-        except KeyboardInterrupt:
+        except (KeyboardInterrupt, MaybeEncodingError, TclError):
             pass
         except Exception as e:
             printException(e)
         finally:
-            self.close()
+            self._isDead = True
             if 'spawn' not in multiprocessing.get_start_method():
                 isDead.value = 1
-            reader.close()
+            applyIgnoreException(writer.close)
+            applyIgnoreException(reader.close)
             vprint(f'Figure {type(self).__name__}-{self.uuid} halted')

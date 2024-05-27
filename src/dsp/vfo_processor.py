@@ -94,7 +94,6 @@ class VfoProcessor(DspProcessor):
 
                         eprint(f'\nAccepting connections on port {server.port}\n')
                         while not isDead.value:
-                            inWriter.close()
                             y = inReader.recv()
                             if y is None or len(y) < 1:
                                 break
@@ -106,12 +105,17 @@ class VfoProcessor(DspProcessor):
 
                             results = pool.map_async(partial(self.processVfoChunk, y), self.vfos)
                             [outWriter.send(r) for r in results.get()]
+
+                        pool.close()
+                        pool.join()
+                    del pool
         except (EOFError, KeyboardInterrupt, BrokenPipeError):
             pass
         except Exception as e:
             printException(e)
         finally:
             isDead.value = 1
+            inWriter.close()
             inReader.close()
             outReader.close()
             outWriter.close()

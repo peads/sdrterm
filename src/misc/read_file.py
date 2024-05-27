@@ -20,14 +20,15 @@
 import struct
 import sys
 from functools import partial
-from multiprocessing import Pipe, Process, Value
+from multiprocessing import Pipe, Value
+from threading import Thread
 from uuid import UUID
 
 from misc.general_util import applyIgnoreException, printException, tprint
 
 
 def readFile(wordtype, fs: int, isDead: Value, pipes: dict[UUID, Pipe],
-             processes: dict[UUID, Process], f: str, readSize, offset=0):
+             processes: dict[UUID, any], f: str, readSize, offset=0):
 
     bitdepth, structtype = wordtype
 
@@ -45,24 +46,26 @@ def readFile(wordtype, fs: int, isDead: Value, pipes: dict[UUID, Pipe],
                 else:
                     y = struct.unpack_from((len(data) >> bitdepth) * structtype, data)
                     for (uuid, (r, w)) in list(pipes.items()):
-                        r.close()
                         try:
                             w.send(y)
                         except (OSError, BrokenPipeError, TypeError):
                             w.close()
+                            r.close()
                             if uuid in pipes.keys():
                                 pipes.pop(uuid)
                             if uuid in processes.keys():
-                                processes.pop(uuid)
-                # data.clear()
+                                proc = processes.pop(uuid)
+                                if not isinstance(proc, Thread):
+                                    proc.terminate()
         except (EOFError, KeyboardInterrupt, OSError):
             pass
         except Exception as e:
             printException(e)
         finally:
+            isDead.value = 1
             file.close()
             for (uuid, (r, w)) in list(pipes.items()):
                 applyIgnoreException(partial(w.send, b''))
-                w.close()
-            isDead.value = 1
+                applyIgnoreException(w.close)
+                applyIgnoreException(r.close)
             print(f'Reader halted')

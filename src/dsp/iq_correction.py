@@ -30,33 +30,33 @@ class IQCorrection:
         self.__inductance = impedance / sampRate
         self.__off = 0 + 0j
 
-        @property
-        def sampleRate(self):
-            return self.__sampRate
+    @property
+    def sampleRate(self):
+        return self.__sampRate
 
-        @sampleRate.setter
-        def sampleRate(self, sampRate: int):
-            self.__inductance = self.__inductance * self.__sampRate
-            self.__sampRate = sampRate
-            self.__inductance /= self.__sampRate
-            self.__off = 0 + 0j
+    @sampleRate.setter
+    def sampleRate(self, sampRate: int):
+        self.__inductance = self.__inductance * self.__sampRate
+        self.__sampRate = sampRate
+        self.__inductance /= self.__sampRate
+        self.__off = 0 + 0j
 
-        @sampleRate.deleter
-        def attribute(self):
-            del self.__sampleRate
+    @sampleRate.deleter
+    def sampleRate(self):
+        del self.__sampRate
 
-        @property
-        def inductance(self):
-            return self.__inductance
+    @property
+    def inductance(self):
+        return self.__inductance
 
-        @inductance.setter
-        def inductance(self, impedance: int):
-            self.__inductance = impedance / sampRate
-            self.__off = 0 + 0j
+    @inductance.setter
+    def inductance(self, impedance: int):
+        self.__inductance = impedance / self.__sampRate
+        self.__off = 0 + 0j
 
-        @inductance.deleter
-        def inductance(self):
-            del self.__inductance
+    @inductance.deleter
+    def inductance(self):
+        del self.__inductance
 
     def correctIq(self, data: np.ndarray[any, np.complex_]) -> np.ndarray[any, np.complex_]:
         for i in range(len(data)):
