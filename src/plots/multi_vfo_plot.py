@@ -17,9 +17,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-from functools import partial
 from itertools import chain
-from multiprocessing import Pool
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -27,7 +25,6 @@ from matplotlib.gridspec import SubplotSpec
 from scipy import fft
 
 from dsp.util import shiftFreq
-from misc.general_util import initializer
 from plots.abstract_plot import Plot
 
 
@@ -38,7 +35,6 @@ class MultiVFOPlot(Plot):
         if self.vfos is None:
             raise ValueError('vfos not specified')
         self.axes = None
-        self._pool = None
 
     def initPlot(self):
         super().initPlot()
@@ -92,13 +88,9 @@ class MultiVFOPlot(Plot):
         except KeyboardInterrupt:
             return None
 
-    def processData(self, isDead, pipe, ex=None) -> None:
-        with Pool(initializer=initializer, initargs=(isDead,)) as self._pool:
-            super().processData(isDead, pipe, ex)
-
     def animate(self, y):
-        shift = self._pool.map_async(partial(self.shiftVfos, y, self.fs), self.vfos)
-        fftData = fft.fft(shift.get(), norm='forward')
+        shift = [self.shiftVfos(y, self.fs, freq) for freq in self.vfos]
+        fftData = fft.fft(shift, norm='forward')
         fftData = fft.fftshift(fftData)
         amps = np.abs(fftData)
         amps = np.log10(amps * amps)

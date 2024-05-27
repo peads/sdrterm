@@ -20,6 +20,7 @@
 
 import os
 from multiprocessing import Pipe, Process
+from threading import Thread
 from typing import Iterable
 from uuid import UUID, uuid4
 
@@ -101,7 +102,7 @@ class IOArgs:
                                               correctIq=cls.correctIq)
         selectDemodulation(cls.dm, processor)()
         r, w = Pipe(False)
-        fileWriter = Process(target=processor.processData,
+        fileWriter = Thread(target=processor.processData,
                              args=(cls.isDead, (r, w), cls.outFile,))
         writerUuid = IOArgs.addConsumer(fileWriter, (r, w))
         fileWriter.name = "File writer-" + str(writerUuid)
@@ -117,7 +118,7 @@ class IOArgs:
                 plotter.name = "Plotter-" + str(plotUuid)
 
     @classmethod
-    def addConsumer(cls, proc: Process,
+    def addConsumer(cls, proc,
                     pipe: Pipe,
                     uuid: UUID = None):
         if uuid is None:

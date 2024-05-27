@@ -174,7 +174,6 @@ class DspProcessor(DataProcessor):
                 with Pool(initializer=initializer, initargs=(isDead,)) as pool:
                     ii = range(os.cpu_count())
                     while not isDead.value:
-                        writer.close()
                         for _ in ii:
                             y = reader.recv()
                             if y is None or not len(y):
@@ -189,17 +188,21 @@ class DspProcessor(DataProcessor):
                         y = signal.savgol_filter(y, 14, self._FILTER_DEGREE)
                         file.write(struct.pack(len(y) * 'd', *y))
                         data.clear()
+                    pool.close()
+                    pool.join()
+                del pool
         except (EOFError, KeyboardInterrupt, BrokenPipeError):
             pass
+        except TypeError as e:
+            if "'NoneType' object cannot be interpreted as an integer" not in str(e):
+                printException(e)
         except Exception as e:
             printException(e)
         finally:
             isDead.value = 1
-            pool.close()
-            pool.join()
-            del pool
             applyIgnoreException(partial(file.write, b''))
-            reader.close()
+            applyIgnoreException(writer.close)
+            applyIgnoreException(reader.close)
             print(f'File writer halted')
 
     def __repr__(self):
