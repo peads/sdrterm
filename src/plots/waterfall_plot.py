@@ -17,7 +17,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-import time
 
 import matplotlib.pyplot as plt
 import numpy as np
@@ -35,7 +34,6 @@ class WaterfallPlot(Plot):
         super().__init__(**kwargs)
         self.t = 0
         self.dt = 1
-        self.text_fps = None
         self._SFT = ShortTimeFFT.from_window(('kaiser', 5),
                                              self.fs,
                                              self.NPERSEG,
@@ -44,7 +42,7 @@ class WaterfallPlot(Plot):
                                              fft_mode='centered',
                                              scale_to='magnitude',
                                              phase_shift=None)
-        # self.xticks = (-1 / 2 + np.arange(1 / 8, 1, 1 / 8)) * self.fs
+        self.pad_xextent = (self.NFFT - self.NOOVERLAP) / (self.fs * 2)
 
     def initPlot(self):
         super().initPlot()
@@ -75,15 +73,10 @@ class WaterfallPlot(Plot):
     #     self.fig.canvas.flush_events()
 
     def animate(self, y):
-        if self.text_fps is not None:
-            self.dt = time.perf_counter() - self.t
-            self.t = time.perf_counter()
-
         Zxx = self._SFT.stft(y)
-        pad_xextent = (self.NFFT - self.NOOVERLAP) / (self.fs * 2)
         extent = xmin, xmax, fmin, fmax = self._SFT.extent(len(y), center_bins=True)
-        xmin -= pad_xextent
-        xmax += pad_xextent
+        xmin -= self.pad_xextent
+        xmax += self.pad_xextent
 
         if not self.isInit:
             self.initPlot()

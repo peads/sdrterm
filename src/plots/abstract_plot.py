@@ -24,7 +24,6 @@ from tkinter import TclError
 from typing import Iterable
 from uuid import uuid4
 
-import matplotlib
 import matplotlib as mpl
 import matplotlib.style as mplstyle
 import numpy as np
