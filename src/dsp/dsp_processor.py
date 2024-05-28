@@ -51,7 +51,7 @@ class DspProcessor(DataProcessor):
                  centerFreq: float,
                  omegaOut: int,
                  tunedFreq: int,
-                 vfos: str,
+                 vfos: list[float] | np.ndarray[any, np.real],
                  correctIq: bool,
                  decimation: int,
                  demod: Callable[[np.ndarray[any, np.complex_]], np.ndarray] = realOutput,
