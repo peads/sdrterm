@@ -17,6 +17,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
+import os
 import socket
 from contextlib import closing
 from functools import partial
@@ -77,6 +78,19 @@ class VfoProcessor(DspProcessor):
         y = np.broadcast_to(y, (len(self.vfos), len(y)))
         return y * self.shift
 
+    def processChunk(self, y: list) -> np.ndarray[any, np.real] | None:
+        try:
+            y = deinterleave(y)
+            if self.correctIq is not None:
+                y = self.correctIq.correctIq(y)
+            y = self.__shiftFreqs(y)
+            y = signal.decimate(y, self.decimation, ftype='fir')
+            y = signal.sosfilt(self.sosIn, y)
+            y = np.array([self.demod(yy) for yy in y])
+            return applyFilters(y, self.outputFilters)
+        except KeyboardInterrupt:
+            return None
+
     def processData(self, isDead: Value, pipe: Pipe, _) -> None:
         inReader, inWriter = pipe
         outReader, outWriter = outPipe = Pipe(False)
@@ -91,23 +105,22 @@ class VfoProcessor(DspProcessor):
                         lt.start()
 
                         eprint(f'\nAccepting connections on port {server.port}\n')
+                        ii = range(os.cpu_count())
+                        data = []
                         while not isDead.value:
-                            y = inReader.recv()
-                            if y is None or len(y) < 1:
-                                break
+                            for _ in ii:
+                                y = inReader.recv()
+                                if y is None or not len(y):
+                                    break
+                                data.append(y)
 
-                            y = deinterleave(y)
-                            if self.correctIq is not None:
-                                y = self.correctIq.correctIq(y)
-                            y = self.__shiftFreqs(y)
-                            y = signal.decimate(y, self.decimation, ftype='fir')
-                            y = signal.sosfilt(self.sosIn, y)
-                            y = np.array([self.demod(yy) for yy in y])
-                            y = applyFilters(y, self.outputFilters)
-                            for yy in y:
-                                outWriter.send(yy)
-                            # results = pool.map_async(partial(self.processVfoChunk, y), self.vfos)
-                            # [outWriter.send(r) for r in results.get()]
+                            if data is None or not len(data):
+                                break
+                            y = pool.map_async(self.processChunk, data)
+                            for yy in y.get():
+                                for yyy in yy:
+                                    outWriter.send(yyy)
+                            data.clear()
 
                         pool.close()
                         pool.join()
