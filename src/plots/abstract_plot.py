@@ -17,7 +17,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-import multiprocessing
 from abc import ABC, abstractmethod
 from multiprocessing.pool import MaybeEncodingError
 from tkinter import TclError
@@ -120,8 +119,8 @@ class Plot(DataProcessor, ABC):
             printException(e)
         finally:
             self._isDead = True
-            if 'spawn' not in multiprocessing.get_start_method():
-                isDead.value = 1
-            applyIgnoreException(writer.close)
-            applyIgnoreException(reader.close)
+            # if 'spawn' not in multiprocessing.get_start_method():
+            #     isDead.value = 1
+            applyIgnoreException(writer.close, reader.close)
             vprint(f'Figure {type(self).__name__}-{self.uuid} halted')
+            return

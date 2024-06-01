@@ -29,7 +29,7 @@ from scipy import signal
 
 from dsp.dsp_processor import DspProcessor
 from dsp.util import applyFilters, shiftFreq
-from misc.general_util import deinterleave, eprint, printException, initializer, closeSocket
+from misc.general_util import deinterleave, eprint, printException, initializer, closeSocket, applyIgnoreException
 from sdr.output_server import OutputServer, Receiver
 
 
@@ -46,7 +46,10 @@ class PipeReceiver(Receiver):
         if not self._barrier.broken:
             self._barrier.wait()
             self._barrier.abort()
-        return self.receiver.recv()
+        try:
+            return self.receiver.recv()
+        except TypeError:
+            return b''
 
 
 class VfoProcessor(DspProcessor):
@@ -60,7 +63,6 @@ class VfoProcessor(DspProcessor):
                  correctIq: bool,
                  decimation: int,
                  **kwargs):
-        self.shift = None
         if not vfos or len(vfos) < 1:
             raise ValueError("simo mode cannot be used without the vfos option")
         super().__init__(fs=fs,
@@ -71,19 +73,12 @@ class VfoProcessor(DspProcessor):
                          correctIq=correctIq,
                          decimation=decimation, **kwargs)
 
-    def __shiftFreqs(self, y):
-        if self.shift is None or len(y) != len(self.shift):
-            t = np.arange(len(y))
-            self.shift = np.array([np.exp(-2j * np.pi * (freq / self.fs) * t) for freq in (self.vfos + self.centerFreq)])
-        y = np.broadcast_to(y, (len(self.vfos), len(y)))
-        return y * self.shift
-
     def processChunk(self, y: list) -> np.ndarray[any, np.real] | None:
         try:
             y = deinterleave(y)
             if self.correctIq is not None:
                 y = self.correctIq.correctIq(y)
-            y = self.__shiftFreqs(y)
+            y = shiftFreq(y, self.vfos + self.centerFreq, self.fs)
             y = signal.decimate(y, self.decimation, ftype='fir')
             y = signal.sosfilt(self.sosIn, y)
             y = np.array([self.demod(yy) for yy in y])
@@ -94,46 +89,48 @@ class VfoProcessor(DspProcessor):
     def processData(self, isDead: Value, pipe: Pipe, _) -> None:
         inReader, inWriter = pipe
         outReader, outWriter = outPipe = Pipe(False)
-        try:
-            with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as listenerSckt:
-                with PipeReceiver(outPipe, len(self.vfos)) as recvSckt:
-                    with Pool(initializer=initializer, initargs=(isDead,)) as pool:
+        with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as listenerSckt:
+            with PipeReceiver(outPipe, len(self.vfos)) as recvSckt:
+                with Pool(initializer=initializer, initargs=(isDead,)) as pool:
+                    with OutputServer(isDead, host='0.0.0.0') as server:
+                        try:
+                            lt, ft = server.initServer(recvSckt, listenerSckt, isDead)
+                            ft.start()
+                            lt.start()
 
-                        server = OutputServer(host='0.0.0.0')
-                        lt, ft = server.initServer(recvSckt, listenerSckt, isDead)
-                        ft.start()
-                        lt.start()
+                            eprint(f'\nAccepting connections on port {server.port}\n')
+                            ii = range(os.cpu_count())
+                            data = []
+                            while not isDead.value:
+                                for _ in ii:
+                                    y = inReader.recv()
+                                    if y is None or not len(y):
+                                        break
+                                    data.append(y)
 
-                        eprint(f'\nAccepting connections on port {server.port}\n')
-                        ii = range(os.cpu_count())
-                        data = []
-                        while not isDead.value:
-                            for _ in ii:
-                                y = inReader.recv()
-                                if y is None or not len(y):
+                                if data is None or not len(data):
+                                    outWriter.send(b'')
+                                    isDead.value = 1
                                     break
-                                data.append(y)
-
-                            if data is None or not len(data):
-                                break
-                            y = pool.map_async(self.processChunk, data)
-                            for yy in y.get():
-                                for yyy in yy:
-                                    outWriter.send(yyy)
-                            data.clear()
-
-                        pool.close()
-                        pool.join()
-                    del pool
-        except (EOFError, KeyboardInterrupt, BrokenPipeError):
-            pass
-        except Exception as e:
-            printException(e)
-        finally:
-            isDead.value = 1
-            inWriter.close()
-            inReader.close()
-            outReader.close()
-            outWriter.close()
-            closeSocket(listenerSckt)
-            print(f'Multi-VFO writer halted')
+                                y = pool.map_async(self.processChunk, data)
+                                for yy in y.get():
+                                    for yyy in yy:
+                                        outWriter.send(yyy)
+                                data.clear()
+                        except (EOFError, KeyboardInterrupt, BrokenPipeError, TypeError, OSError):
+                            pass
+                        except Exception as e:
+                            printException(e)
+                        finally:
+                            isDead.value = 1
+                            ft.join(0.1)
+                            lt.join(0.1)
+                            closeSocket(listenerSckt)
+                            applyIgnoreException(
+                                partial(outWriter.send, b''),
+                                inWriter.close,
+                                inReader.close,
+                                outReader.close,
+                                outWriter.close)
+                            print(f'Multi-VFO writer halted')
+                            return

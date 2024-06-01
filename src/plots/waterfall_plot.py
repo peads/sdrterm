@@ -59,8 +59,6 @@ class WaterfallPlot(Plot):
         self.initBlit()
         # self.fig.canvas.mpl_connect('resize_event', self.resize)
 
-    def draw(self):
-        self.ax.draw_artist(self.ln)
 
     # def resize(self, _):
     #     self.ax.set_xticks(self.xticks)
@@ -86,6 +84,6 @@ class WaterfallPlot(Plot):
                                  extent=extent,
                                  aspect="auto",
                                  animated=True)
-        self.draw()
+        self.ax.draw_artist(self.ln)
         self.fig.canvas.blit(self.fig.bbox)
         self.fig.canvas.flush_events()

@@ -64,53 +64,55 @@ def main(host: Annotated[str, typer.Argument(help='Address of remote rtl_tcp ser
          port: Annotated[int, typer.Argument(help='Port of remote rtl_tcp server')]) -> None:
     with __SocketReceiver() as recvSckt:
         with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as listenerSckt:
-            recvSckt.receiver.settimeout(1)
-            recvSckt.receiver.connect((host, port))
-            cmdr = ControlRtlTcp(recvSckt.receiver)
             isDead = Value('b', 0)
             isDead.value = 0
-            server = OutputServer(host='0.0.0.0')
+            with OutputServer(isDead, host='0.0.0.0') as server:
+                recvSckt.receiver.settimeout(1)
+                recvSckt.receiver.connect((host, port))
+                cmdr = ControlRtlTcp(recvSckt.receiver)
 
-            st, pt = server.initServer(recvSckt, listenerSckt, isDead)
-            pt.start()
-            st.start()
 
-            try:
-                while not isDead.value:
-                    try:
-                        print('Available commands are:\n')
-                        [print(f'{e.value}\t{e.name}') for e in RtlTcpCommands]
-                        print(f'\nAccepting connections on port {server.port}\n')
-                        inp = input(
-                            'Provide a space-delimited, command-value pair (e.g. SET_GAIN 1):\n')
-                        if ('q' == inp or 'Q' == inp or 'quit' in inp.lower()
-                                or 'exit' in inp.lower()):
-                            isDead.value = 1
-                        elif ' ' not in inp:
-                            print(f'ERROR: Input invalid: {inp}. Please try again')
-                        else:
-                            (cmd, param) = inp.split()
-                            if cmd.isnumeric():
-                                numCmd = RtlTcpCommands(int(cmd)).value
+                st, pt = server.initServer(recvSckt, listenerSckt, isDead)
+                pt.start()
+                st.start()
+
+                try:
+                    while not isDead.value:
+                        try:
+                            print('Available commands are:\n')
+                            [print(f'{e.value}\t{e.name}') for e in RtlTcpCommands]
+                            print(f'\nAccepting connections on port {server.port}\n')
+                            inp = input(
+                                'Provide a space-delimited, command-value pair (e.g. SET_GAIN 1):\n')
+                            if ('q' == inp or 'Q' == inp or 'quit' in inp.lower()
+                                    or 'exit' in inp.lower()):
+                                isDead.value = 1
+                            elif ' ' not in inp:
+                                print(f'ERROR: Input invalid: {inp}. Please try again')
                             else:
-                                numCmd = RtlTcpCommands[cmd].value
+                                (cmd, param) = inp.split()
+                                if cmd.isnumeric():
+                                    numCmd = RtlTcpCommands(int(cmd)).value
+                                else:
+                                    numCmd = RtlTcpCommands[cmd].value
 
-                            if param.isnumeric():
-                                cmdr.setParam(numCmd, int(param))
-                            else:
-                                print(f'ERROR: Input invalid: {cmd}: {param}. Please try again')
-                    except (UnrecognizedInputError, ValueError, KeyError) as ex:
-                        print(f'ERROR: Input invalid: {ex}. Please try again')
-            except (ConnectionResetError, ConnectionAbortedError):
-                eprint(f'Connection lost')
-            except Exception as e:
-                printException(e)
-            finally:
-                isDead.value = 1
-                closeSocket(listenerSckt)
-                st.join(0.1)
-                pt.join(0.1)
-                print('UI halted')
+                                if param.isnumeric():
+                                    cmdr.setParam(numCmd, int(param))
+                                else:
+                                    print(f'ERROR: Input invalid: {cmd}: {param}. Please try again')
+                        except (UnrecognizedInputError, ValueError, KeyError) as ex:
+                            print(f'ERROR: Input invalid: {ex}. Please try again')
+                except (ConnectionResetError, ConnectionAbortedError):
+                    eprint(f'Connection lost')
+                except Exception as e:
+                    printException(e)
+                finally:
+                    isDead.value = 1
+                    closeSocket(listenerSckt)
+                    st.join(0.1)
+                    pt.join(0.1)
+                    print('UI halted')
+                    return
 
 
 if __name__ == "__main__":

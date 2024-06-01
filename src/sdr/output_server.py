@@ -28,6 +28,7 @@ from threading import Thread, Barrier, BrokenBarrierError
 
 from misc.general_util import printException, eprint, prevent_out_of_context_execution, \
     remove_context, closeSocket
+from misc.hooked_thread import HookedThread
 from sdr.util import findPort
 
 
@@ -85,13 +86,20 @@ class Receiver(ABC):
 
 class OutputServer:
 
-    def __init__(self, host='localhost', port=findPort()):
+    def __init__(self, exitFlag: Value, host='localhost', port=findPort()):
         self.host = host
         self.port = port
         self.clients: Queue = multiprocessing.Queue(maxsize=os.cpu_count())
+        self._inside_context = False
+        self.exitFlag = exitFlag
 
-    def close(self, exitFlag: Value) -> None:
-        exitFlag.value = 1
+    def __enter__(self):
+        self._inside_context = True
+        return self
+
+    @remove_context
+    def __exit__(self, *exc):
+        self.exitFlag.value = 1
         while 1:
             try:
                 clientSckt = self.clients.get_nowait()
@@ -106,6 +114,7 @@ class OutputServer:
         self.clients.close()
         self.clients.join_thread()
 
+    @prevent_out_of_context_execution
     def feed(self, recvSckt: Receiver, exitFlag: Value) -> None:
         processingList = []
         try:
@@ -125,14 +134,15 @@ class OutputServer:
                 for c in processingList:
                     self.clients.put(c)
                 processingList.clear()
-        except (ValueError, OSError, EOFError, ConnectionResetError, ConnectionAbortedError):
+        except (KeyboardInterrupt, ValueError, OSError, EOFError, ConnectionResetError, ConnectionAbortedError):
             pass
         except Exception as e:
             printException(e)
         finally:
-            self.close(exitFlag)
             print('Feeder halted')
+            return
 
+    @prevent_out_of_context_execution
     def listen(self, listenerSckt: socket.socket, isConnected: Barrier, exitFlag: Value) -> None:
         listenerSckt.bind((self.host, self.port))
         listenerSckt.listen(1)
@@ -145,20 +155,21 @@ class OutputServer:
                     self.clients.put(clientSckt)
                     if not isConnected.broken:
                         pool.submit(isConnected.wait)
-        except OSError:
+        except (OSError, KeyboardInterrupt):
             pass
         except Exception as ex:
             e = str(ex)
             if not ('An operation was attempted on something that is not a socket' in e):
                 printException(ex)
         finally:
-            self.close(exitFlag)
             print('Listener halted')
+            return
 
+    @prevent_out_of_context_execution
     def initServer(self,
                    recvSckt: Receiver,
                    listenerSckt: socket.socket,
                    exitFlag: Value) -> (Thread, Thread):
-        listenerThread = Thread(target=self.listen, args=(listenerSckt, recvSckt.barrier, exitFlag))
-        feedThread = Thread(target=self.feed, args=(recvSckt, exitFlag))
+        listenerThread = HookedThread(exitFlag, name='Listener', target=self.listen, args=(listenerSckt, recvSckt.barrier, exitFlag))
+        feedThread = HookedThread(exitFlag, target=self.feed, args=(recvSckt, exitFlag))
         return listenerThread, feedThread

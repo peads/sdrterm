@@ -2,4 +2,4 @@ scipy
 numpy
 matplotlib
 typer
-
+multipledispatch

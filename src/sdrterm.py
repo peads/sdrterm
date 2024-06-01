@@ -18,14 +18,14 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-from multiprocessing import Pipe, Value
+from multiprocessing import Pipe, Value, Process
 from threading import Thread
 from typing import Annotated
 from uuid import UUID
 
 import typer
 
-from misc.general_util import printException, vprint, applyIgnoreException
+from misc.general_util import printException, vprint
 from misc.io_args import IOArgs
 from misc.read_file import readFile
 
@@ -92,11 +92,12 @@ def main(fs: Annotated[int, typer.Option('--sampling-rate', '--fs', show_default
     finally:
         isDead.value = 1
         for proc in processes.values():
-            if isinstance(proc, Thread):
-                applyIgnoreException(lambda: proc.join(0.01))
-            else:
-                applyIgnoreException(proc.terminate)
+            if issubclass(type(proc), Thread):
+                proc.join(0.1)
+            elif isinstance(proc, Process):
+                proc.join(0.1)
         print('Main halted')
+        return
 
 
 if __name__ == '__main__':

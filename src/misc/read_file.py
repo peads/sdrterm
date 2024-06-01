@@ -65,7 +65,6 @@ def readFile(wordtype, fs: int, isDead: Value, pipes: dict[UUID, Pipe],
             isDead.value = 1
             file.close()
             for (uuid, (r, w)) in list(pipes.items()):
-                applyIgnoreException(partial(w.send, b''))
-                applyIgnoreException(w.close)
-                applyIgnoreException(r.close)
+                applyIgnoreException(partial(w.send, b''), w.close, r.close)
             print(f'Reader halted')
+            return

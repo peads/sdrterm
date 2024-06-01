@@ -50,14 +50,12 @@ def tprint(*args, **kwargs):
     __VerbosePrint.tprint(*args, **kwargs)
 
 
-def interleave(x: list, y: list) -> list:
-    out = [x for xs in zip(x, y) for x in xs]
-    return out
+# def interleave(x: list, y: list) -> list:
+#     return [x for xs in zip(x, y) for x in xs]
 
 
 def deinterleave(y: list[Number] | np.ndarray[any, np.number]) -> np.ndarray[any, np.complex_]:
-    y = [a + 1j * b for a, b in zip(y[::2], y[1::2])]
-    return np.array(y)
+    return np.array([a + 1j * b for a, b in zip(y[::2], y[1::2])])
 
 
 def printException(e):
@@ -65,11 +63,12 @@ def printException(e):
     traceback.print_exc(file=sys.stderr)
 
 
-def applyIgnoreException(func: Callable[[], None]):
-    try:
-        func()
-    except Exception:
-        pass
+def applyIgnoreException(*func: Callable[[], None]):
+    for f in func:
+        try:
+            f()
+        except Exception:
+            pass
 
 
 def verboseOn():
@@ -81,14 +80,10 @@ def traceOn():
     setattr(__VerbosePrint, 'tprint', eprint)
 
 
-def poolErrorCallback(value):
-    eprint(value)
-
-
 def initializer(isDead: Condition):
     def handleSignal(_, __):
         isDead.value = 1
-        # raise KeyboardInterrupt
+
     s.signal(s.SIGINT, handleSignal)
 
 
@@ -104,7 +99,8 @@ def prevent_out_of_context_execution(method):
 def remove_context(method):
     def decorator(self, *args, **kwargs):
         self._inside_context = False
-        self._barrier.abort()
+        if hasattr(self, '_barrier'):
+            self._barrier.abort()
         return method(self, *args, **kwargs)
 
     return decorator

@@ -33,14 +33,7 @@ from dsp.data_processor import DataProcessor
 from dsp.demodulation import amDemod, fmDemod, realOutput
 from dsp.iq_correction import IQCorrection
 from dsp.util import applyFilters, generateBroadcastOutputFilter, generateFmOutputFilters, shiftFreq
-from misc.general_util import applyIgnoreException, deinterleave, printException, tprint, \
-    vprint, initializer
-
-
-def handleException(isDead, e):
-    isDead.value = 1
-    if not isinstance(e, KeyboardInterrupt):
-        printException(e)
+from misc.general_util import applyIgnoreException, deinterleave, printException, vprint, initializer
 
 
 class DspProcessor(DataProcessor):
@@ -167,11 +160,9 @@ class DspProcessor(DataProcessor):
         reader, writer = pipe
 
         data = []
-        try:
-            with open(f, 'wb') if f is not None else open(sys.stdout.fileno(), 'wb',
-                                                          closefd=False) as file:
-                tprint(f'{f} {file}')
-                with Pool(initializer=initializer, initargs=(isDead,)) as pool:
+        with open(f, 'wb') if f is not None else open(sys.stdout.fileno(), 'wb', closefd=False) as file:
+            with Pool(initializer=initializer, initargs=(isDead,)) as pool:
+                try:
                     ii = range(os.cpu_count())
                     while not isDead.value:
                         for _ in ii:
@@ -181,6 +172,8 @@ class DspProcessor(DataProcessor):
                             data.append(y)
 
                         if data is None or not len(data):
+                            file.write(b'')
+                            isDead.value = 1
                             break
 
                         y = pool.map_async(self.processChunk, data)
@@ -188,22 +181,18 @@ class DspProcessor(DataProcessor):
                         y = signal.savgol_filter(y, 14, self._FILTER_DEGREE)
                         file.write(struct.pack(len(y) * 'd', *y))
                         data.clear()
-                    pool.close()
-                    pool.join()
-                del pool
-        except (EOFError, KeyboardInterrupt, BrokenPipeError):
-            pass
-        except TypeError as e:
-            if "'NoneType' object cannot be interpreted as an integer" not in str(e):
-                printException(e)
-        except Exception as e:
-            printException(e)
-        finally:
-            isDead.value = 1
-            applyIgnoreException(partial(file.write, b''))
-            applyIgnoreException(writer.close)
-            applyIgnoreException(reader.close)
-            print(f'File writer halted')
+                except (TypeError, EOFError, KeyboardInterrupt, BrokenPipeError, OSError):
+                    pass
+                except Exception as e:
+                    printException(e)
+                finally:
+                    isDead.value = 1
+                    applyIgnoreException(
+                        partial(file.write, b''),
+                             writer.close,
+                             reader.close)
+                    print(f'File writer halted')
+                    return
 
     def __repr__(self):
         d = {key: value for key, value in self.__dict__.items()
