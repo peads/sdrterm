@@ -17,21 +17,21 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-import sys
-import threading
-from multiprocessing import Value
-from threading import Thread
+import json
 
 
-class HookedThread(Thread):
-    def __init__(self, isDead: Value, group=None, target=None, name=None,
-                 args=(), daemon=None):
-        super().__init__(group=group, target=target, name=name, daemon=daemon, args=args)
-        def handleException(exc_type, exc_value, exc_traceback):
-            isDead.value = 1
-            if issubclass(exc_type, KeyboardInterrupt):
-                sys.__excepthook__(exc_type, exc_value, exc_traceback)
-            return
-            # printException(exc_value)
+class VfoList(list):
+    def __init__(self, vfos, freq=0, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
 
-        threading.excepthook = handleException
+        if vfos is None or len(vfos) < 1:
+            raise ValueError('VFOs csv cannot be empty')
+
+        self.extend([float(x) for x in vfos.split(',') if x is not None and len(x) > 0])
+        self.append(0)
+        self._freq = freq
+
+    def __repr__(self) -> str:
+        d = dict()
+        d['vfos'] = [(f + self._freq) / 10E+5 for f in self]
+        return json.dumps(d, indent=2)

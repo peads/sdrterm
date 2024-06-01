@@ -17,33 +17,16 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-import json
-import os
 from multiprocessing import Pipe, Process
 from uuid import UUID, uuid4
 
 from dsp.dsp_processor import DspProcessor
 from dsp.vfo_processor import VfoProcessor
-from misc.hooked_thread import HookedThread
 from misc.file_util import checkWavHeader
 from misc.general_util import traceOn, verboseOn, tprint
+from misc.hooked_thread import HookedThread
+from misc.vfo_list import VfoList
 from plots.util import selectDemodulation, selectPlotType
-
-class VfoList(list):
-    def __init__(self, vfos, freq=0, *args, **kwargs) -> None:
-        super().__init__(*args, **kwargs)
-
-        if vfos is None or len(vfos) < 1:
-            raise ValueError('VFOs csv cannot be empty')
-
-        self.extend([float(x) for x in vfos.split(',') if x is not None and len(x) > 0])
-        self.append(0)
-        self._freq = freq
-
-    def __repr__(self) -> str:
-        d = dict()
-        d['vfos'] = [(f + self._freq) / 10E+5 for f in self]
-        return json.dumps(d, indent=2)
 
 
 class IOArgs:
