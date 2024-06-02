@@ -62,5 +62,4 @@ class IQCorrection:
         for i in range(len(data)):
             z = data[i] = data[i] - self.__off
             self.__off += z * self.__inductance
-            tprint(self.__off)
         return data

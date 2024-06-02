@@ -98,7 +98,7 @@ class IOArgs:
         selectDemodulation(cls.dm, processor)()
         r, w = Pipe(False)
         fileWriter = HookedThread(isDead=cls.isDead, target=processor.processData,
-                                  args=(cls.isDead, (r, w), cls.outFile,))
+                                  args=(cls.isDead, (r, w), cls.outFile,), daemon=True)
         writerUuid = IOArgs.addConsumer(fileWriter, (r, w))
         fileWriter.name = "File writer-" + str(writerUuid)
 
@@ -110,7 +110,7 @@ class IOArgs:
                 # annoying, but plots don't seem to like BeInG rUn On NoT ThE mAiN tHrEaD
                 # also, it's more calculation(cpu)-bound due the graphs' data generation/manipulation rather than
                 # the more I/O-y-bound displaying bit anyway
-                plotter = Process(target=psplot.processData, args=(cls.isDead, (r, w)))
+                plotter = Process(target=psplot.processData, args=(cls.isDead, (r, w)), daemon=True)
                 plotUuid = IOArgs.addConsumer(plotter, (r, w), uuid=psplot.uuid)
                 plotter.name = "Plotter-" + str(plotUuid)
 
