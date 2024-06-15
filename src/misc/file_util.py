@@ -19,6 +19,7 @@
 #
 import json
 import struct
+from enum import Enum
 from typing import Iterable
 
 import numpy as np
@@ -26,23 +27,28 @@ from click import BadParameter
 
 from misc.general_util import vprint
 
-WAVE_FORMAT_PCM = 0x0001
-WAVE_FORMAT_IEEE_FLOAT = 0x0003
-WAVE_FORMAT_ALAW = 0x0006
-WAVE_FORMAT_MULAW = 0x0007
-WAVE_FORMAT_EXTENSIBLE = 0xFFFE
-PCM_S_LE = 0x01  # b'x01'
-PCM_S_BE = 0x02  # b'x02'
-PCM_S_PDP = 0x03  # b'x03'
-PCM_U_LE = 0x05  # b'x05'
-PCM_U_BE = 0x06  # b'x06'
-PCM_U_PDP = 0x07  # b'x07'
-SIGNED = 0
-UNSIGNED = 1
-TYPES = dict(((8, ((SIGNED, 'b'), (UNSIGNED, 'B'))),
-              (16, ((SIGNED, 'h'), (UNSIGNED, 'H'))),
-              (32, ((SIGNED, 'i'), (UNSIGNED, 'I'), (WAVE_FORMAT_IEEE_FLOAT, 'f'))),
-              (64, ((SIGNED, 'l'), (UNSIGNED, 'L'), (WAVE_FORMAT_IEEE_FLOAT, 'd')))))
+
+class WaveFormat(Enum):
+    WAVE_FORMAT_PCM = 0x0001  #, ('B','h','i')
+    WAVE_FORMAT_IEEE_FLOAT = 0x0003  #, ('f', 'd')
+    WAVE_FORMAT_ALAW = 0x0006
+    WAVE_FORMAT_MULAW = 0x0007
+    WAVE_FORMAT_EXTENSIBLE = 0xFFFE
+class ExWaveFormat(Enum):
+    PCM_S_LE = 0x01  # b'x01'
+    PCM_S_BE = 0x02  # b'x02'
+    PCM_S_PDP = 0x03  # b'x03'
+    PCM_U_LE = 0x05  # b'x05'
+    PCM_U_BE = 0x06  # b'x06'
+    PCM_U_PDP = 0x07  # b'x07'
+
+class IntDataType(Enum):
+    B = 8
+    h = 16
+    i = 32
+class FloatDataType(Enum):
+    f = 32
+    d = 64
 
 
 def parseRawType(bits, enc, fs):
@@ -60,13 +66,13 @@ def parseRawType(bits, enc, fs):
 
         match splt[0]:
             case 'unsigned':
-                signedness = UNSIGNED
+                dtype = IntDataType[bits]
             case 'signed':
-                signedness = SIGNED
+                dtype = IntDataType[bits]
             case _:
-                signedness = 3
+                dtype = FloatDataType[bits]
         bits = int(bits)
-        result = (0, 0, 0, fs, 0, 0, (int(np.log2(int(bits)) - 3), dict(TYPES[bits])[signedness]))
+        result = (0, 0, 0, fs, 0, 0, (int(np.log2(int(bits)) - 3), dtype))
         result = zipRet(result)
 
     result['dataOffset'] = 0
@@ -110,12 +116,19 @@ def checkWavHeader(f, fs, bits, enc):
                                 # 20
                ) = struct.unpack('<IHHIIHH', file.read(20))
         ret = zipRet(ret)
-        ret['bitsPerSample'] = dict(TYPES[bitsPerSample])
+
+        if bitsPerSample < 32:
+            ret['bitsPerSample'] = IntDataType(bitsPerSample)
+        elif WaveFormat.WAVE_FORMAT_IEEE_FLOAT == ret['audioFormat']:
+            ret['bitsPerSample'] = FloatDataType(bitsPerSample)
+        else:
+            ret['bitsPerSample'] = IntDataType(bitsPerSample)
+
         ret['sampRate'] = (bitsPerSample * numChannels * sampRate) >> 3
 
         bitsPerSample = int(np.log2(bitsPerSample) - 3)
-        if WAVE_FORMAT_EXTENSIBLE != ret['audioFormat']:
-            ret['bitsPerSample'] = (bitsPerSample, ret['bitsPerSample'][ret['audioFormat']])
+        if WaveFormat.WAVE_FORMAT_EXTENSIBLE != ret['audioFormat']:
+            ret['bitsPerSample'] = (bitsPerSample, ret['bitsPerSample'].name)
         else:
             extraParamSize, = struct.unpack('<H', file.read(2))
 
@@ -125,11 +138,12 @@ def checkWavHeader(f, fs, bits, enc):
             if b'\x00\x00\x00\x00\x10\x00\x80\x00\x00\xAA\x00\x38\x9B\x71' != file.read(14):
                 raise ValueError('Invalid SubFormat GUID')
 
-            if subFormat == PCM_S_BE or subFormat == PCM_S_LE:
-                ret['bitsPerSample'] = (bitsPerSample, ret['bitsPerSample'][SIGNED])
-            elif subFormat == PCM_U_BE or subFormat == PCM_U_LE:
-                ret['bitsPerSample'] = (bitsPerSample, ret['bitsPerSample'][UNSIGNED])
-            elif subFormat == PCM_S_PDP or subFormat == PCM_U_PDP:
+            # TODO probably unnecessary if/until x-law input
+            if subFormat == ExWaveFormat.PCM_S_BE or subFormat == ExWaveFormat.PCM_S_LE:
+                ret['bitsPerSample'] = (bitsPerSample, ret['bitsPerSample'].name)
+            elif subFormat == ExWaveFormat.PCM_U_BE or subFormat == ExWaveFormat.PCM_U_LE:
+                ret['bitsPerSample'] = (bitsPerSample, ret['bitsPerSample'].name)
+            elif subFormat == ExWaveFormat.PCM_S_PDP or subFormat == ExWaveFormat.PCM_U_PDP:
                 raise ValueError('Invalid: middle-endian not supported')
             else:
                 raise ValueError('Invalid: Unknown non-PCM format not supported')

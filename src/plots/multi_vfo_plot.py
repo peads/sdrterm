@@ -81,15 +81,9 @@ class MultiVFOPlot(Plot):
         if isOdd:
             self.vfos.insert(len(self.vfos) // 2, last)
 
-    @staticmethod
-    def shiftVfos(y, fs, freq):
-        try:
-            return shiftFreq(y, freq, fs)
-        except KeyboardInterrupt:
-            return None
 
     def animate(self, y):
-        shift = [self.shiftVfos(y, self.fs, freq) for freq in self.vfos]
+        shift = [shiftFreq(y, freq, self.fs) for freq in self.vfos]
         fftData = fft.fft(shift, norm='forward')
         fftData = fft.fftshift(fftData)
         amps = np.abs(fftData)

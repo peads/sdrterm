@@ -21,8 +21,6 @@
 
 import numpy as np
 
-from misc.general_util import tprint
-
 
 class IQCorrection:
     def __init__(self, sampRate: int, impedance: int = 50):
@@ -62,5 +60,4 @@ class IQCorrection:
         for i in range(len(data)):
             z = data[i] = data[i] - self.__off
             self.__off += z * self.__inductance
-            tprint(self.__off)
         return data

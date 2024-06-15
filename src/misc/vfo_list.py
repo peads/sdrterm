@@ -17,32 +17,21 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-import struct
-import sys
-from multiprocessing import Value
-from typing import Iterable
-
-from misc.general_util import eprint
+import json
 
 
-def readFile(wordtype, buffers: Iterable, isDead: Value, f: str, readSize: int, offset=0):
+class VfoList(list):
+    def __init__(self, vfos, freq=0, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
 
-    bitdepth, structtype = wordtype
+        if vfos is None or len(vfos) < 1:
+            raise ValueError('VFOs csv cannot be empty')
 
-    with open(f, 'rb') if f is not None else open(sys.stdin.fileno(), 'rb', closefd=False) as file:
-        if offset:
-            file.seek(offset)  # skip the wav header(s)
-        try:
-            while not isDead.value:
-                data = file.read(readSize)
-                y = struct.unpack((len(data) >> bitdepth) * structtype, data)
+        self.extend([float(x) for x in vfos.split(',') if x is not None and len(x) > 0])
+        self.append(0)
+        self._freq = freq
 
-                for buffer in buffers:
-                    buffer.put(y)
-        except KeyboardInterrupt:
-            pass
-
-    for buffer in buffers:
-        buffer.close()
-
-    eprint('File reader halted')
+    def __repr__(self) -> str:
+        d = dict()
+        d['vfos'] = [(f + self._freq) / 10E+5 for f in self]
+        return json.dumps(d, indent=2)

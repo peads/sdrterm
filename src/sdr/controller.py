@@ -17,32 +17,25 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-import struct
-import sys
-from multiprocessing import Value
-from typing import Iterable
-
-from misc.general_util import eprint
+from abc import ABC, abstractmethod
 
 
-def readFile(wordtype, buffers: Iterable, isDead: Value, f: str, readSize: int, offset=0):
+class UnrecognizedInputError(Exception):
+    def __init__(self, msg: str, e: Exception = None):
+        super().__init__(f'{msg}, {e}')
 
-    bitdepth, structtype = wordtype
+class Controller(ABC):
+    def __init__(self, connection):
+        self.connection = connection
 
-    with open(f, 'rb') if f is not None else open(sys.stdin.fileno(), 'rb', closefd=False) as file:
-        if offset:
-            file.seek(offset)  # skip the wav header(s)
-        try:
-            while not isDead.value:
-                data = file.read(readSize)
-                y = struct.unpack((len(data) >> bitdepth) * structtype, data)
+    @abstractmethod
+    def setParam(self, command, param):
+        pass
 
-                for buffer in buffers:
-                    buffer.put(y)
-        except KeyboardInterrupt:
-            pass
+    @abstractmethod
+    def setFrequency(self, freq):
+        pass
 
-    for buffer in buffers:
-        buffer.close()
-
-    eprint('File reader halted')
+    @abstractmethod
+    def setFs(self, fs):
+        pass

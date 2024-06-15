@@ -18,14 +18,13 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-from multiprocessing import Pipe, Value
-from threading import Thread
+from multiprocessing import Value, get_all_start_methods, set_start_method
 from typing import Annotated
 from uuid import UUID
 
 import typer
 
-from misc.general_util import printException, vprint, applyIgnoreException
+from misc.general_util import printException, vprint, eprint
 from misc.io_args import IOArgs
 from misc.read_file import readFile
 
@@ -50,7 +49,6 @@ def main(fs: Annotated[int, typer.Option('--sampling-rate', '--fs', show_default
          read_size: Annotated[int, typer.Option(help='Size in bytes read per iteration')] = 65536):
 
     processes: dict[UUID, any] = {}
-    pipes: dict[UUID, Pipe] = {}
     isDead = Value('i', 0)
     ioArgs = IOArgs(fs=fs,
                     inFile=inFile,
@@ -61,7 +59,6 @@ def main(fs: Annotated[int, typer.Option('--sampling-rate', '--fs', show_default
                     vfos=vfos,
                     dm=dm,
                     processes=processes,
-                    pipes=pipes,
                     pl=pl,
                     isDead=isDead,
                     omegaOut=omegaOut,
@@ -71,35 +68,36 @@ def main(fs: Annotated[int, typer.Option('--sampling-rate', '--fs', show_default
                     correctIq=correct_iq,
                     simo=simo,
                     verbose=verbose,
-                    trace=trace)
+                    trace=trace,
+                    readSize=read_size)
     try:
         for proc in processes.values():
             proc.start()
 
         vprint(IOArgs.processor)
-        readFile(processes=processes,
-                 pipes=pipes,
+        vprint(f'Buffer size: {IOArgs.bufSize}')
+        readFile(buffers=IOArgs.buffers,
                  isDead=isDead,
                  offset=ioArgs.fileInfo['dataOffset'],
                  wordtype=ioArgs.fileInfo['bitsPerSample'],
                  f=ioArgs.inFile,
-                 fs=ioArgs.fs,
                  readSize=read_size)
-    except KeyboardInterrupt:
-        pass
     except Exception as e:
         printException(e)
     finally:
         isDead.value = 1
         for proc in processes.values():
-            if isinstance(proc, Thread):
-                applyIgnoreException(lambda: proc.join(0.01))
-            else:
-                applyIgnoreException(proc.terminate)
-        print('Main halted')
+            proc.join(1)
+        for buffer in IOArgs.buffers:
+            buffer.cancel_join_thread()
+        eprint('Main halted')
+        return
 
 
 if __name__ == '__main__':
-    # if 'spawn' in get_all_start_methods():
-    #     set_start_method('spawn')
+    if 'spawn' in get_all_start_methods():
+        try:
+            set_start_method('spawn', force=True)
+        except RuntimeError:
+            vprint('Warning: Setting start method failed')
     typer.run(main)

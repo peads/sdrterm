@@ -17,10 +17,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-import multiprocessing
 from abc import ABC, abstractmethod
-from multiprocessing.pool import MaybeEncodingError
-from tkinter import TclError
+from multiprocessing import Value, JoinableQueue
 from typing import Iterable
 from uuid import uuid4
 
@@ -32,14 +30,13 @@ from matplotlib import pyplot as plt
 from dsp.data_processor import DataProcessor
 from dsp.iq_correction import IQCorrection
 from dsp.util import shiftFreq
-from misc.general_util import deinterleave, printException, vprint, applyIgnoreException
+from misc.general_util import deinterleave, printException, eprint
 
 
 class Plot(DataProcessor, ABC):
     def __init__(self, **kwargs):
         if 'fs' not in kwargs.keys() or not kwargs['fs']:
             raise ValueError('fs not specified')
-        self._isDead = False
         self.forPostProcessing = None
         self.bg = None
         self.ln = None
@@ -56,17 +53,18 @@ class Plot(DataProcessor, ABC):
         self.uuid = uuid4()
         self.vfos = kwargs['vfos'] if 'vfos' in kwargs.keys() and kwargs[
             'vfos'] is not None and len(kwargs['vfos']) > 1 else None
-        self.correctIq = kwargs['iq']
-        self.iqCorrector = IQCorrection(self.fs) if self.correctIq else None
+        if 'iq' in kwargs.keys() and kwargs['iq']:
+            iqCorrector = IQCorrection(self.fs)
+            self.correctIq = iqCorrector.correctIq
         self.processor = kwargs['processor'] if 'processor' in kwargs.keys() else None
+        self.isRunning: bool = False
+
+    def correctIq(self, x):
+        return x
 
     @staticmethod
     def default_style(method):
         def decorator(self, *args, **kwargs):
-            # matplotlib.use('WxAgg')
-            # vprint(plt.rcParams['backend'])
-            # vprint(plt.get_backend(), matplotlib.__version__)
-            # plt.get_backend(), matplotlib.__version__
             mpl.rcParams['toolbar'] = 'None'
             mplstyle.use('fast')
 
@@ -84,12 +82,10 @@ class Plot(DataProcessor, ABC):
         pass
 
     def onClose(self, _):
-        self._isDead = True
-        vprint(f'Window {type(self).__name__}: {self.fig}-{self.uuid} closed')
+        self.isRunning = False
+        eprint(f'Window {type(self).__name__}: {self.fig}-{self.uuid} closed')
 
     def initBlit(self):
-        # mpl.rcParams['toolbar'] = 'None'
-        # mplstyle.use('fast')
         plt.pause(0.1)
         isIterable = isinstance(self.ln, Iterable)
         self.bg = self.fig.canvas.copy_from_bbox(self.fig.bbox)
@@ -101,27 +97,24 @@ class Plot(DataProcessor, ABC):
         self.isInit = True
         self.fig.canvas.manager.set_window_title(type(self).__name__)
 
-    def processData(self, isDead, pipe, _=None) -> None:
-        reader, writer = pipe
+    def processData(self, isDead: Value, buffer: JoinableQueue, _=None) -> None:
+        self.isRunning = True
         try:
-            while not (self._isDead or isDead.value):
-                writer.close()
-                y = reader.recv()
-                if y is None or len(y) < 1:
+            while not isDead.value and self.isRunning:
+                y = buffer.get()
+                if y is None or not len(y):
                     break
                 y = deinterleave(y)
-                if self.correctIq:
-                    y = self.iqCorrector.correctIq(y)
+                y = self.correctIq(y)
                 y = shiftFreq(y, self.centerFreq, self.fs)
                 self.animate(y)
-        except (KeyboardInterrupt, MaybeEncodingError, TclError):
+                buffer.task_done()
+        except KeyboardInterrupt:
             pass
         except Exception as e:
             printException(e)
         finally:
-            self._isDead = True
-            if 'spawn' not in multiprocessing.get_start_method():
-                isDead.value = 1
-            applyIgnoreException(writer.close)
-            applyIgnoreException(reader.close)
-            vprint(f'Figure {type(self).__name__}-{self.uuid} halted')
+            buffer.close()
+            buffer.cancel_join_thread()
+            eprint(f'Figure {type(self).__name__}-{self.uuid} halted')
+            return

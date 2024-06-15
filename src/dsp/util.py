@@ -17,14 +17,28 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-from numbers import Complex, Number, Real
+from numbers import Number, Real
 
 import numpy as np
+from multipledispatch import dispatch
 from scipy import signal
 
 
-def shiftFreq(y: np.ndarray[any, np.complex_] | list[Complex], freq: Real, fs: Real) -> np.ndarray[
-    any, np.complex_]:
+@dispatch(np.ndarray, np.ndarray, Real)
+def shiftFreq(y, freq, fs) -> np.ndarray:
+    if freq is None or not fs:
+        return y
+    n = len(y)
+    y = np.broadcast_to(y, (len(freq), n))
+    t = np.arange(n)
+    # shift in frequency specified in Hz
+    shift = np.array([np.exp(-2j * np.pi * (f / fs) * t) for f in freq])
+
+    return y * shift
+
+
+@dispatch(np.ndarray, Real, Real)
+def shiftFreq(y, freq, fs) -> np.ndarray[any, np.complex_]:
     if not freq or not fs:
         return y
     t = np.arange(len(y))
