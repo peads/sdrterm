@@ -19,9 +19,28 @@
 #
 from enum import Enum
 
+class ControlEnum(Enum):
+    @staticmethod
+    def dict():
+        return {i.name: i.value for i in RtlTcpSamplingRate}
+    @classmethod
+    def tuples(cls):
+        return list(cls.dict().items())
+
+class RtlTcpSamplingRate(ControlEnum):
+    fs0 = 250000
+    fs1 = 1024000
+    fs2 = 1200000
+    fs3 = 2048000
+    fs4 = 2400000
+    fs5 = 3200000
+
+    @staticmethod
+    def dict():
+        return {str(i.value): i.value for i in RtlTcpSamplingRate}
 
 # translated directly from rtl_tcp.c
-class RtlTcpCommands(Enum):
+class RtlTcpCommands(ControlEnum):
     SET_FREQUENCY = 0x01
     SET_SAMPLE_RATE = 0x02
     SET_GAIN_MODE = 0x03

@@ -19,25 +19,25 @@
 #
 from struct import error as StructError, pack
 
+from sdr.controller import Controller
+from sdr.controller import UnrecognizedInputError
 from sdr.rtl_tcp_commands import RtlTcpCommands
 
 
-class UnrecognizedInputError(Exception):
-    def __init__(self, msg: str, e: Exception = None):
-        super().__init__(f'{msg}, {e}')
-
-
-class ControlRtlTcp:
+class ControlRtlTcp(Controller):
     def __init__(self, connection):
-        self.connection = connection
-        connection.sendall(pack('>BI', RtlTcpCommands.SET_GAIN_MODE.value, 1))
-        connection.sendall(pack('>BI', RtlTcpCommands.SET_AGC_MODE.value, 0))
-        connection.sendall(pack('>BI', RtlTcpCommands.SET_TUNER_GAIN_BY_INDEX.value, 0))
-        connection.sendall(pack('>BI', RtlTcpCommands.SET_SAMPLE_RATE.value, 1024000))
-        connection.sendall(pack('>BI', RtlTcpCommands.SET_BIAS_TEE.value, 0))
+        super().__init__(connection)
+        # connection.sendall(pack('>BI', RtlTcpCommands.SET_GAIN_MODE.value, 1))
+        # connection.sendall(pack('>BI', RtlTcpCommands.SET_AGC_MODE.value, 0))
+        # connection.sendall(pack('>BI', RtlTcpCommands.SET_TUNER_GAIN_BY_INDEX.value, 0))
+        # connection.sendall(pack('>BI', RtlTcpCommands.SET_SAMPLE_RATE.value, 1024000))
+        # connection.sendall(pack('>BI', RtlTcpCommands.SET_BIAS_TEE.value, 0))
 
     def setFrequency(self, freq):
         self.setParam(RtlTcpCommands.SET_FREQUENCY.value, freq)
+
+    def setFs(self, fs):
+        self.setParam(RtlTcpCommands.SET_SAMPLE_RATE.value, fs)
 
     def setParam(self, command, param):
         print(f'{RtlTcpCommands(command)}: {param}')

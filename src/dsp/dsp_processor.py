@@ -17,13 +17,10 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-import itertools
 import json
-import os
 import struct
 import sys
-from functools import partial
-from multiprocessing import Pool, Value, Pipe
+from multiprocessing import Value, JoinableQueue
 from typing import Callable
 
 import numpy as np
@@ -33,14 +30,7 @@ from dsp.data_processor import DataProcessor
 from dsp.demodulation import amDemod, fmDemod, realOutput
 from dsp.iq_correction import IQCorrection
 from dsp.util import applyFilters, generateBroadcastOutputFilter, generateFmOutputFilters, shiftFreq
-from misc.general_util import applyIgnoreException, deinterleave, printException, tprint, \
-    vprint, initializer
-
-
-def handleException(isDead, e):
-    isDead.value = 1
-    if not isinstance(e, KeyboardInterrupt):
-        printException(e)
+from misc.general_util import deinterleave, printException, vprint, eprint
 
 
 class DspProcessor(DataProcessor):
@@ -57,7 +47,6 @@ class DspProcessor(DataProcessor):
                  demod: Callable[[np.ndarray[any, np.complex_]], np.ndarray] = realOutput,
                  **_):
 
-        # decimation = decimation if decimation is not None else 2
         self.outputFilters = []
         self.sosIn = None
         self.__decimatedFs = self.__fs = fs
@@ -144,66 +133,51 @@ class DspProcessor(DataProcessor):
         self.setDemod(amDemod)
 
     def processChunk(self, y: list) -> np.ndarray[any, np.real] | None:
-        try:
-            y = deinterleave(y)
+        y = deinterleave(y)
 
-            if self.correctIq is not None:
-                y = self.correctIq.correctIq(y)
+        if self.correctIq is not None:
+            y = self.correctIq.correctIq(y)
 
-            y = shiftFreq(y, self.centerFreq, self.__fs)
+        y = shiftFreq(y, self.centerFreq, self.__fs)
 
-            if self.__decimationFactor > 1:
-                y = signal.decimate(y, self.__decimationFactor, ftype='fir')
+        if self.__decimationFactor > 1:
+            y = signal.decimate(y, self.__decimationFactor, ftype='fir')
 
-            y = signal.sosfilt(self.sosIn, y)
-            y = self.demod(y)
-            y = applyFilters(y, self.outputFilters)
+        y = signal.sosfilt(self.sosIn, y)
+        y = self.demod(y)
+        y = applyFilters(y, self.outputFilters)
 
-            return y
-        except KeyboardInterrupt:
-            return None
+        return y
 
-    def processData(self, isDead: Value, pipe: Pipe, f) -> None:
-        reader, writer = pipe
+    def processData(self, isDead: Value, buffer: JoinableQueue, f: str) -> None:
 
-        data = []
-        try:
-            with open(f, 'wb') if f is not None else open(sys.stdout.fileno(), 'wb',
-                                                          closefd=False) as file:
-                tprint(f'{f} {file}')
-                with Pool(initializer=initializer, initargs=(isDead,)) as pool:
-                    ii = range(os.cpu_count())
-                    while not isDead.value:
-                        for _ in ii:
-                            y = reader.recv()
-                            if y is None or not len(y):
-                                break
-                            data.append(y)
+        with open(f, 'wb') if f is not None else open(sys.stdout.fileno(), 'wb', closefd=False) as file:
+            # with Pool(initializer=initializer, initargs=(isDead,)) as pool:
+            try:
+                while not isDead.value:
+                    y = buffer.get()
+                    if y is None or not len(y):
+                        isDead.value = 1
+                        break
+                    y = self.processChunk(y)
+                    file.write(struct.pack(len(y) * 'd', *y))
+                    buffer.task_done()
 
-                        if data is None or not len(data):
-                            break
-
-                        y = pool.map_async(self.processChunk, data)
-                        y = list(itertools.chain.from_iterable(y.get()))
-                        y = signal.savgol_filter(y, 14, self._FILTER_DEGREE)
-                        file.write(struct.pack(len(y) * 'd', *y))
-                        data.clear()
-                    pool.close()
-                    pool.join()
-                del pool
-        except (EOFError, KeyboardInterrupt, BrokenPipeError):
-            pass
-        except TypeError as e:
-            if "'NoneType' object cannot be interpreted as an integer" not in str(e):
+                    # y = pool.map_async(self.processChunk, data)
+                    # y = list(itertools.chain.from_iterable(y.get()))
+                    # y = signal.savgol_filter(y, 14, self._FILTER_DEGREE)
+                    # file.write(struct.pack(len(y) * 'd', *y))
+                    # data.clear()
+                file.write(b'')
+            except KeyboardInterrupt:
+                pass
+            except Exception as e:
                 printException(e)
-        except Exception as e:
-            printException(e)
-        finally:
-            isDead.value = 1
-            applyIgnoreException(partial(file.write, b''))
-            applyIgnoreException(writer.close)
-            applyIgnoreException(reader.close)
-            print(f'File writer halted')
+            finally:
+                buffer.close()
+                buffer.cancel_join_thread()
+                eprint(f'File writer halted')
+                return
 
     def __repr__(self):
         d = {key: value for key, value in self.__dict__.items()

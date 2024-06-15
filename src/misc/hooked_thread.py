@@ -17,13 +17,21 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-import socket
-from contextlib import closing
+import sys
+import threading
+from multiprocessing import Value
+from threading import Thread
 
 
-# taken from https://stackoverflow.com/a/45690594
-def findPort(host='localhost'):
-    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
-        s.bind((host, 0))
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        return s.getsockname()[1]
+class HookedThread(Thread):
+    def __init__(self, isDead: Value, group=None, target=None, name=None,
+                 args=(), daemon=None):
+        super().__init__(group=group, target=target, name=name, daemon=daemon, args=args)
+        def handleException(exc_type, *argv):
+            isDead.value = 1
+            if issubclass(exc_type, KeyboardInterrupt):
+                sys.__excepthook__(exc_type, *argv)
+            return
+            # printException(exc_value)
+
+        threading.excepthook = handleException

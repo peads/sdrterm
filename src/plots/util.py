@@ -18,6 +18,7 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
 import string
+from multiprocessing import Pipe
 from typing import Callable
 
 from dsp.dsp_processor import DspProcessor
@@ -38,7 +39,7 @@ def selectDemodulation(demodType: str, processor: DspProcessor) -> Callable:
         raise ValueError(f'Invalid plot type "{demodType}"')
 
 
-def selectPlotType(plotType: string, processor: DspProcessor, dataType=None, iq=False):
+def selectPlotType(plotType: string, processor: DspProcessor, pipe: Pipe, dataType=None, iq=False):
     # stupid python not having switch fall-thru >:(
     if plotType == "ps" or plotType == "power":
         return PowerSpectrumPlot(fs=processor.fs,
@@ -46,19 +47,22 @@ def selectPlotType(plotType: string, processor: DspProcessor, dataType=None, iq=
                                  centerFreq=processor.centerFreq,
                                  tunedFreq=processor.tunedFreq,
                                  bandwidth=processor.bandwidth,
-                                 iq=iq)
+                                 iq=iq,
+                                 pipe=pipe)
     elif plotType == "wave" or plotType == "waveform":
         return WaveFormPlot(fs=processor.fs,
                             processor=processor,
                             centerFreq=processor.centerFreq,
-                            iq=iq)
+                            iq=iq,
+                            pipe=pipe)
     elif plotType == "water" or plotType == "waterfall":
         return WaterfallPlot(fs=processor.fs,
                              processor=processor,
                              centerFreq=processor.centerFreq,
                              bandwidth=processor.bandwidth,
                              tunedFreq=processor.tunedFreq,
-                             iq=iq)
+                             iq=iq,
+                             pipe=pipe)
     elif plotType == "vfos" or plotType == "vfo":
         return MultiVFOPlot(fs=processor.fs,
                             processor=processor,
@@ -67,6 +71,7 @@ def selectPlotType(plotType: string, processor: DspProcessor, dataType=None, iq=
                             tunedFreq=processor.tunedFreq,
                             vfos=processor.vfos,
                             dataType=dataType,
-                            iq=iq)
+                            iq=iq,
+                            pipe=pipe)
     else:
         raise ValueError(f'Invalid plot type "{plotType}"')

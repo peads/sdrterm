@@ -17,46 +17,44 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-
-import os
-from multiprocessing import Pipe, Process
-from threading import Thread
-from typing import Iterable
+from multiprocessing import Process, JoinableQueue
 from uuid import UUID, uuid4
 
 from dsp.dsp_processor import DspProcessor
 from dsp.vfo_processor import VfoProcessor
 from misc.file_util import checkWavHeader
 from misc.general_util import traceOn, verboseOn
+from misc.vfo_list import VfoList
 from plots.util import selectDemodulation, selectPlotType
 
 
 class IOArgs:
     pl = None
-    pipes = None
     processes = None
     dm = None
-    normalize = None
+    normalize = False
     vfos = None
-    tuned = None
-    center = None
-    dec = None
+    tuned = 0
+    center = 0
+    dec = 0
     enc = None
     bits = None
-    fs = None
+    fs = 0
     outFile = None
     inFile = None
     isDead = None
-    omegaOut = None
+    omegaOut = 0
     correctIq = None
-    simo = None
+    simo = False
     fileInfo = None
     processor = None
+    bufSize = 1
+    buffers = []
 
     def __init__(self, **kwargs):
         if 'verbose' in kwargs and kwargs['verbose']:
             verboseOn()
-        if 'posix' in os.name and 'trace' in kwargs and kwargs['trace']:
+        if 'trace' in kwargs and kwargs['trace']:
             traceOn()
         IOArgs.simo = kwargs['simo']
         IOArgs.fs = kwargs['fs'] if 'fs' in kwargs else None
@@ -67,11 +65,9 @@ class IOArgs:
         IOArgs.tuned = kwargs['tuned'] if 'tuned' in kwargs else None
         if 'vfos' in kwargs and kwargs['vfos'] is not None:
             vfos = kwargs['vfos']
-            IOArgs.vfos = [float(x) for x in vfos.split(',') if x is not None and len(x) > 0]
-            IOArgs.vfos.append(0)
+            IOArgs.vfos = VfoList(vfos=vfos, freq=IOArgs.tuned)
         IOArgs.dm = kwargs['dm'] if 'dm' in kwargs else None
         IOArgs.processes = kwargs['processes']
-        IOArgs.pipes = kwargs['pipes']
         IOArgs.pl = kwargs['pl'] if 'pl' in kwargs else None
         IOArgs.isDead = kwargs['isDead']
         IOArgs.bits = kwargs['bits'] if 'bits' in kwargs else None
@@ -79,18 +75,15 @@ class IOArgs:
         IOArgs.normalize = kwargs['normalize'] if 'normalize' in kwargs else False
         IOArgs.omegaOut = kwargs['omegaOut'] if 'omegaOut' in kwargs else None
         IOArgs.correctIq = kwargs['correctIq']
+        IOArgs.fileInfo = checkWavHeader(IOArgs.inFile, IOArgs.fs, IOArgs.bits, IOArgs.enc)
+        IOArgs.fs = IOArgs.fileInfo['sampRate']
+        IOArgs.bufSize = kwargs['readSize'] // 8192
 
-        IOArgs.initParameters()
-        IOArgs.initIOHandlers()
+        IOArgs.__initIOHandlers()
         IOArgs.isDead.value = 0
 
     @classmethod
-    def initParameters(cls):
-        cls.fileInfo = checkWavHeader(cls.inFile, cls.fs, cls.bits, cls.enc)
-        cls.fs = cls.fileInfo['sampRate']
-
-    @classmethod
-    def initIOHandlers(cls):
+    def __initIOHandlers(cls):
         processor = DspProcessor if not cls.simo else VfoProcessor
         cls.processor = processor = processor(decimation=cls.dec,
                                               centerFreq=cls.center,
@@ -101,35 +94,31 @@ class IOArgs:
                                               omegaOut=cls.omegaOut,
                                               correctIq=cls.correctIq)
         selectDemodulation(cls.dm, processor)()
-        r, w = Pipe(False)
-        fileWriter = Thread(target=processor.processData,
-                             args=(cls.isDead, (r, w), cls.outFile,))
-        writerUuid = IOArgs.addConsumer(fileWriter, (r, w))
+        buffer = JoinableQueue(maxsize=cls.bufSize)
+        cls.buffers.append(buffer)
+        fileWriter = Process(target=processor.processData,
+                             args=(cls.isDead, buffer, cls.outFile),
+                             daemon=True)
+        writerUuid = IOArgs.addConsumer(fileWriter)
         fileWriter.name = "File writer-" + str(writerUuid)
 
         if cls.pl is not None and len(cls.pl) > 0:
             for p in cls.pl.split(','):
-                psplot = selectPlotType(p, processor, cls.fileInfo['bitsPerSample'][1],
-                                        cls.correctIq)
-                r, w = Pipe(False)
+                buffer = JoinableQueue(maxsize=cls.bufSize)
+                cls.buffers.append(buffer)
+                psplot = selectPlotType(p, processor, buffer, cls.fileInfo['bitsPerSample'][1], cls.correctIq)
+                # annoying, but plots don't seem to like BeInG rUn On NoT ThE mAiN tHrEaD
+                # also, it's more calculation(cpu)-bound due the graphs' data generation/manipulation rather than
+                # the more I/O-y-bound displaying bit anyway
                 plotter = Process(target=psplot.processData,
-                                  args=(cls.isDead, (r, w)))
-                plotUuid = IOArgs.addConsumer(plotter, (r, w), uuid=psplot.uuid)
+                                  args=(cls.isDead, buffer),
+                                  daemon=True)
+                plotUuid = IOArgs.addConsumer(plotter, uuid=psplot.uuid)
                 plotter.name = "Plotter-" + str(plotUuid)
 
     @classmethod
-    def addConsumer(cls, proc,
-                    pipe: Pipe,
-                    uuid: UUID = None):
+    def addConsumer(cls, proc, uuid: UUID = None) -> UUID:
         if uuid is None:
             uuid = uuid4()
-
         cls.processes[uuid] = proc
-        cls.pipes[uuid] = pipe
         return uuid
-
-
-def closePipes(pipes: Iterable):
-    for r, w in pipes:
-        r.close()
-        w.close()
