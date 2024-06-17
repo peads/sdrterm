@@ -17,27 +17,36 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-import socket
-import struct
+from multiprocessing import Queue, Value
+from uuid import uuid4
 
-from misc.general_util import shutdownSocket, deinterleave
+from misc.general_util import deinterleave
 from plots.qt_spectrum_analyzer import AbstractSpectrumAnalyzer
 
 
-class SpectrumAnalyzer(AbstractSpectrumAnalyzer):
+class SpectrumAnalyzerPlot(AbstractSpectrumAnalyzer):
+    uuid = None
 
-    def __init__(self, fs: int, sock: socket.socket, readSize: int, structtype: str = 'B'):
-        super().__init__(fs)
-        self.readSize = readSize
-        self.sock = sock
-        self.structtype = structtype
-        self.bitdepth = struct.calcsize(structtype) - 1  # int(np.log2(struct.calcsize(structtype) << 3) - 2)
+    def __init__(self, fs: int, iq: bool = True, buffer: Queue = None, isDead: Value = None, frameRate: int = 0):
+        super().__init__(fs, iq, frameRate=frameRate)
+        self.buffer = buffer
+        self.isDead = isDead
+        self.uuid = uuid4()
 
     def __del__(self):
-        shutdownSocket(self.sock)
-        self.sock.close()
+        self.buffer.close()
+        self.buffer.cancel_join_thread()
 
     def receiveData(self):
-        data = self.sock.recv(self.readSize)
-        data = struct.unpack('!' + ((len(data) >> self.bitdepth) * self.structtype), data)
-        return deinterleave(data)
+        return deinterleave(self.buffer.get())
+
+    @classmethod
+    def processData(cls, isDead, buffer, fs):
+        cls.start(fs, buffer=buffer, isDead=isDead)
+
+    def update(self):
+        from pyqtgraph.Qt.QtCore import QCoreApplication
+        if not self.isDead.value:
+            super().update()
+        else:
+            QCoreApplication.quit()

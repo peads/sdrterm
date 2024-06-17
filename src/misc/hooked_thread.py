@@ -22,15 +22,18 @@ import threading
 from multiprocessing import Value
 from threading import Thread
 
+from misc.general_util import printException
+
 
 class HookedThread(Thread):
     def __init__(self, isDead: Value, group=None, target=None, name=None,
                  args=(), daemon=None):
         super().__init__(group=group, target=target, name=name, daemon=daemon, args=args)
-        def handleException(exc_type, *argv):
+        def handleException(e, *argv):
             isDead.value = 1
-            if issubclass(exc_type, KeyboardInterrupt):
-                sys.__excepthook__(exc_type, *argv)
+            if issubclass(type(e), KeyboardInterrupt):
+                sys.__excepthook__(e, *argv)
+            printException(e)
             return
             # printException(exc_value)
 

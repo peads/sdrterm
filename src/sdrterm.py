@@ -49,7 +49,7 @@ def main(fs: Annotated[int, typer.Option('--sampling-rate', '--fs', show_default
          read_size: Annotated[int, typer.Option(help='Size in bytes read per iteration')] = 65536):
 
     processes: dict[UUID, any] = {}
-    isDead = Value('i', 0)
+    isDead = Value('b', 0)
     ioArgs = IOArgs(fs=fs,
                     inFile=inFile,
                     outFile=outFile,
@@ -75,15 +75,15 @@ def main(fs: Annotated[int, typer.Option('--sampling-rate', '--fs', show_default
             proc.start()
 
         vprint(IOArgs.processor)
-        vprint(f'Buffer size: {IOArgs.bufSize}')
         readFile(buffers=IOArgs.buffers,
                  isDead=isDead,
                  offset=ioArgs.fileInfo['dataOffset'],
                  wordtype=ioArgs.fileInfo['bitsPerSample'],
-                 f=ioArgs.inFile,
-                 readSize=read_size)
-    except Exception as e:
-        printException(e)
+                 f=ioArgs.inFile)
+    except KeyboardInterrupt:
+        pass
+    except Exception as ex:
+        printException(ex)
     finally:
         isDead.value = 1
         for proc in processes.values():
@@ -98,6 +98,6 @@ if __name__ == '__main__':
     if 'spawn' in get_all_start_methods():
         try:
             set_start_method('spawn', force=True)
-        except RuntimeError:
-            vprint('Warning: Setting start method failed')
+        except RuntimeError as e:
+            raise RuntimeWarning(f'Warning: Setting start method failed\n{e}')
     typer.run(main)

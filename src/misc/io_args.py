@@ -17,7 +17,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-from multiprocessing import Process, JoinableQueue
+from multiprocessing import Process, Queue
 from uuid import UUID, uuid4
 
 from dsp.dsp_processor import DspProcessor
@@ -48,7 +48,6 @@ class IOArgs:
     simo = False
     fileInfo = None
     processor = None
-    bufSize = 1
     buffers = []
 
     def __init__(self, **kwargs):
@@ -77,7 +76,6 @@ class IOArgs:
         IOArgs.correctIq = kwargs['correctIq']
         IOArgs.fileInfo = checkWavHeader(IOArgs.inFile, IOArgs.fs, IOArgs.bits, IOArgs.enc)
         IOArgs.fs = IOArgs.fileInfo['sampRate']
-        IOArgs.bufSize = kwargs['readSize'] // 8192
 
         IOArgs.__initIOHandlers()
         IOArgs.isDead.value = 0
@@ -94,24 +92,20 @@ class IOArgs:
                                               omegaOut=cls.omegaOut,
                                               correctIq=cls.correctIq)
         selectDemodulation(cls.dm, processor)()
-        buffer = JoinableQueue(maxsize=cls.bufSize)
+        buffer = Queue()
         cls.buffers.append(buffer)
         fileWriter = Process(target=processor.processData,
-                             args=(cls.isDead, buffer, cls.outFile),
-                             daemon=True)
+                             args=(cls.isDead, buffer, cls.outFile))
         writerUuid = IOArgs.addConsumer(fileWriter)
         fileWriter.name = "File writer-" + str(writerUuid)
 
         if cls.pl is not None and len(cls.pl) > 0:
             for p in cls.pl.split(','):
-                buffer = JoinableQueue(maxsize=cls.bufSize)
+                buffer = Queue()
                 cls.buffers.append(buffer)
-                psplot = selectPlotType(p, processor, buffer, cls.fileInfo['bitsPerSample'][1], cls.correctIq)
-                # annoying, but plots don't seem to like BeInG rUn On NoT ThE mAiN tHrEaD
-                # also, it's more calculation(cpu)-bound due the graphs' data generation/manipulation rather than
-                # the more I/O-y-bound displaying bit anyway
+                psplot = selectPlotType(p, processor, cls.fileInfo['bitsPerSample'][1], cls.correctIq)
                 plotter = Process(target=psplot.processData,
-                                  args=(cls.isDead, buffer),
+                                  args=(cls.isDead, buffer, cls.fs),
                                   daemon=True)
                 plotUuid = IOArgs.addConsumer(plotter, uuid=psplot.uuid)
                 plotter.name = "Plotter-" + str(plotUuid)

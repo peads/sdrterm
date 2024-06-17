@@ -16,46 +16,61 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-from misc.general_util import shutdownSocket
-from sdr.output_server import Receiver
+import socket
+
+import numpy as np
+
+from misc.general_util import shutdownSocket, vprint
+from sdr.receiver import Receiver
 
 
 class SocketReceiver(Receiver):
 
-    def __init__(self, writeSize=262144, readSize=8192):
-        super().__init__()  # socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self.readSize = readSize
+    def __init__(self, readSize: int = 65536):
+        super().__init__()
+        if readSize < 16:  # minimum is twice the size in bytes of two doubles representing a 128-bit complex number
+            self.readSize = 16
+        else:
+            self.readSize = 1 << int(np.round(np.log2(readSize)))
+        vprint(f'Requested read size: {readSize}\nRead size: {self.readSize}')
         self.data = bytearray()
-        self.chunks = range(writeSize // readSize)
-        self._writeSize = writeSize
 
     def __exit__(self, *ex):
         shutdownSocket(self._receiver)
 
     @property
-    def writeSize(self):
-        return self._writeSize
+    def receiver(self):
+        return self._receiver
 
-    @writeSize.setter
-    def writeSize(self, _):
-        raise NotImplementedError('WriteSize is immutable')
+    @receiver.setter
+    def receiver(self, _):
+        if self._receiver is not None:
+            self._receiver.close()
+        self._receiver = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        self._receiver.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        self._receiver.settimeout(1)
 
-    @writeSize.deleter
-    def writeSize(self):
-        del self._writeSize
+    @receiver.deleter
+    def receiver(self):
+        del self._receiver
 
     def receive(self):
         if not self._barrier.broken:
             self._barrier.wait()
             self._barrier.abort()
-        for _ in self.chunks:
-            try:
-                inp = self.receiver.recv(self.readSize)
-            except BrokenPipeError:
-                return b''
-            if inp is None or not len(inp):
-                break
-            self.data.extend(inp)
-        result = bytes(self.data)
-        self.data.clear()
-        return result
+
+        try:
+            length = len(self.data)
+            while length < self.readSize:
+                self.data += self.receiver.recv(self.readSize)
+                length = len(self.data)
+            if length > self.readSize:
+                ret = self.data[:self.readSize]
+                self.data = self.data[self.readSize:]
+            else:
+                ret = self.data.copy()
+                self.data.clear()
+
+            return ret
+        except (ValueError, ConnectionError, EOFError):
+            return b''

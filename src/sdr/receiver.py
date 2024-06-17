@@ -17,7 +17,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-import socket
 from abc import ABC, abstractmethod
 from multiprocessing import Barrier
 
@@ -71,24 +70,6 @@ class Receiver(ABC):
     @prevent_out_of_context_execution
     def barrier(self):
         del self._barrier
-
-    @property
-    @prevent_out_of_context_execution
-    def receiver(self):
-        return self._receiver
-
-    @receiver.setter
-    # @prevent_out_of_context_execution
-    def receiver(self, _):
-        if self._receiver is not None:
-            self._receiver.close()
-        self._receiver = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self._receiver.settimeout(1)
-
-    @receiver.deleter
-    @prevent_out_of_context_execution
-    def receiver(self):
-        del self._receiver
 
     @abstractmethod
     @prevent_out_of_context_execution

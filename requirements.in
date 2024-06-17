@@ -6,5 +6,4 @@ multipledispatch
 textual
 textual-slider
 # Optional:
-#PyQt5
 #pyqtgraph

@@ -17,10 +17,12 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
+import itertools
 import json
+import os
 import struct
 import sys
-from multiprocessing import Value, JoinableQueue
+from multiprocessing import Value, Queue, Pool
 from typing import Callable
 
 import numpy as np
@@ -30,7 +32,7 @@ from dsp.data_processor import DataProcessor
 from dsp.demodulation import amDemod, fmDemod, realOutput
 from dsp.iq_correction import IQCorrection
 from dsp.util import applyFilters, generateBroadcastOutputFilter, generateFmOutputFilters, shiftFreq
-from misc.general_util import deinterleave, printException, vprint, eprint
+from misc.general_util import deinterleave, printException, vprint, eprint, initializer
 
 
 class DspProcessor(DataProcessor):
@@ -44,7 +46,7 @@ class DspProcessor(DataProcessor):
                  vfos: list[float] | np.ndarray[any, np.real],
                  correctIq: bool,
                  decimation: int,
-                 demod: Callable[[np.ndarray[any, np.complex_]], np.ndarray] = realOutput,
+                 demod: Callable[[np.ndarray[any, np.complex64 | np.complex128]], np.ndarray] = realOutput,
                  **_):
 
         self.outputFilters = []
@@ -133,6 +135,9 @@ class DspProcessor(DataProcessor):
         self.setDemod(amDemod)
 
     def processChunk(self, y: list) -> np.ndarray[any, np.real] | None:
+        if y is None or not len(y):
+            raise ValueError('Empty chunk')
+
         y = deinterleave(y)
 
         if self.correctIq is not None:
@@ -149,35 +154,36 @@ class DspProcessor(DataProcessor):
 
         return y
 
-    def processData(self, isDead: Value, buffer: JoinableQueue, f: str) -> None:
-
+    def processData(self, isDead: Value, buffer: Queue, f: str) -> None:
+        ii = range(os.cpu_count())
         with open(f, 'wb') if f is not None else open(sys.stdout.fileno(), 'wb', closefd=False) as file:
-            # with Pool(initializer=initializer, initargs=(isDead,)) as pool:
-            try:
-                while not isDead.value:
-                    y = buffer.get()
-                    if y is None or not len(y):
-                        isDead.value = 1
-                        break
-                    y = self.processChunk(y)
-                    file.write(struct.pack(len(y) * 'd', *y))
-                    buffer.task_done()
+            with Pool(initializer=initializer, initargs=(isDead,)) as pool:
+                try:
+                    data = []
+                    while not isDead.value:
+                        for _ in ii:
+                            temp = buffer.get()
+                            if temp is None or not len(temp):
+                                isDead.value = 1
+                                break
+                            data.append(temp)
 
-                    # y = pool.map_async(self.processChunk, data)
-                    # y = list(itertools.chain.from_iterable(y.get()))
-                    # y = signal.savgol_filter(y, 14, self._FILTER_DEGREE)
-                    # file.write(struct.pack(len(y) * 'd', *y))
-                    # data.clear()
-                file.write(b'')
-            except KeyboardInterrupt:
-                pass
-            except Exception as e:
-                printException(e)
-            finally:
-                buffer.close()
-                buffer.cancel_join_thread()
-                eprint(f'File writer halted')
-                return
+                        y = pool.map_async(self.processChunk, data)
+                        y = list(itertools.chain.from_iterable(y.get()))
+                        # y = signal.savgol_filter(y, 14, self._FILTER_DEGREE)
+                        file.write(struct.pack(len(y) * 'd', *y))
+                        data.clear()
+                    file.write(b'')
+                except KeyboardInterrupt:
+                    pass
+                except Exception as e:
+                    printException(e)
+                finally:
+                    isDead.value = 1
+                    buffer.close()
+                    buffer.cancel_join_thread()
+                    eprint(f'File writer halted')
+                    return
 
     def __repr__(self):
         d = {key: value for key, value in self.__dict__.items()

@@ -18,52 +18,54 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
 import string
-from multiprocessing import Pipe
+from importlib.resources import files
 from typing import Callable
 
 from dsp.dsp_processor import DspProcessor
 from plots.multi_vfo_plot import MultiVFOPlot
 from plots.ps_plot import PowerSpectrumPlot
+from plots.spectrum_analyzer_plot import SpectrumAnalyzerPlot
 from plots.waterfall_plot import WaterfallPlot
 from plots.wave_form_plot import WaveFormPlot
 
 
 def selectDemodulation(demodType: str, processor: DspProcessor) -> Callable:
-    if demodType == "fm" or demodType == "nfm":
+    if demodType == 'fm' or demodType == 'nfm':
         return processor.selectOuputFm
-    elif demodType == "wfm" or demodType == "monofm":
+    elif demodType == 'wfm' or demodType == 'monofm':
         return processor.selectOuputWfm
-    elif demodType == "am":
+    elif demodType == 'am':
         raise processor.selectOuputAm
     else:
-        raise ValueError(f'Invalid plot type "{demodType}"')
+        raise ValueError(f'Invalid plot type {demodType}')
 
 
-def selectPlotType(plotType: string, processor: DspProcessor, pipe: Pipe, dataType=None, iq=False):
+def selectPlotType(plotType: string, processor: DspProcessor, dataType=None, iq=False):
     # stupid python not having switch fall-thru >:(
-    if plotType == "ps" or plotType == "power":
-        return PowerSpectrumPlot(fs=processor.fs,
-                                 processor=processor,
-                                 centerFreq=processor.centerFreq,
-                                 tunedFreq=processor.tunedFreq,
-                                 bandwidth=processor.bandwidth,
-                                 iq=iq,
-                                 pipe=pipe)
-    elif plotType == "wave" or plotType == "waveform":
+    if plotType == 'ps' or plotType == 'power':
+        try:
+            files('pyqtgraph')
+            return SpectrumAnalyzerPlot
+        except ModuleNotFoundError:
+            return PowerSpectrumPlot(fs=processor.fs,
+                                     processor=processor,
+                                     centerFreq=processor.centerFreq,
+                                     tunedFreq=processor.tunedFreq,
+                                     bandwidth=processor.bandwidth,
+                                     iq=iq)
+    elif plotType == 'wave' or plotType == 'waveform':
         return WaveFormPlot(fs=processor.fs,
                             processor=processor,
                             centerFreq=processor.centerFreq,
-                            iq=iq,
-                            pipe=pipe)
-    elif plotType == "water" or plotType == "waterfall":
+                            iq=iq)
+    elif plotType == 'water' or plotType == 'waterfall':
         return WaterfallPlot(fs=processor.fs,
                              processor=processor,
                              centerFreq=processor.centerFreq,
                              bandwidth=processor.bandwidth,
                              tunedFreq=processor.tunedFreq,
-                             iq=iq,
-                             pipe=pipe)
-    elif plotType == "vfos" or plotType == "vfo":
+                             iq=iq)
+    elif plotType == 'vfos' or plotType == 'vfo':
         return MultiVFOPlot(fs=processor.fs,
                             processor=processor,
                             centerFreq=processor.centerFreq,
@@ -71,7 +73,6 @@ def selectPlotType(plotType: string, processor: DspProcessor, pipe: Pipe, dataTy
                             tunedFreq=processor.tunedFreq,
                             vfos=processor.vfos,
                             dataType=dataType,
-                            iq=iq,
-                            pipe=pipe)
+                            iq=iq)
     else:
-        raise ValueError(f'Invalid plot type "{plotType}"')
+        raise ValueError(f'Invalid plot type {plotType}')

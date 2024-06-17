@@ -25,22 +25,20 @@ from typing import Iterable
 from misc.general_util import eprint
 
 
-def readFile(wordtype, buffers: Iterable, isDead: Value, f: str, readSize: int, offset=0):
+def readFile(wordtype, buffers: Iterable, isDead: Value, f: str, readSize: int = 65536, offset: int = 0) -> None:
 
     bitdepth, structtype = wordtype
 
     with open(f, 'rb') if f is not None else open(sys.stdin.fileno(), 'rb', closefd=False) as file:
         if offset:
             file.seek(offset)  # skip the wav header(s)
-        try:
-            while not isDead.value:
-                data = file.read(readSize)
-                y = struct.unpack((len(data) >> bitdepth) * structtype, data)
 
-                for buffer in buffers:
-                    buffer.put(y)
-        except KeyboardInterrupt:
-            pass
+        while not isDead.value:
+            data = file.read(readSize)
+            y = struct.unpack('!' + (len(data) >> bitdepth) * structtype, data)
+
+            for buffer in buffers:
+                buffer.put(y)
 
     for buffer in buffers:
         buffer.close()

@@ -38,7 +38,7 @@ def shiftFreq(y, freq, fs) -> np.ndarray:
 
 
 @dispatch(np.ndarray, Real, Real)
-def shiftFreq(y, freq, fs) -> np.ndarray[any, np.complex_]:
+def shiftFreq(y, freq, fs) -> np.ndarray[any, np.complex64 | np.complex128]:
     if not freq or not fs:
         return y
     t = np.arange(len(y))
@@ -87,7 +87,7 @@ def normalize(x: np.ndarray | list[Number]) -> np.ndarray[np.number] | list[Numb
     return (x - x.min()) / (x.max() - x.min()) - 0.5
 
 
-def cnormalize(Z: np.ndarray[any, np.complex_]) -> np.ndarray[any, np.complex_]:
+def cnormalize(Z: np.ndarray[any, np.complex64 | np.complex128]) -> np.ndarray[any, np.complex64 | np.complex128]:
     ret = Z / np.abs(Z)
     ix = np.isnan(ret[:, ])
     ret[ix] = ret[np.ix_(ix)].all(0)

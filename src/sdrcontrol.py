@@ -19,70 +19,45 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
 import socket
-from contextlib import closing
+import socketserver
+import sys
+from importlib.resources import files
 from multiprocessing import Value, Process
 
+from rich.console import RenderableType
 from textual import on
 from textual.app import App, ComposeResult
-from textual.containers import Horizontal, Vertical, Center, Container
+from textual.containers import Horizontal, Vertical, Center
 from textual.reactive import reactive
 from textual.validation import Function
 from textual.widgets import Button, RichLog, Input, Select, Label, Switch
 from textual_slider import Slider
 
-from misc.general_util import shutdownSocket, shutdownSockets
+from misc.general_util import shutdownSocket, eprint
 from plots.spectrum_analyzer import SpectrumAnalyzer
+from sdr import output_server
 from sdr.control_rtl_tcp import ControlRtlTcp
-from sdr.output_server import OutputServer
 from sdr.rtl_tcp_commands import RtlTcpSamplingRate, RtlTcpCommands
 from sdr.socket_receiver import SocketReceiver
 
 
 class SdrControl(App):
-    CSS = '''    
-        Vertical {
-            padding: 0;
-            margin: 0;
-        }
-        Horizontal {
-            padding: 0;
-            margin: 0;
-        }
-        Label {
-            padding: 0;
-            margin: 0;
-        }
-        Container {
-            padding: 0;
-            margin: 0;
-        }
-        Input#host {
-            width: 66%;
-        }
-        Input#port {
-            width: 15%;
-        }
-        Input#frequency {
-            width: 75%;
-        }
-        Button#connector {
-            width: 19%;
-        }
-        Button#set_freq {
-            width: 25%;
-        }
-    '''
+    CSS_PATH = "sdrcontrol.tcss"
     offset = reactive(0)
     fs = reactive(0)
+    gain = reactive(0)
 
-    def __init__(self, rs: socket, ls: socket, srv: OutputServer, *args, **kwargs):
+    def __init__(self,
+                 rs: socket,
+                 srv: socketserver.TCPServer,
+                 *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.graphSckts = None
         self.recvSckt = rs
-        self.listenerSckt = ls
-        self.controller = None
         self.server = srv
+        self.graphSckt = None
+        self.controller = None
         self.graphProc = None
+        self.prevGain = None
 
     @on(Button.Pressed, '#connector')
     def onConnectorPressed(self, event: Button.Pressed) -> None:
@@ -128,7 +103,7 @@ class SdrControl(App):
                 fsList.value = fs
                 frequency.value = str(freq)
 
-                result = f'Accepting connections on port {self.server.port}'
+                result = f'Accepting connections on port {self.server.socket.getsockname()[1]}'
             except (ConnectionError, OSError) as e:
                 recvSckt.receiver = None
                 result = str(e)
@@ -143,7 +118,7 @@ class SdrControl(App):
             result = 'Disconnected'
         else:
             raise RuntimeWarning(f'Unexpected input {event.button}')
-        self.query_one(RichLog).write(result)
+        self.print(result)
 
     @on(Select.Changed, '#fs_list')
     def onFsChanged(self, event: Select.Changed) -> None:
@@ -165,16 +140,25 @@ class SdrControl(App):
 
     @on(Slider.Changed, '#gains_slider')
     def onGainsChanged(self, event: Slider.Changed) -> None:
-        value = event.value
+        self.gain = event.value
         label = self.query_one('#gains_label', Label)
-        label.update(str(value))
-        if self.controller:
-            self.controller.setParam(RtlTcpCommands.SET_TUNER_GAIN_BY_INDEX.value, value)
+        label.update(str(self.gain))
+        if self.controller and not self.query_one('#agc_switch', Switch).value:
+            self.controller.setParam(RtlTcpCommands.SET_TUNER_GAIN_BY_INDEX.value, self.gain)
 
     @on(Switch.Changed, '#agc_switch')
     def onAgcChanged(self, event: Switch.Changed) -> None:
+        value = event.value
+        slider = self.query('#gains_slider')
+        slider.set(disabled=value)
+        slider = slider.first()
+        if value:
+            self.prevGain = slider.value
+            slider.value = 0
+        else:
+            slider.value = self.prevGain
+            self.prevGain = None
         if self.controller:
-            value = event.value
             self.controller.setParam(RtlTcpCommands.SET_GAIN_MODE.value, 1 - value)
 
     @on(Switch.Changed, '#dagc_switch')
@@ -184,64 +168,74 @@ class SdrControl(App):
             self.controller.setParam(RtlTcpCommands.SET_AGC_MODE.value, value)
 
     @on(Switch.Changed, '#graph_switch')
-    async def onGraphChanged(self, event: Switch.Changed) -> None:
+    def onGraphChanged(self, event: Switch.Changed) -> None:
         if event.value and self.graphProc is None:
-            w, r = self.graphSckts = socket.socketpair()
+            self.graphSckt = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self.graphSckt.settimeout(1)
+            self.graphSckt.connect(self.server.socket.getsockname())
             self.graphProc = Process(target=SpectrumAnalyzer.start,
-                                     args=(self.fs, r, self.recvSckt.writeSize),
+                                     args=(self.fs, self.graphSckt, self.recvSckt.readSize),
                                      daemon=True)
             self.graphProc.start()
-            self.server.clients.put(w)
         elif self.graphProc:
-            w, r = self.graphSckts
-            w.send(b'')
-            shutdownSockets(self.graphSckts)
-            [x.close() for x in self.graphSckts]
+            # self.graphSckt.send(b'')
+            shutdownSocket(self.graphSckt)
+            self.graphSckt.close()
             self.graphProc.join(0.1)
             if self.graphProc.exitcode is None:
                 self.graphProc.kill()
             self.graphProc = None
-            self.graphSckts = None
+            self.graphSckt = None
+
+    @staticmethod
+    def print(content: RenderableType | object):
+        eprint(content)
 
     def compose(self) -> ComposeResult:
         with Vertical():
             yield Label('Source')
-            yield Horizontal(
-                Input(placeholder='localhost', id='host', classes='source', valid_empty=True,
-                      validators=[Function(self.isValidHost, "Please input valid host.")]),
-                Input(placeholder='1234', id='port', classes='source', type='integer', valid_empty=True),
-                Button('Connect', id='connector', classes='connect', variant='success')
-            )
+            with Horizontal():
+                yield Input(placeholder='localhost',
+                            id='host',
+                            classes='source',
+                            valid_empty=True,
+                            validators=[Function(self.isValidHost, "Please input valid host.")])
+                yield Input(placeholder='1234', id='port', classes='source', type='integer', valid_empty=True)
+                yield Button('Connect', id='connector', classes='connect', variant='success')
+
             yield Label('Tuning')
-            yield Horizontal(
-                Input(placeholder='100000000 Hz', id='frequency', classes='frequency', type='integer'),
-                Button('Set', id='set_freq', classes='frequency')
-            )
+            with Horizontal():
+                yield Input(placeholder='100000000 Hz', id='frequency', classes='frequency', type='integer')
+                yield Button('Set', id='set_freq', classes='frequency')
+
             yield Label('Offset')
-            yield Container(Input(placeholder='35000 Hz', id='offset', classes='offset', type='integer'))
+            yield Input(placeholder='35000 Hz', id='offset', classes='offset', type='integer')
+
             yield Label('Sampling Rate')
             yield Select(RtlTcpSamplingRate.tuples(), prompt='Rate', classes='fs', id='fs_list')
-            yield Vertical(
-                Center(Label('Spectrum Equalizer')),
-                Center(Switch(id='graph_switch'))
-            )
-            yield Label('Gains')
-            yield Horizontal(
-                Vertical(
-                    Center(Label('Gain', id='gains_label')),
-                    Center(Slider(0, 28, id='gains_slider'))
-                ),
-                Vertical(
-                    Center(Label('LNA')),
-                    Center(Switch(id='agc_switch'))
-                ),
-                Vertical(
-                    Center(Label('VGA')),
-                    Center(Switch(id='dagc_switch'))
-                )
-            )
 
-        yield RichLog(highlight=True)
+            try:
+                files('pyqtgraph')
+                yield Center(Label('Spectrum Equalizer'))
+                yield Center(Switch(id='graph_switch'))
+            except ModuleNotFoundError:
+                pass
+
+            yield Label('Gains')
+            with Horizontal():
+                with Vertical():
+                    yield Center(Label('Gain', id='gains_label'))
+                    yield Center(Slider(0, 28, id='gains_slider'))
+                with Vertical():
+                    yield Center(Label('VGA'))
+                    yield Center(Switch(id='agc_switch'))
+                with Vertical():
+                    yield Center(Label('LNA'))
+                    yield Center(Switch(id='dagc_switch'))
+
+        log = RichLog(highlight=True)
+        yield log
+        SdrControl.print = globals()['eprint'] = log.write
 
     def on_mount(self) -> None:
         label = self.query_one('#gains_label', Label)
@@ -253,7 +247,7 @@ class SdrControl(App):
         if length < 1:
             return True
 
-        if length and '-' in value[0]:
+        if '-' in value[0]:
             return False
 
         value = value[-1]
@@ -267,23 +261,22 @@ class SdrControl(App):
 
 
 if __name__ == '__main__':
-    with SocketReceiver() as recvSckt:
-        with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as listenerSckt:
-            isDead = Value('b', 0)
-            isDead.value = 0
-            with OutputServer(isDead, host='0.0.0.0') as server:
-                try:
-                    lt, ft = server.initServer(recvSckt, listenerSckt, isDead)
-                    ft.start()
-                    lt.start()
+    readSize = 65536 if len(sys.argv) < 2 else int(sys.argv[1])
+    with SocketReceiver(readSize=readSize) as recvSckt:
+        isDead = Value('b', 0)
+        isDead.value = 0
+        try:
+            server, lt, ft = output_server.initServer(recvSckt, isDead)
+            ft.start()
+            lt.start()
 
-                    app = SdrControl(recvSckt, listenerSckt, server)
-                    app.run()
-                except KeyboardInterrupt:
-                    pass
-                finally:
-                    shutdownSocket(listenerSckt)
-                    isDead.value = 1
-                    lt.join(1)
-                    ft.join(1)
-                    app.exit(return_code=0)
+            app = SdrControl(recvSckt, server)
+            app.run()
+        except KeyboardInterrupt:
+            pass
+        finally:
+            isDead.value = 1
+            server.shutdown()
+            lt.join(1)
+            ft.join(1)
+            app.exit(return_code=0)
