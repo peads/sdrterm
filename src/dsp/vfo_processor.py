@@ -17,7 +17,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-import os
 import socket
 from contextlib import closing
 from multiprocessing import Pool, Pipe, Value
@@ -28,8 +27,8 @@ from scipy import signal
 
 from dsp.dsp_processor import DspProcessor
 from dsp.util import applyFilters, shiftFreq
-from misc.general_util import deinterleave, eprint, printException, initializer, shutdownSocket
-from sdr.output_server import OutputServer, Receiver
+from misc.general_util import deinterleave, initializer
+from sdr.receiver import Receiver
 
 
 class PipeReceiver(Receiver):
@@ -91,43 +90,44 @@ class VfoProcessor(DspProcessor):
         with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as listenerSckt:
             with PipeReceiver(outPipe, len(self.vfos)) as recvSckt:
                 with Pool(initializer=initializer, initargs=(isDead,)) as pool:
-                    with OutputServer(isDead, host='0.0.0.0') as server:
-                        try:
-                            lt, ft = server.initServer(recvSckt, listenerSckt, isDead)
-                            ft.start()
-                            lt.start()
-
-                            eprint(f'\nAccepting connections on port {server.port}\n')
-                            ii = range(os.cpu_count())
-                            data = []
-                            while not isDead.value:
-                                for _ in ii:
-                                    y = inReader.recv()
-                                    if y is None or not len(y):
-                                        break
-                                    data.append(y)
-
-                                if data is None or not len(data):
-                                    outWriter.send(b'')
-                                    isDead.value = 1
-                                    break
-                                y = pool.map_async(self.processChunk, data)
-                                for yy in y.get():
-                                    for yyy in yy:
-                                        outWriter.send(yyy)
-                                data.clear()
-                        except (EOFError, KeyboardInterrupt, BrokenPipeError, TypeError, OSError):
-                            pass
-                        except Exception as e:
-                            printException(e)
-                        finally:
-                            isDead.value = 1
-                            shutdownSocket(listenerSckt)
-                            inWriter.close()
-                            inReader.close()
-                            outReader.close()
-                            outWriter.close()
-                            ft.join(0.1)
-                            lt.join(0.1)
-                            eprint(f'Multi-VFO writer halted')
-                            return
+                    pass
+                    # with OutputServer(isDead, host='0.0.0.0') as server:
+                    #     try:
+                    #         lt, ft = server.initServer(recvSckt, listenerSckt, isDead)
+                    #         ft.start()
+                    #         lt.start()
+                    #
+                    #         eprint(f'\nAccepting connections on port {server.port}\n')
+                    #         ii = range(os.cpu_count())
+                    #         data = []
+                    #         while not isDead.value:
+                    #             for _ in ii:
+                    #                 y = inReader.recv()
+                    #                 if y is None or not len(y):
+                    #                     break
+                    #                 data.append(y)
+                    #
+                    #             if data is None or not len(data):
+                    #                 outWriter.send(b'')
+                    #                 isDead.value = 1
+                    #                 break
+                    #             y = pool.map_async(self.processChunk, data)
+                    #             for yy in y.get():
+                    #                 for yyy in yy:
+                    #                     outWriter.send(yyy)
+                    #             data.clear()
+                    #     except (EOFError, KeyboardInterrupt, BrokenPipeError, TypeError, OSError):
+                    #         pass
+                    #     except Exception as e:
+                    #         printException(e)
+                    #     finally:
+                    #         isDead.value = 1
+                    #         shutdownSocket(listenerSckt)
+                    #         inWriter.close()
+                    #         inReader.close()
+                    #         outReader.close()
+                    #         outWriter.close()
+                    #         ft.join(0.1)
+                    #         lt.join(0.1)
+                    #         eprint(f'Multi-VFO writer halted')
+                    #         return

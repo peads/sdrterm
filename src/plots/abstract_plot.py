@@ -18,7 +18,7 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
 from abc import ABC, abstractmethod
-from multiprocessing import Value, JoinableQueue
+from multiprocessing import Value, Queue
 from typing import Iterable
 from uuid import uuid4
 
@@ -97,7 +97,7 @@ class Plot(DataProcessor, ABC):
         self.isInit = True
         self.fig.canvas.manager.set_window_title(type(self).__name__)
 
-    def processData(self, isDead: Value, buffer: JoinableQueue, _=None) -> None:
+    def processData(self, isDead: Value, buffer: Queue, _=None) -> None:
         self.isRunning = True
         try:
             while not isDead.value and self.isRunning:
@@ -108,7 +108,6 @@ class Plot(DataProcessor, ABC):
                 y = self.correctIq(y)
                 y = shiftFreq(y, self.centerFreq, self.fs)
                 self.animate(y)
-                buffer.task_done()
         except KeyboardInterrupt:
             pass
         except Exception as e:

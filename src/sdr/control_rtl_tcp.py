@@ -43,8 +43,8 @@ class ControlRtlTcp(Controller):
         print(f'{RtlTcpCommands(command)}: {param}')
         try:
             if '-' in hex(param):
-                self.connection.sendall(pack('>Bi', command, param))
+                self.connection.sendall(pack('!Bi', command, param))
             else:
-                self.connection.sendall(pack('>BI', command, param))
+                self.connection.sendall(pack('!BI', command, param))
         except StructError as e:
             raise UnrecognizedInputError(param, e)

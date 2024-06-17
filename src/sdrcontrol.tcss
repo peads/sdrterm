@@ -1,0 +1,45 @@
+Vertical {
+    padding: 0;
+    margin: 0;
+    height: auto;
+}
+Horizontal {
+    padding: 0;
+    margin: 0;
+    width: 100%;
+    height: auto;
+}
+Label {
+    padding: 0;
+    margin: 0;
+    height: auto;
+}
+Container {
+    padding: 0;
+    margin: 0;
+    height: auto;
+}
+RichLog {
+    height: auto;
+    width: 100%;
+}
+Input#host {
+    width: 66%;
+    height: auto;
+}
+Input#port {
+    width: 15%;
+    height: auto;
+}
+Input#frequency {
+    width: 75%;
+    height: auto;
+}
+Button#connector {
+    width: 19%;
+    height: auto;
+}
+Button#set_freq {
+    width: 25%;
+    height: auto;
+}

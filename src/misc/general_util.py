@@ -30,40 +30,39 @@ import numpy as np
 
 class __VerbosePrint:
     @classmethod
-    def vprint(cls, *args, **kwargs):
+    def vprint(cls, *args, **kwargs) -> None:
         pass
 
     @classmethod
-    def tprint(cls, *args, **kwargs):
+    def tprint(cls, *args, **kwargs) -> None:
         pass
 
 
-def eprint(*args, **kwargs):
-    return print(*args, file=sys.stderr, **kwargs)
+def eprint(*args, **kwargs) -> None:
+    print(*args, file=sys.stderr, **kwargs)
 
 
-def vprint(*args, **kwargs):
+def vprint(*args, **kwargs) -> None:
     __VerbosePrint.vprint(*args, **kwargs)
 
 
-def tprint(*args, **kwargs):
+def tprint(*args, **kwargs) -> None:
     __VerbosePrint.tprint(*args, **kwargs)
 
 
 # def interleave(x: list, y: list) -> list:
 #     return [x for xs in zip(x, y) for x in xs]
 
-
-def deinterleave(y: list[Number] | np.ndarray[any, np.number]) -> np.ndarray[any, np.complex_]:
+def deinterleave(y: Iterable[Number] | np.ndarray[any, np.number]) -> np.ndarray[any, np.complex64 | np.complex128] | None:
     return np.array([a + 1j * b for a, b in zip(y[::2], y[1::2])])
 
 
-def printException(e):
+def printException(e: Exception) -> None:
     eprint(f'Error: {e}')
     traceback.print_exc(file=sys.stderr)
 
 
-def applyIgnoreException(*func: Callable[[], None]):
+def __applyIgnoreException(*func: Callable[[], None]) -> None:
     for f in func:
         try:
             f()
@@ -71,25 +70,27 @@ def applyIgnoreException(*func: Callable[[], None]):
             pass
 
 
-def verboseOn():
+def verboseOn() -> None:
     setattr(__VerbosePrint, 'vprint', eprint)
 
 
-def traceOn():
+def traceOn() -> None:
     verboseOn()
     setattr(__VerbosePrint, 'tprint', eprint)
 
 
-def initializer(isDead: Condition):
+def initializer(isDead: Condition) -> None:
     def handleSignal(_, __):
         isDead.value = 1
 
     s.signal(s.SIGINT, handleSignal)
 
-def shutdownSocket(sock):
-    applyIgnoreException(lambda: sock.send(b''))
-    applyIgnoreException(lambda: sock.shutdown(socket.SHUT_RDWR))
 
-def shutdownSockets(*socks):
+def shutdownSocket(sock: socket.socket) -> None:
+    __applyIgnoreException(lambda: sock.send(b''))
+    __applyIgnoreException(lambda: sock.shutdown(socket.SHUT_RDWR))
+
+
+def shutdownSockets(*socks: socket.socket) -> None:
     for sock in socks:
         shutdownSocket(sock)

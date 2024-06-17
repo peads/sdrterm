@@ -23,7 +23,7 @@ from numpy import ndarray
 from scipy import fft, signal
 
 
-def fmDemod(data: np.ndarray[any, np.complex_]) -> np.ndarray[any, np.real]:
+def fmDemod(data: np.ndarray[any, np.complex64 | np.complex128]) -> np.ndarray[any, np.real]:
     u = data[0::2]
     v = np.conj(data[1::2])
     if len(u) < len(v):
@@ -34,17 +34,17 @@ def fmDemod(data: np.ndarray[any, np.complex_]) -> np.ndarray[any, np.real]:
     return signal.resample(np.angle(u), len(data))
 
 
-def amDemod(data: np.ndarray[any, np.complex_]) -> np.ndarray[any, np.real]:
+def amDemod(data: np.ndarray[any, np.complex64 | np.complex128]) -> np.ndarray[any, np.real]:
     return np.abs(data)
 
 
-def realOutput(data: np.ndarray[any, np.complex_]) -> ndarray[any, np.real]:
+def realOutput(data: np.ndarray[any, np.complex64 | np.complex128]) -> ndarray[any, np.real]:
     return np.real(data)
 
 
-def imagOutput(data: np.ndarray[any, np.complex_]) -> ndarray[any, np.real]:
+def imagOutput(data: np.ndarray[any, np.complex64 | np.complex128]) -> ndarray[any, np.real]:
     return np.imag(data)
 
 
-def absFftOutput(data: np.ndarray[any, np.complex_]) -> ndarray[any, np.real]:
+def absFftOutput(data: np.ndarray[any, np.complex64 | np.complex128]) -> ndarray[any, np.real]:
     return np.abs(fft.fft(data))

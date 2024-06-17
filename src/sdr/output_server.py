@@ -17,17 +17,14 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-import os
 import socket
+import socketserver
 from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
-from multiprocessing import Value, Queue
-from queue import Empty
-from threading import Thread, Barrier, BrokenBarrierError
+from queue import Queue
 
-from misc.general_util import printException, eprint, shutdownSocket
+from misc.general_util import vprint, shutdownSocket, initializer, eprint
 from misc.hooked_thread import HookedThread
-from sdr.receiver import remove_context, prevent_out_of_context_execution, Receiver
 
 
 # taken from https://stackoverflow.com/a/45690594
@@ -38,92 +35,49 @@ def findPort(host='localhost') -> int:
         return s.getsockname()[1]
 
 
-class OutputServer:
+def initServer(recvSckt, isDead, host='0.0.0.0', port=findPort()):
+    clients = []
+    class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+        pass
 
-    def __init__(self, exitFlag: Value, host: str = 'localhost', port: int = findPort()):
-        self.host = host
-        self.port = port
-        self.clients: Queue = Queue(maxsize=os.cpu_count())
-        self._inside_context = False
-        self.exitFlag = exitFlag
-
-    def __enter__(self):
-        self._inside_context = True
-        return self
-
-    @remove_context
-    def __exit__(self, *exc):
-        self.exitFlag.value = 1
-        while 1:
-            try:
-                clientSckt = self.clients.get_nowait()
-                shutdownSocket(clientSckt)
-            except FileNotFoundError:
-                pass
-            except (Empty, ValueError, OSError, TypeError):
-                break
-            except Exception as e:
-                printException(e)
-                break
-        self.clients.close()
-        self.clients.join_thread()
-
-    @prevent_out_of_context_execution
-    def feed(self, recvSckt: Receiver, exitFlag: Value) -> None:
-        processingList = []
-        try:
-            while not exitFlag.value:
-                y = recvSckt.receive()
+    class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler):
+        def handle(self):
+            vprint(f'Connection request from {self.request.getsockname()}')
+            buffer = Queue()
+            clients.append(buffer)
+            if not recvSckt.barrier.broken:
+                recvSckt.barrier.wait()
+            while not isDead.value:
                 try:
-                    while not exitFlag.value:
-                        clientSckt = self.clients.get(timeout=0.01)
-                        try:
-                            clientSckt.sendall(y)
-                            processingList.append(clientSckt)
-                        except (ConnectionAbortedError, BlockingIOError, ConnectionResetError,
-                                ConnectionAbortedError, EOFError, BrokenPipeError, BrokenBarrierError) as e:
-                            shutdownSocket(clientSckt)
-                            eprint(f'Client disconnected {e}')
-                except Empty:
-                    pass
-                for c in processingList:
-                    self.clients.put(c)
-                processingList.clear()
-        except (KeyboardInterrupt, ValueError, OSError, EOFError, ConnectionResetError, ConnectionAbortedError):
-            pass
-        except Exception as e:
-            printException(e)
-        finally:
-            eprint('Feeder halted')
-            return
+                    data = buffer.get()
+                    self.request.sendall(data)
+                except (ValueError, ConnectionError, EOFError):
+                    eprint(f'Client disconnected: {self.request.getsockname()}')
+                    shutdownSocket(self.request)
+                    clients.remove(buffer)
+                    break
+            del buffer
 
-    @prevent_out_of_context_execution
-    def listen(self, listenerSckt: socket.socket, isConnected: Barrier, exitFlag: Value) -> None:
-        listenerSckt.bind((self.host, self.port))
-        listenerSckt.listen(1)
+    def receive():
+        if not recvSckt.barrier.broken:
+            recvSckt.barrier.wait()
+            recvSckt.barrier.abort()
+        buffer = Queue()
+        def __receive():
+            while not isDead.value:
+                buffer.put(recvSckt.receive())
+                buffer.join()
 
-        try:
-            with ThreadPoolExecutor(max_workers=isConnected.parties) as pool:
-                while not exitFlag.value:
-                    (clientSckt, address) = listenerSckt.accept()
-                    eprint(f'Connection request from: {address}')
-                    self.clients.put(clientSckt)
-                    if not isConnected.broken:
-                        pool.submit(isConnected.wait)
-        except (OSError, KeyboardInterrupt):
-            pass
-        except Exception as e:
-            printException(e)
-        finally:
-            eprint('Listener halted')
-            return
+        with ThreadPoolExecutor() as pool:
+            pool.submit(__receive)
+            while not isDead.value:
+                data = buffer.get()
+                for client in list(clients):
+                    client.put(data)
+                buffer.task_done()
 
-    @prevent_out_of_context_execution
-    def initServer(self,
-                   recvSckt: Receiver,
-                   listenerSckt: socket.socket,
-                   exitFlag: Value) -> (Thread, Thread):
-        listenerThread = HookedThread(exitFlag, name='Listener', target=self.listen,
-                                      args=(listenerSckt, recvSckt.barrier, exitFlag))
-        feedThread = HookedThread(exitFlag, target=self.feed, args=(recvSckt, exitFlag))
-        return listenerThread, feedThread
+    server = ThreadedTCPServer((host, port), ThreadedTCPRequestHandler)
+    server.block_on_close = False
+    st = HookedThread(isDead, target=server.serve_forever, daemon=True)
+    rt = HookedThread(isDead, target=receive, daemon=True)
+    return server, st, rt
