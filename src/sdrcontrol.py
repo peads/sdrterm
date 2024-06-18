@@ -46,6 +46,7 @@ class SdrControl(App):
     offset = reactive(0)
     fs = reactive(0)
     gain = reactive(0)
+    freq = reactive(0)
 
     def __init__(self,
                  rs: socket,
@@ -87,21 +88,21 @@ class SdrControl(App):
                 fs = fsList.value
                 fs = fs if str(fs) != "Select.BLANK" else 1024000
                 freq = frequency.value
-                freq = int(freq) if freq else 100000000
+                self.freq = int(freq) if freq else 100000000
                 agc = self.query_one('#agc_switch', Switch).value
                 agc = agc if agc else 0
                 dagc = self.query_one('#dagc_switch', Switch).value
                 dagc = dagc if dagc else 0
 
                 self.controller.setFs(fs)
-                self.controller.setFrequency(freq + self.offset)
+                self.controller.setFrequency(self.freq + self.offset)
                 self.controller.setParam(RtlTcpCommands.SET_GAIN_MODE.value, 1 - agc)
                 self.controller.setParam(RtlTcpCommands.SET_AGC_MODE.value, dagc)
                 self.controller.setParam(RtlTcpCommands.SET_TUNER_GAIN_BY_INDEX.value, gain)
 
                 gainsSlider.value = gain
                 fsList.value = fs
-                frequency.value = str(freq)
+                frequency.value = freq
 
                 result = f'Accepting connections on port {self.server.socket.getsockname()[1]}'
             except (ConnectionError, OSError) as e:
@@ -123,6 +124,12 @@ class SdrControl(App):
     @on(Select.Changed, '#fs_list')
     def onFsChanged(self, event: Select.Changed) -> None:
         self.fs = event.value if str(event.value) != "Select.BLANK" else 0
+        nyquistFs = self.fs >> 1
+        slider = self.query_one('#offset', Slider)
+        slider.min = -nyquistFs
+        slider.max = nyquistFs
+        slider.value = 0
+        slider.disabled = False
         if self.controller:
             self.controller.setFs(self.fs)
 
@@ -130,13 +137,15 @@ class SdrControl(App):
     def onFreqPressed(self, _: Button.Pressed) -> None:
         if self.controller:
             value = self.query_one('#frequency', Input).value
-            value = int(value) if value else 0
-            self.controller.setFrequency(value + self.offset)
+            self.freq = int(value) if value else 0
+            self.controller.setFrequency(self.freq + self.offset)
 
-    @on(Input.Changed, '#offset')
-    def onOffsetChanged(self, event: Input.Changed) -> None:
-        value = event.value
-        self.offset = int(value) if value and value != '-' else 0
+    @on(Slider.Changed, '#offset')
+    def onOffsetChanged(self, event: Slider.Changed) -> None:
+        self.offset = event.value
+        self.query_one('#offset_label', Label).update(str(self.offset))
+        if self.controller:
+            self.controller.setFrequency(self.freq + self.offset)
 
     @on(Slider.Changed, '#gains_slider')
     def onGainsChanged(self, event: Slider.Changed) -> None:
@@ -208,8 +217,10 @@ class SdrControl(App):
                 yield Input(placeholder='100000000 Hz', id='frequency', classes='frequency', type='integer')
                 yield Button('Set', id='set_freq', classes='frequency')
 
-            yield Label('Offset')
-            yield Input(placeholder='35000 Hz', id='offset', classes='offset', type='integer')
+            with Horizontal():
+                yield Label('Offset ')
+                yield Label('None', id='offset_label')
+            yield Slider(-12500, 12500, id='offset', disabled=True, value=0, step=12500)
 
             yield Label('Sampling Rate')
             yield Select(RtlTcpSamplingRate.tuples(), prompt='Rate', classes='fs', id='fs_list')
@@ -224,7 +235,7 @@ class SdrControl(App):
             yield Label('Gains')
             with Horizontal():
                 with Vertical():
-                    yield Center(Label('Gain', id='gains_label'))
+                    yield Center(Label('', id='gains_label'))
                     yield Center(Slider(0, 28, id='gains_slider'))
                 with Vertical():
                     yield Center(Label('VGA'))
@@ -235,7 +246,8 @@ class SdrControl(App):
 
         log = RichLog(highlight=True)
         yield log
-        SdrControl.print = globals()['eprint'] = log.write
+        SdrControl.print = log.write
+        setattr(output_server, 'log', log.write)
 
     def on_mount(self) -> None:
         label = self.query_one('#gains_label', Label)

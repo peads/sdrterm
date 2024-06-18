@@ -106,6 +106,7 @@ class IOArgs:
                 psplot = selectPlotType(p, processor, cls.fileInfo['bitsPerSample'][1], cls.correctIq)
                 plotter = Process(target=psplot.processData,
                                   args=(cls.isDead, buffer, cls.fs),
+                                  kwargs={'offset': cls.center, 'iq': cls.correctIq},
                                   daemon=True)
                 plotUuid = IOArgs.addConsumer(plotter, uuid=psplot.uuid)
                 plotter.name = "Plotter-" + str(plotUuid)

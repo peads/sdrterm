@@ -22,11 +22,9 @@ from abc import abstractmethod, ABC
 import numpy as np
 from scipy import fft
 
-from dsp.iq_correction import IQCorrection
-
 
 class AbstractSpectrumAnalyzer(ABC):
-    def __init__(self, fs: int, iq: bool = False, *args, **kwargs):
+    def __init__(self, fs: int, *args, **kwargs):
 
         import pyqtgraph as pg
         from pyqtgraph.Qt import QtCore, QtWidgets
@@ -37,7 +35,6 @@ class AbstractSpectrumAnalyzer(ABC):
         self.widget = pg.PlotWidget(name="spectrum")
         self.item = self.widget.getPlotItem()
         self.fs = fs
-        self.iqCorrector = IQCorrection(fs) if iq else None
 
         self.item.setXRange(-self._nyquistFs, self._nyquistFs, padding=0)
         self.app.quitOnLastWindowClosed()
@@ -66,9 +63,6 @@ class AbstractSpectrumAnalyzer(ABC):
             data = self.receiveData()
             if data is None or not len(data):
                 raise KeyboardInterrupt
-
-            if self.iqCorrector is not None:
-                data = self.iqCorrector.correctIq(data)
 
             fftData = fft.fft(data, norm='forward')
             fftData = fft.fftshift(fftData)
