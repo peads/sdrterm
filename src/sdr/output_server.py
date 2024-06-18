@@ -23,7 +23,7 @@ from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from queue import Queue
 
-from misc.general_util import vprint, shutdownSocket, initializer, eprint
+from misc.general_util import shutdownSocket, eprint
 from misc.hooked_thread import HookedThread
 
 
@@ -35,6 +35,9 @@ def findPort(host='localhost') -> int:
         return s.getsockname()[1]
 
 
+def log(*args, **kwargs) -> None:
+    eprint(*args, **kwargs)
+
 def initServer(recvSckt, isDead, host='0.0.0.0', port=findPort()):
     clients = []
     class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
@@ -42,7 +45,7 @@ def initServer(recvSckt, isDead, host='0.0.0.0', port=findPort()):
 
     class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler):
         def handle(self):
-            vprint(f'Connection request from {self.request.getsockname()}')
+            log(f'Connection request from {self.request.getsockname()}')
             buffer = Queue()
             clients.append(buffer)
             if not recvSckt.barrier.broken:
@@ -52,7 +55,7 @@ def initServer(recvSckt, isDead, host='0.0.0.0', port=findPort()):
                     data = buffer.get()
                     self.request.sendall(data)
                 except (ValueError, ConnectionError, EOFError):
-                    eprint(f'Client disconnected: {self.request.getsockname()}')
+                    log(f'Client disconnected: {self.request.getsockname()}')
                     shutdownSocket(self.request)
                     clients.remove(buffer)
                     break
