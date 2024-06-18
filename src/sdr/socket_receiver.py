@@ -20,16 +20,16 @@ import socket
 
 import numpy as np
 
-from misc.general_util import shutdownSocket, vprint
+from misc.general_util import shutdownSocket, vprint, eprint
 from sdr.receiver import Receiver
 
 
 class SocketReceiver(Receiver):
 
-    def __init__(self, readSize: int = 65536):
+    def __init__(self, readSize: int = 4096):
         super().__init__()
-        if readSize < 16:  # minimum is twice the size in bytes of two doubles representing a 128-bit complex number
-            self.readSize = 16
+        if readSize < 32:  # minimum is the size in bytes of four doubles representing two 128-bit complex numbers
+            self.readSize = 32
         else:
             self.readSize = 1 << int(np.round(np.log2(readSize)))
         vprint(f'Requested read size: {readSize}\nRead size: {self.readSize}')
@@ -48,7 +48,8 @@ class SocketReceiver(Receiver):
             self._receiver.close()
         self._receiver = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self._receiver.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self._receiver.settimeout(1)
+        self._receiver.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
+        self._receiver.settimeout(2)
 
     @receiver.deleter
     def receiver(self):
@@ -61,15 +62,16 @@ class SocketReceiver(Receiver):
 
         try:
             length = len(self.data)
-            while length < self.readSize:
-                self.data += self.receiver.recv(self.readSize)
+            while length < 262144:
+                temp = self.receiver.recv(self.readSize)
+                if temp is None or not len(temp):
+                    break
+                self.data += temp
                 length = len(self.data)
-            if length > self.readSize:
-                ret = self.data[:self.readSize]
-                self.data = self.data[self.readSize:]
-            else:
-                ret = self.data.copy()
-                self.data.clear()
+            if length < 262144:
+                eprint('Unable to receive number of bytes expected.')
+            ret = bytes(self.data)
+            self.data.clear()
 
             return ret
         except (ValueError, ConnectionError, EOFError):

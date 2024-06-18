@@ -19,7 +19,6 @@
 #
 import socket
 import socketserver
-from concurrent.futures import ThreadPoolExecutor
 from contextlib import closing
 from queue import Queue
 
@@ -44,12 +43,15 @@ def initServer(recvSckt, isDead, host='0.0.0.0', port=findPort()):
         pass
 
     class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler):
-        def handle(self):
-            log(f'Connection request from {self.request.getsockname()}')
-            buffer = Queue()
-            clients.append(buffer)
+
+        def setup(self):
             if not recvSckt.barrier.broken:
                 recvSckt.barrier.wait()
+
+        def handle(self):
+            log(f'Connection request from {self.request.getsockname()}')
+            buffer = Queue(16)
+            clients.append(buffer)
             while not isDead.value:
                 try:
                     data = buffer.get()
@@ -65,22 +67,12 @@ def initServer(recvSckt, isDead, host='0.0.0.0', port=findPort()):
         if not recvSckt.barrier.broken:
             recvSckt.barrier.wait()
             recvSckt.barrier.abort()
-        buffer = Queue()
-        def __receive():
-            while not isDead.value:
-                buffer.put(recvSckt.receive())
-                buffer.join()
-
-        with ThreadPoolExecutor() as pool:
-            pool.submit(__receive)
-            while not isDead.value:
-                data = buffer.get()
-                for client in list(clients):
-                    client.put(data)
-                buffer.task_done()
+        while not isDead.value:
+            data = recvSckt.receive()
+            for client in list(clients):
+                client.put(data)
 
     server = ThreadedTCPServer((host, port), ThreadedTCPRequestHandler)
-    server.block_on_close = False
     st = HookedThread(isDead, target=server.serve_forever, daemon=True)
     rt = HookedThread(isDead, target=receive, daemon=True)
     return server, st, rt

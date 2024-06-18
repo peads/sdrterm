@@ -62,10 +62,10 @@ def printException(e: Exception) -> None:
     traceback.print_exc(file=sys.stderr)
 
 
-def __applyIgnoreException(*func: Callable[[], None]) -> None:
+def __applyIgnoreException(*func: Callable[[], any]) -> any:
     for f in func:
         try:
-            f()
+            return f()
         except Exception:
             pass
 

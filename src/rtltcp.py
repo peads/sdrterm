@@ -32,9 +32,8 @@ from sdr.socket_receiver import SocketReceiver
 
 
 def main(host: Annotated[str, typer.Argument(help='Address of remote rtl_tcp server')],
-         port: Annotated[int, typer.Argument(help='Port of remote rtl_tcp server')],
-         read_size: Annotated[int, typer.Option(help='Size in bytes read per iteration')] = 65536) -> None:
-    with SocketReceiver(readSize=read_size) as recvSckt:
+         port: Annotated[int, typer.Argument(help='Port of remote rtl_tcp server')]) -> None:
+    with SocketReceiver() as recvSckt:
         recvSckt.receiver.connect((host, port))
         isDead = Value('b', 0)
         isDead.value = 0
