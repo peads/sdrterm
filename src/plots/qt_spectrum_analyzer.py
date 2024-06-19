@@ -65,9 +65,9 @@ class AbstractSpectrumAnalyzer(ABC):
         try:
             data = self.receiveData()
             length = len(data)
-            data = np.reshape(data, (length // self.nfft, self.nfft))
             if data is None or not length:
                 raise KeyboardInterrupt
+            data = np.reshape(data, (length // self.nfft, self.nfft))
 
             fftData = fft.fftshift(fft.fftn(data, norm='forward'))
             amps = np.abs(fftData)
