@@ -19,6 +19,7 @@
 #
 import itertools
 import json
+import multiprocessing
 import os
 import struct
 import sys
@@ -47,6 +48,8 @@ class DspProcessor(DataProcessor):
                  correctIq: bool,
                  decimation: int,
                  demod: Callable[[np.ndarray[any, np.complex64 | np.complex128]], np.ndarray] = realOutput,
+                 multiThreaded: bool = False,
+                 smooth: bool = False,
                  **_):
 
         self.outputFilters = []
@@ -61,6 +64,8 @@ class DspProcessor(DataProcessor):
         self.vfos = vfos
         self.omegaOut = omegaOut
         self.correctIq = IQCorrection(self.__decimatedFs) if correctIq else None
+        self.smooth = smooth
+        self.multiThreaded = multiThreaded
 
     @property
     def fs(self):
@@ -154,36 +159,56 @@ class DspProcessor(DataProcessor):
 
         return y
 
-    def processData(self, isDead: Value, buffer: Queue, f: str) -> None:
-        ii = range(os.cpu_count())
-        with open(f, 'wb') if f is not None else open(sys.stdout.fileno(), 'wb', closefd=False) as file:
-            with Pool(initializer=initializer, initargs=(isDead,)) as pool:
-                try:
-                    data = []
-                    while not isDead.value:
-                        for _ in ii:
-                            temp = buffer.get()
-                            if temp is None or not len(temp):
-                                isDead.value = 1
-                                break
-                            data.append(temp)
+    def __processMultithreaded(self, isDead: Value, buffer: Queue, file):
+        vprint('Processing multithreaded')
+        n = os.cpu_count()
+        n = n - 2 if n > 2 else 0
+        ii = range(n)
+        with Pool(processes=n, initializer=initializer, initargs=(isDead,)) as pool:
+            data = []
+            while not isDead.value:
+                for _ in ii:
+                    temp = buffer.get()
+                    if temp is None or not len(temp):
+                        isDead.value = 1
+                        break
+                    data.append(temp)
 
-                        y = pool.map_async(self.processChunk, data)
-                        y = list(itertools.chain.from_iterable(y.get()))
-                        # y = signal.savgol_filter(y, 14, self._FILTER_DEGREE)
-                        file.write(struct.pack(len(y) * 'd', *y))
-                        data.clear()
-                    file.write(b'')
-                except KeyboardInterrupt:
-                    pass
-                except Exception as e:
-                    printException(e)
-                finally:
-                    isDead.value = 1
-                    buffer.close()
-                    buffer.cancel_join_thread()
-                    eprint(f'File writer halted')
-                    return
+                y = pool.map_async(self.processChunk, data)
+                y = list(itertools.chain.from_iterable(y.get()))
+                if self.smooth:
+                    y = signal.savgol_filter(y, 14, self._FILTER_DEGREE)
+                file.write(struct.pack('=' + (len(y) * 'd'), *y))
+                data.clear()
+
+    def __processData(self, isDead: Value, buffer: Queue, file):
+        vprint('Processing on single-thread')
+        while not isDead.value:
+            y = self.processChunk(buffer.get())
+            if y is None or not len(y):
+                isDead.value = 1
+                break
+            file.write(struct.pack('=' + (len(y) * 'd'), *y))
+
+    def processData(self, isDead: Value, buffer: Queue, f: str) -> None:
+        with open(f, 'wb') if f is not None else open(sys.stdout.fileno(), 'wb', closefd=False) as file:
+            try:
+                if self.multiThreaded:
+                    self.__processMultithreaded(isDead, buffer, file)
+                else:
+                    self.__processData(isDead, buffer, file)
+                file.write(b'')
+            except (ValueError, KeyboardInterrupt):
+                pass
+            except Exception as e:
+                eprint(f'Process {multiprocessing.current_process().name} raised exception')
+                printException(e)
+            finally:
+                isDead.value = 1
+                buffer.close()
+                buffer.cancel_join_thread()
+                eprint(f'File writer halted')
+                return
 
     def __repr__(self):
         d = {key: value for key, value in self.__dict__.items()

@@ -17,6 +17,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
+import multiprocessing
 from abc import ABC, abstractmethod
 from multiprocessing import Value, Queue
 from typing import Iterable
@@ -111,6 +112,7 @@ class Plot(DataProcessor, ABC):
         except KeyboardInterrupt:
             pass
         except Exception as e:
+            eprint(f'Process {multiprocessing.current_process().name} raised exception')
             printException(e)
         finally:
             buffer.close()

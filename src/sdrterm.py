@@ -46,7 +46,8 @@ def main(fs: Annotated[int, typer.Option('--sampling-rate', '--fs', show_default
          simo: Annotated[bool, typer.Option(help='EXPERIMENTAL enable using sockets to output data processed from multiple channels specified by the vfos option')] = False,
          verbose: Annotated[bool, typer.Option('--verbose', '-v', help='Toggle verbose output')] = False,
          trace: Annotated[bool, typer.Option(help='Toggle extra verbose output')] = False,
-         read_size: Annotated[int, typer.Option(help='Size in bytes read per iteration')] = 65536):
+         multi_threaded: Annotated[bool, typer.Option(help='Toggle DSP multithreading')] = False,
+         smooth_output: Annotated[bool, typer.Option(help='Toggle smoothing output when multi-threading')] = False,):
 
     processes: dict[UUID, any] = {}
     isDead = Value('b', 0)
@@ -69,7 +70,8 @@ def main(fs: Annotated[int, typer.Option('--sampling-rate', '--fs', show_default
                     simo=simo,
                     verbose=verbose,
                     trace=trace,
-                    readSize=read_size)
+                    multiThreaded=multi_threaded,
+                    smooth=smooth_output)
     try:
         for proc in processes.values():
             proc.start()

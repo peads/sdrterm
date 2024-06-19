@@ -20,7 +20,6 @@
 #
 import socket
 import socketserver
-import sys
 from importlib.resources import files
 from multiprocessing import Value, Process
 
@@ -187,7 +186,6 @@ class SdrControl(App):
                                      daemon=True)
             self.graphProc.start()
         elif self.graphProc:
-            # self.graphSckt.send(b'')
             shutdownSocket(self.graphSckt)
             self.graphSckt.close()
             self.graphProc.join(0.1)
@@ -273,22 +271,22 @@ class SdrControl(App):
 
 
 if __name__ == '__main__':
-    readSize = 65536 if len(sys.argv) < 2 else int(sys.argv[1])
-    with SocketReceiver(readSize=readSize) as recvSckt:
+    with SocketReceiver() as recvSckt:
         isDead = Value('b', 0)
         isDead.value = 0
         try:
             server, lt, ft = output_server.initServer(recvSckt, isDead)
+            app = SdrControl(recvSckt, server)
+
             ft.start()
             lt.start()
-
-            app = SdrControl(recvSckt, server)
             app.run()
         except KeyboardInterrupt:
             pass
         finally:
             isDead.value = 1
             server.shutdown()
+            server.server_close()
             lt.join(1)
             ft.join(1)
             app.exit(return_code=0)

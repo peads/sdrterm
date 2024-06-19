@@ -25,7 +25,7 @@ from typing import Iterable
 from misc.general_util import eprint
 
 
-def readFile(wordtype, buffers: Iterable, isDead: Value, f: str, readSize: int = 65536, offset: int = 0) -> None:
+def readFile(wordtype, buffers: Iterable, isDead: Value, f: str, readSize: int = 262144, offset: int = 0) -> None:
 
     bitdepth, structtype = wordtype
 

@@ -17,6 +17,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
+import os
 from multiprocessing import Process, Queue
 from uuid import UUID, uuid4
 
@@ -49,6 +50,8 @@ class IOArgs:
     fileInfo = None
     processor = None
     buffers = []
+    multiThreaded = False
+    smooth = False
 
     def __init__(self, **kwargs):
         if 'verbose' in kwargs and kwargs['verbose']:
@@ -76,6 +79,8 @@ class IOArgs:
         IOArgs.correctIq = kwargs['correctIq']
         IOArgs.fileInfo = checkWavHeader(IOArgs.inFile, IOArgs.fs, IOArgs.bits, IOArgs.enc)
         IOArgs.fs = IOArgs.fileInfo['sampRate']
+        IOArgs.smooth = kwargs['smooth'] if 'smooth' in kwargs else False
+        IOArgs.multiThreaded = kwargs['multiThreaded'] if 'multiThreaded' in kwargs and os.cpu_count() > 2 else False
 
         IOArgs.__initIOHandlers()
         IOArgs.isDead.value = 0
@@ -90,7 +95,9 @@ class IOArgs:
                                               fs=cls.fs,
                                               normalize=cls.normalize,
                                               omegaOut=cls.omegaOut,
-                                              correctIq=cls.correctIq)
+                                              correctIq=cls.correctIq,
+                                              multiThreaded=cls.multiThreaded,
+                                              smooth=cls.smooth)
         selectDemodulation(cls.dm, processor)()
         buffer = Queue()
         cls.buffers.append(buffer)

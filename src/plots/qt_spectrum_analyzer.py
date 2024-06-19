@@ -22,9 +22,11 @@ from abc import abstractmethod, ABC
 import numpy as np
 from scipy import fft
 
+from misc.general_util import printException
+
 
 class AbstractSpectrumAnalyzer(ABC):
-    def __init__(self, fs: int, *args, **kwargs):
+    def __init__(self, fs: int, nfft: int = 2048, *args, **kwargs):
 
         import pyqtgraph as pg
         from pyqtgraph.Qt import QtCore, QtWidgets
@@ -35,6 +37,7 @@ class AbstractSpectrumAnalyzer(ABC):
         self.widget = pg.PlotWidget(name="spectrum")
         self.item = self.widget.getPlotItem()
         self.fs = fs
+        self.nfft = nfft
 
         self.item.setXRange(-self._nyquistFs, self._nyquistFs, padding=0)
         self.app.quitOnLastWindowClosed()
@@ -61,18 +64,25 @@ class AbstractSpectrumAnalyzer(ABC):
         from pyqtgraph.Qt.QtCore import QCoreApplication
         try:
             data = self.receiveData()
-            if data is None or not len(data):
+            length = len(data)
+            if data is None or not length:
                 raise KeyboardInterrupt
+            data = np.reshape(data, (length // self.nfft, self.nfft))
 
-            fftData = fft.fft(data, norm='forward')
-            fftData = fft.fftshift(fftData)
+            fftData = fft.fftshift(fft.fftn(data, norm='forward'))
             amps = np.abs(fftData)
             amps = np.log10(amps * amps)
-            freq = fft.fftfreq(len(data), self._inverseFs)
-            freq = fft.fftshift(freq)
-            self.curve_spectrum.setData(freq, amps)
+            freq = fft.fftshift(fft.fftfreq(self.nfft, self._inverseFs))
+
+            for amp in amps:
+                self.curve_spectrum.setData(freq, amp)
+
         except KeyboardInterrupt:
             QCoreApplication.quit()
+        except Exception as e:
+            printException(e)
+            QCoreApplication.quit()
+
 
     @abstractmethod
     def receiveData(self):
