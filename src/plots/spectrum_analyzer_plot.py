@@ -20,22 +20,24 @@
 from multiprocessing import Queue, Value
 from uuid import uuid4
 
+from dsp.data_processor import DataProcessor
 from dsp.iq_correction import IQCorrection
 from dsp.util import shiftFreq
 from misc.general_util import deinterleave
-from plots.qt_spectrum_analyzer import AbstractSpectrumAnalyzer
+from plots.spectrum_analyzer import SpectrumAnalyzer
 
 
-class SpectrumAnalyzerPlot(AbstractSpectrumAnalyzer):
+class SpectrumAnalyzerPlot(DataProcessor, SpectrumAnalyzer):
     uuid = None
 
-    def __init__(self, fs: int,
+    def __init__(self,
+                 buffer: Queue,
                  iq: bool = False,
-                 buffer: Queue = None,
                  isDead: Value = None,
-                 frameRate: int = 0,
-                 offset: int = 0):
-        super().__init__(fs, frameRate=frameRate)
+                 offset: int = 0,
+                 **kwargs):
+        kwargs['frameRate'] = 0 # the framerate is (likely network-)IO-bound
+        super().__init__(**kwargs)
         self.buffer = buffer
         self.isDead = isDead
         self.offset = offset

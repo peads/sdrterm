@@ -23,15 +23,34 @@ from numpy import ndarray
 from scipy import fft, signal
 
 
+class __FMDemodulator:
+    prevRe: np.complex64 | np.complex128 | None = None
+    prevIm: np.complex64 | np.complex128 | None = None
+
+    @classmethod
+    def fmDemod(cls, data: np.ndarray[any, np.complex64 | np.complex128]) -> np.ndarray[any, np.real]:
+        re = data[0::2]
+        im = data[1::2]
+
+        if cls.prevRe is not None:
+            np.insert(re, 0, cls.prevRe)
+            cls.prevRe = None
+        if cls.prevIm is not None:
+            np.insert(im, 0, cls.prevIm)
+            cls.prevIm = None
+
+        if len(re) > len(im):
+            cls.prevRe = re[-1]
+            re = re[:-1]
+        elif len(im) > len(re):
+            cls.prevIm = im[-1]
+            im = im[:-1]
+        re = re * np.conj(im)
+        return signal.resample(np.angle(re), len(data))
+
+
 def fmDemod(data: np.ndarray[any, np.complex64 | np.complex128]) -> np.ndarray[any, np.real]:
-    u = data[0::2]
-    v = np.conj(data[1::2])
-    if len(u) < len(v):
-        u = np.append(u, 0)
-    elif len(v) < len(u):
-        v = np.append(v, 0)
-    u = u * v
-    return signal.resample(np.angle(u), len(data))
+    return __FMDemodulator.fmDemod(data)
 
 
 def amDemod(data: np.ndarray[any, np.complex64 | np.complex128]) -> np.ndarray[any, np.real]:
@@ -46,5 +65,5 @@ def imagOutput(data: np.ndarray[any, np.complex64 | np.complex128]) -> ndarray[a
     return np.imag(data)
 
 
-def absFftOutput(data: np.ndarray[any, np.complex64 | np.complex128]) -> ndarray[any, np.real]:
+def spectrumOutput(data: np.ndarray[any, np.complex64 | np.complex128]) -> ndarray[any, np.real]:
     return np.abs(fft.fft(data))

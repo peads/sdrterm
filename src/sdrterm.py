@@ -29,7 +29,7 @@ from misc.io_args import IOArgs
 from misc.read_file import readFile
 
 
-def main(fs: Annotated[int, typer.Option('--sampling-rate', '--fs', show_default=False, help='Sampling frequency in Samples/s')] = None,
+def main(fs: Annotated[int, typer.Option('--fs', '-r', show_default=False, help='Sampling frequency in Samples/s')] = None,
          center: Annotated[float, typer.Option('--center-frequency', '-c', help='Offset from tuned frequency in Hz')] = 0,
          inFile: Annotated[str, typer.Option('--input', '-i', show_default='stdin', help='Input device')] = None,
          outFile: Annotated[str, typer.Option('--output', '-o', show_default='stdout', help='Output device')] = None,
@@ -39,16 +39,16 @@ def main(fs: Annotated[int, typer.Option('--sampling-rate', '--fs', show_default
          vfos: Annotated[str, typer.Option(help='1D-Comma-separated value of offsets from center frequency to process in addition to center in Hz')] = None,
          dec: Annotated[int, typer.Option('--decimation', help='Decimation factor')] = 2,
          bits: Annotated[int, typer.Option('--bits-per-sample', '-b', help='Bits per sample (ignored if wav file)')] = None,
-         enc:  Annotated[str, typer.Option('--encoding', '-e', help='Binary encoding (ignored if wav file)')] = None,
+         enc: Annotated[str, typer.Option('--encoding', '-e', help='Binary encoding (ignored if wav file)')] = None,
          normalize: Annotated[bool, typer.Option(help='Toggle normalizing input analytic signal')] = False,
          omegaOut: Annotated[int, typer.Option('--omega-out', '-m', help='Cutoff frequency in Hz')] = 12500,
          correct_iq: Annotated[bool, typer.Option(help='Toggle iq correction')] = False,
-         simo: Annotated[bool, typer.Option(help='EXPERIMENTAL enable using sockets to output data processed from multiple channels specified by the vfos option')] = False,
+         simo: Annotated[bool, typer.Option(help='N.B. unlike single-output mode--which uses the system-default endianness for output--the sockets output network-default, big-endian bytes. Enable using sockets to output data processed from multiple channels specified by the vfos option. [Implies: --vfos <csv>]')] = False,
          verbose: Annotated[bool, typer.Option('--verbose', '-v', help='Toggle verbose output')] = False,
          trace: Annotated[bool, typer.Option(help='Toggle extra verbose output')] = False,
          multi_threaded: Annotated[bool, typer.Option(help='Toggle DSP multithreading')] = False,
-         smooth_output: Annotated[bool, typer.Option(help='Toggle smoothing output when multi-threading')] = False,):
-
+         smooth_output: Annotated[bool, typer.Option(help='Toggle smoothing output when multi-threading')] = False,
+         vfo_host: Annotated[str, typer.Option(help='Address on which to listen for vfo client connections')] = 'localhost'):
     processes: dict[UUID, any] = {}
     isDead = Value('b', 0)
     ioArgs = IOArgs(fs=fs,
@@ -71,7 +71,8 @@ def main(fs: Annotated[int, typer.Option('--sampling-rate', '--fs', show_default
                     verbose=verbose,
                     trace=trace,
                     multiThreaded=multi_threaded,
-                    smooth=smooth_output)
+                    smooth=smooth_output,
+                    vfoHost=vfo_host)
     try:
         for proc in processes.values():
             proc.start()
@@ -90,6 +91,8 @@ def main(fs: Annotated[int, typer.Option('--sampling-rate', '--fs', show_default
         isDead.value = 1
         for proc in processes.values():
             proc.join(1)
+            if proc.exitcode is None:
+                proc.kill()
         for buffer in IOArgs.buffers:
             buffer.cancel_join_thread()
         eprint('Main halted')

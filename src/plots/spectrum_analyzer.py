@@ -17,27 +17,98 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-import socket
-import struct
+from abc import abstractmethod, ABC
 
-from misc.general_util import shutdownSocket, deinterleave
-from plots.qt_spectrum_analyzer import AbstractSpectrumAnalyzer
+import numpy as np
+from scipy import fft
+
+from misc.general_util import printException
 
 
-class SpectrumAnalyzer(AbstractSpectrumAnalyzer):
+class SpectrumAnalyzer(ABC):
 
-    def __init__(self, fs: int, sock: socket.socket, readSize: int, structtype: str = 'B'):
-        super().__init__(fs)
-        self.readSize = readSize
-        self.sock = sock
-        self.structtype = structtype
-        self.bitdepth = struct.calcsize(structtype) - 1  # int(np.log2(struct.calcsize(structtype) << 3) - 2)
+    # frameRate default: ~60 fps
+    def __init__(self, fs: int, nfft: int = 2048, frameRate=17, **kwargs):
 
-    def __del__(self):
-        shutdownSocket(self.sock)
-        self.sock.close()
+        import pyqtgraph as pg
+        from pyqtgraph.Qt import QtCore, QtWidgets
 
+        self.app = QtWidgets.QApplication([])
+        self.window = QtWidgets.QMainWindow()
+        self.centralWidget = QtWidgets.QWidget()
+        self.widget = pg.PlotWidget(name="spectrum")
+        self.item = self.widget.getPlotItem()
+        self.fs = fs
+        self.nfft = nfft
+
+        self.item.setXRange(-self._nyquistFs, self._nyquistFs, padding=0)
+        self.app.quitOnLastWindowClosed()
+        self.window.setWindowTitle("SpectrumAnalyzer")
+        self.window.resize(800, 600)
+        self.window.setCentralWidget(self.centralWidget)
+        self.layout = QtWidgets.QVBoxLayout()
+        self.centralWidget.setLayout(self.layout)
+        self.item.setMouseEnabled(x=False, y=False)
+        self.item.setYRange(-6, 4)
+        self.axis = self.item.getAxis("bottom")
+        self.axis.setLabel("Frequency [Hz]")
+        self.curve_spectrum = self.item.plot()
+        self.layout.addWidget(self.widget)
+        self.window.show()
+
+        self.timer = QtCore.QTimer()
+        self.timer.timeout.connect(self.update)
+        self.timer.start(frameRate)
+
+    def update(self):
+        from pyqtgraph.Qt.QtCore import QCoreApplication
+        try:
+            data = self.receiveData()
+            length = len(data)
+            if data is None or not length:
+                raise KeyboardInterrupt
+            data = np.reshape(data, (length // self.nfft, self.nfft))
+
+            fftData = fft.fftshift(fft.fftn(data, norm='forward'))
+            amps = np.abs(fftData)
+            amps = np.log10(amps * amps)
+            freq = fft.fftshift(fft.fftfreq(self.nfft, self._inverseFs))
+
+            for amp in amps:
+                self.curve_spectrum.setData(freq, amp)
+
+        except (ValueError, KeyboardInterrupt) as e:
+            if 'reshape' not in str(e):  # probably at the EOF. so, the user's not likely to even see this frame anyway
+                printException(e)
+            QCoreApplication.quit()
+        except Exception as e:
+            printException(e)
+            QCoreApplication.quit()
+
+
+    @abstractmethod
     def receiveData(self):
-        data = self.sock.recv(self.readSize)
-        data = struct.unpack('!' + ((len(data) >> self.bitdepth) * self.structtype), data)
-        return deinterleave(data)
+        pass
+
+    @classmethod
+    def start(cls, fs, *args, **kwargs):
+        from pyqtgraph.Qt import QtWidgets
+        spec = cls(fs=fs, *args, **kwargs)
+        QtWidgets.QApplication.instance().exec()
+
+    @property
+    def fs(self) -> int:
+        return self._fs
+
+    @fs.setter
+    def fs(self, value: int) -> None:
+        self._fs = value
+        self._inverseFs = 1 / value
+        self._nyquistFs = value >> 1
+        self.item.setXRange(-self._nyquistFs, self._nyquistFs, padding=0)
+
+    @fs.deleter
+    def fs(self) -> None:
+        del self._fs
+        del self._inverseFs
+        del self._nyquistFs

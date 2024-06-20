@@ -33,7 +33,7 @@ from textual.widgets import Button, RichLog, Input, Select, Label, Switch
 from textual_slider import Slider
 
 from misc.general_util import shutdownSocket, eprint
-from plots.spectrum_analyzer import SpectrumAnalyzer
+from plots.socket_spectrum_analyzer import SocketSpectrumAnalyzer
 from sdr import output_server
 from sdr.control_rtl_tcp import ControlRtlTcp
 from sdr.rtl_tcp_commands import RtlTcpSamplingRate, RtlTcpCommands
@@ -181,8 +181,9 @@ class SdrControl(App):
             self.graphSckt = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.graphSckt.settimeout(1)
             self.graphSckt.connect(self.server.socket.getsockname())
-            self.graphProc = Process(target=SpectrumAnalyzer.start,
-                                     args=(self.fs, self.graphSckt, self.recvSckt.readSize),
+            self.graphProc = Process(target=SocketSpectrumAnalyzer.start,
+                                     args=(),
+                                     kwargs={'fs': self.fs, 'sock': self.graphSckt},
                                      daemon=True)
             self.graphProc.start()
         elif self.graphProc:
@@ -271,11 +272,11 @@ class SdrControl(App):
 
 
 if __name__ == '__main__':
-    with SocketReceiver() as recvSckt:
-        isDead = Value('b', 0)
-        isDead.value = 0
+    isDead = Value('b', 0)
+    isDead.value = 0
+    with SocketReceiver(isDead=isDead) as recvSckt:
         try:
-            server, lt, ft = output_server.initServer(recvSckt, isDead)
+            server, lt, ft = output_server.initServer(recvSckt, isDead, host='0.0.0.0')
             app = SdrControl(recvSckt, server)
 
             ft.start()
