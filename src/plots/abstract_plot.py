@@ -98,7 +98,7 @@ class Plot(DataProcessor, ABC):
         self.isInit = True
         self.fig.canvas.manager.set_window_title(type(self).__name__)
 
-    def processData(self, isDead: Value, buffer: Queue, _=None) -> None:
+    def processData(self, isDead: Value, buffer: Queue) -> None:
         self.isRunning = True
         try:
             while not isDead.value and self.isRunning:

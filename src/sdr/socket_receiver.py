@@ -17,17 +17,20 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
 import socket
+from multiprocessing import Value
 
 import numpy as np
 
-from misc.general_util import shutdownSocket, vprint, eprint
+from misc.general_util import shutdownSocket, vprint
 from sdr.receiver import Receiver
 
 
 class SocketReceiver(Receiver):
+    BUF_SIZE = 262144
 
-    def __init__(self, readSize: int = 4096):
+    def __init__(self, isDead: Value, readSize: int = 4096):
         super().__init__()
+        self.isDead = isDead
         if readSize < 32:  # minimum is the size in bytes of four doubles representing two 128-bit complex numbers
             self.readSize = 32
         else:
@@ -62,14 +65,18 @@ class SocketReceiver(Receiver):
 
         try:
             length = len(self.data)
-            while length < 262144:
-                temp = self.receiver.recv(self.readSize)
+            while not self.isDead.value:
+                readSize = -length + self.BUF_SIZE
+                readSize = readSize if readSize < self.readSize else self.readSize
+                if readSize < 1:
+                    break
+                temp = self.receiver.recv(readSize)
                 if temp is None or not len(temp):
                     break
                 self.data += temp
                 length = len(self.data)
-            if length < 262144:
-                eprint('Unable to receive number of bytes expected.')
+            if length != self.BUF_SIZE:
+                vprint(f'Receive unexpected number of bytes: {"overrun" if length > self.BUF_SIZE else "underrun"}')
             ret = bytes(self.data)
             self.data.clear()
 

@@ -18,15 +18,15 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
 from abc import ABC, abstractmethod
-from multiprocessing import Value, JoinableQueue
 
 
 class DataProcessor(ABC):
     """
     Interface for data processors.
     """
+
     @abstractmethod
-    def processData(self, isDead: Value, buffer: JoinableQueue, f: str) -> None:
+    def processData(self, *args, **kwargs) -> None:
         """Consumer that performs processing on data input via a pipe
             and optionally writes it to a file specified by a filename (f) until condition (isDead) is nonzero
 

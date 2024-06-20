@@ -25,7 +25,6 @@ from dsp.dsp_processor import DspProcessor
 from dsp.vfo_processor import VfoProcessor
 from misc.file_util import checkWavHeader
 from misc.general_util import traceOn, verboseOn
-from misc.vfo_list import VfoList
 from plots.util import selectDemodulation, selectPlotType
 
 
@@ -52,6 +51,7 @@ class IOArgs:
     buffers = []
     multiThreaded = False
     smooth = False
+    vfoHost = None
 
     def __init__(self, **kwargs):
         if 'verbose' in kwargs and kwargs['verbose']:
@@ -66,8 +66,7 @@ class IOArgs:
         IOArgs.center = kwargs['center']
         IOArgs.tuned = kwargs['tuned'] if 'tuned' in kwargs else None
         if 'vfos' in kwargs and kwargs['vfos'] is not None:
-            vfos = kwargs['vfos']
-            IOArgs.vfos = VfoList(vfos=vfos, freq=IOArgs.tuned)
+            IOArgs.vfos = kwargs['vfos']
         IOArgs.dm = kwargs['dm'] if 'dm' in kwargs else None
         IOArgs.processes = kwargs['processes']
         IOArgs.pl = kwargs['pl'] if 'pl' in kwargs else None
@@ -81,6 +80,7 @@ class IOArgs:
         IOArgs.fs = IOArgs.fileInfo['sampRate']
         IOArgs.smooth = kwargs['smooth'] if 'smooth' in kwargs else False
         IOArgs.multiThreaded = kwargs['multiThreaded'] if 'multiThreaded' in kwargs and os.cpu_count() > 2 else False
+        IOArgs.vfoHost = kwargs['vfoHost'] if 'vfoHost' in kwargs else 'localhost'
 
         IOArgs.__initIOHandlers()
         IOArgs.isDead.value = 0
@@ -97,7 +97,8 @@ class IOArgs:
                                               omegaOut=cls.omegaOut,
                                               correctIq=cls.correctIq,
                                               multiThreaded=cls.multiThreaded,
-                                              smooth=cls.smooth)
+                                              smooth=cls.smooth,
+                                              host=cls.vfoHost)
         selectDemodulation(cls.dm, processor)()
         buffer = Queue()
         cls.buffers.append(buffer)

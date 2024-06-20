@@ -33,12 +33,12 @@ from sdr.socket_receiver import SocketReceiver
 
 def main(host: Annotated[str, typer.Argument(help='Address of remote rtl_tcp server')],
          port: Annotated[int, typer.Argument(help='Port of remote rtl_tcp server')]) -> None:
-    with SocketReceiver() as recvSckt:
+    isDead = Value('b', 0)
+    isDead.value = 0
+    with SocketReceiver(isDead=isDead) as recvSckt:
         recvSckt.receiver.connect((host, port))
-        isDead = Value('b', 0)
-        isDead.value = 0
         cmdr = ControlRtlTcp(recvSckt.receiver)
-        server, st, pt = output_server.initServer(recvSckt, isDead)
+        server, st, pt = output_server.initServer(recvSckt, isDead, host='0.0.0.0')
 
         st.start()
         pt.start()
@@ -62,11 +62,12 @@ def main(host: Annotated[str, typer.Argument(help='Address of remote rtl_tcp ser
                             numCmd = RtlTcpCommands(int(cmd)).value
                         else:
                             numCmd = RtlTcpCommands[cmd].value
-
-                        if param.isnumeric():
-                            cmdr.setParam(numCmd, int(param))
-                        else:
+                        if not param.isnumeric():
                             print(f'ERROR: Input invalid: {cmd}: {param}. Please try again')
+                        else:
+                            param = int(param)
+                            cmdr.setParam(numCmd, param)
+                            recvSckt.fs = param
                 except (UnrecognizedInputError, ValueError, KeyError) as ex:
                     print(f'ERROR: Input invalid: {ex}. Please try again')
         except (ConnectionResetError, ConnectionAbortedError):
@@ -76,6 +77,7 @@ def main(host: Annotated[str, typer.Argument(help='Address of remote rtl_tcp ser
         finally:
             isDead.value = 1
             server.shutdown()
+            server.server_close()
             st.join(1)
             pt.join(1)
             eprint('UI halted')

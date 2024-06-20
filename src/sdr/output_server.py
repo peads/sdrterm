@@ -20,10 +20,12 @@
 import socket
 import socketserver
 from contextlib import closing
+from multiprocessing import Value
 from queue import Queue
 
 from misc.general_util import shutdownSocket, eprint
 from misc.hooked_thread import HookedThread
+from sdr.receiver import Receiver
 
 
 # taken from https://stackoverflow.com/a/45690594
@@ -37,7 +39,7 @@ def findPort(host='localhost') -> int:
 def log(*args, **kwargs) -> None:
     eprint(*args, **kwargs)
 
-def initServer(recvSckt, isDead, host='0.0.0.0', port=findPort()):
+def initServer(receiver: Receiver, isDead: Value, host='localhost', port=findPort()):
     clients = []
     class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
         pass
@@ -45,8 +47,8 @@ def initServer(recvSckt, isDead, host='0.0.0.0', port=findPort()):
     class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler):
 
         def setup(self):
-            if not recvSckt.barrier.broken:
-                recvSckt.barrier.wait()
+            if not receiver.barrier.broken:
+                receiver.barrier.wait()
 
         def handle(self):
             log(f'Connection request from {self.request.getsockname()}')
@@ -56,6 +58,7 @@ def initServer(recvSckt, isDead, host='0.0.0.0', port=findPort()):
                 try:
                     data = buffer.get()
                     self.request.sendall(data)
+                    buffer.task_done()
                 except (ValueError, ConnectionError, EOFError):
                     log(f'Client disconnected: {self.request.getsockname()}')
                     shutdownSocket(self.request)
@@ -64,11 +67,11 @@ def initServer(recvSckt, isDead, host='0.0.0.0', port=findPort()):
             del buffer
 
     def receive():
-        if not recvSckt.barrier.broken:
-            recvSckt.barrier.wait()
-            recvSckt.barrier.abort()
+        if not receiver.barrier.broken:
+            receiver.barrier.wait()
+            receiver.barrier.abort()
         while not isDead.value:
-            data = recvSckt.receive()
+            data = receiver.receive()
             for client in list(clients):
                 client.put(data)
 

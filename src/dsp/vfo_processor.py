@@ -17,117 +17,112 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-import socket
-from contextlib import closing
-from multiprocessing import Pool, Pipe, Value
-from threading import Barrier
+import socketserver
+import struct
+from multiprocessing import Pipe, Value, Queue, Barrier
 
 import numpy as np
 from scipy import signal
 
 from dsp.dsp_processor import DspProcessor
-from dsp.util import applyFilters, shiftFreq
-from misc.general_util import deinterleave, initializer
-from sdr.receiver import Receiver
+from dsp.util import applyFilters
+from misc.general_util import eprint, printException, deinterleave
+from misc.hooked_thread import HookedThread
+from sdr.output_server import findPort
 
 
-class PipeReceiver(Receiver):
-    def __init__(self, pipe: Pipe, vfos: int):
-        receiver, self.__writer = pipe
-        super().__init__(receiver, Barrier(vfos + 1))  # +1 for receiver thread
-
-    def __exit__(self, *ex):
-        self.__writer.close()
-        self._receiver.close()
-
-    def receive(self):
-        if not self._barrier.broken:
-            self._barrier.wait()
-            self._barrier.abort()
-        try:
-            return self.receiver.recv()
-        except TypeError:
-            return b''
+class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+    pass
 
 
 class VfoProcessor(DspProcessor):
 
-    def __init__(self,
-                 fs: int,
-                 centerFreq: float,
-                 omegaOut: int,
-                 tunedFreq: int,
-                 vfos: list[float] | np.ndarray[any, np.real],
-                 correctIq: bool,
-                 decimation: int,
-                 **kwargs):
-        if not vfos or len(vfos) < 1:
+    def __init__(self, host: str = 'localhost', **kwargs):
+        super().__init__(**kwargs)
+        if self.vfos is None or len(self.vfos) < 1:
             raise ValueError("simo mode cannot be used without the vfos option")
-        super().__init__(fs=fs,
-                         centerFreq=centerFreq,
-                         omegaOut=omegaOut,
-                         tunedFreq=tunedFreq,
-                         vfos=np.array(vfos),
-                         correctIq=correctIq,
-                         decimation=decimation, **kwargs)
+        self.vfos = [float(x) + self.centerFreq for x in self.vfos.split(',') if x is not None]
+        self.vfos.append(self.centerFreq)
+        self.vfos = np.array(self.vfos)
+        self.nFreq = len(self.vfos)
+        self.omega = -2j * np.pi * (self.vfos / self.fs)
+        self.host = host
 
-    def processChunk(self, y: list) -> np.ndarray[any, np.real] | None:
-        try:
-            y = deinterleave(y)
-            if self.correctIq is not None:
-                y = self.correctIq.correctIq(y)
-            y = shiftFreq(y, self.vfos + self.centerFreq, self.fs)
-            y = signal.decimate(y, self.decimation, ftype='fir')
-            y = signal.sosfilt(self.sosIn, y)
-            y = np.array([self.demod(yy) for yy in y])
-            return applyFilters(y, self.outputFilters)
-        except KeyboardInterrupt:
-            return None
+    def processData(self, isDead: Value, buffer: Queue, _) -> None:
+        children = self.nFreq + 1
+        barrier = Barrier(children)
+        pipes = []
 
-    def processData(self, isDead: Value, pipe: Pipe, _) -> None:
-        inReader, inWriter = pipe
-        outReader, outWriter = outPipe = Pipe(False)
-        with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as listenerSckt:
-            with PipeReceiver(outPipe, len(self.vfos)) as recvSckt:
-                with Pool(initializer=initializer, initargs=(isDead,)) as pool:
-                    pass
-                    # with OutputServer(isDead, host='0.0.0.0') as server:
-                    #     try:
-                    #         lt, ft = server.initServer(recvSckt, listenerSckt, isDead)
-                    #         ft.start()
-                    #         lt.start()
-                    #
-                    #         eprint(f'\nAccepting connections on port {server.port}\n')
-                    #         ii = range(os.cpu_count())
-                    #         data = []
-                    #         while not isDead.value:
-                    #             for _ in ii:
-                    #                 y = inReader.recv()
-                    #                 if y is None or not len(y):
-                    #                     break
-                    #                 data.append(y)
-                    #
-                    #             if data is None or not len(data):
-                    #                 outWriter.send(b'')
-                    #                 isDead.value = 1
-                    #                 break
-                    #             y = pool.map_async(self.processChunk, data)
-                    #             for yy in y.get():
-                    #                 for yyy in yy:
-                    #                     outWriter.send(yyy)
-                    #             data.clear()
-                    #     except (EOFError, KeyboardInterrupt, BrokenPipeError, TypeError, OSError):
-                    #         pass
-                    #     except Exception as e:
-                    #         printException(e)
-                    #     finally:
-                    #         isDead.value = 1
-                    #         shutdownSocket(listenerSckt)
-                    #         inWriter.close()
-                    #         inReader.close()
-                    #         outReader.close()
-                    #         outWriter.close()
-                    #         ft.join(0.1)
-                    #         lt.join(0.1)
-                    #         eprint(f'Multi-VFO writer halted')
-                    #         return
+        class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler):
+            def setup(self):
+                eprint(f'Connection request from {self.request.getsockname()}')
+                if not barrier.broken:
+                    barrier.wait()
+
+            def handle(self):
+                r, w = pipe = Pipe(False)
+                pipes.append(pipe)
+                while not isDead.value:
+                    try:
+                        self.request.sendall(r.recv())
+                    except (EOFError, ConnectionError):
+                        eprint(f'Client disconnected: {self.request.getsockname()}')
+                        pipes.remove(pipe)
+                        r.close()
+                        w.close()
+                        return
+
+        def shift(Y: np.ndarray, n: int) -> np.ndarray:
+            t = np.arange(n)
+            s = np.exp([w * t for w in self.omega])
+            ret = Y * s
+            return ret
+
+        with ThreadedTCPServer((self.host, findPort()), ThreadedTCPRequestHandler) as server:
+            server.max_children = children
+            thread = HookedThread(isDead, target=server.serve_forever, daemon=True)
+            thread.start()
+
+            try:
+                eprint(f'\nAccepting connections on port {server.socket.getsockname()[1]}\n')
+                if not barrier.broken:
+                    barrier.wait()
+
+                while not isDead.value:
+                    y = buffer.get()
+                    length = len(y)
+                    if y is None or not length:
+                        isDead.value = 1
+                        break
+
+                    y = deinterleave(y)
+                    length >>= 1
+                    if self.correctIq is not None:
+                        y = self.correctIq.correctIq(y)
+                    y = np.broadcast_to(y, (self.nFreq, length))
+                    y = shift(y, length)
+                    if self._decimationFactor > 1:
+                        y = signal.decimate(y, self.decimation, ftype='fir')
+                    y = signal.sosfilt(self.sosIn, y)
+                    y = [self.demod(yy) for yy in y]
+                    y = applyFilters(y, self.outputFilters)
+                    for (pipe, data) in zip(pipes, y):
+                        r, w = pipe
+                        try:
+                            w.send(struct.pack('!' + (len(data) * 'd'), *data))
+                        except ConnectionError:
+                            pipes.remove(pipe)
+                            r.close()
+                            w.close()
+                    barrier.abort()
+            except (EOFError, KeyboardInterrupt, ConnectionError, TypeError):
+                pass
+            except Exception as e:
+                printException(e)
+            finally:
+                isDead.value = 1
+                buffer.close()
+                buffer.cancel_join_thread()
+                thread.join(1)
+                eprint(f'Multi-VFO writer halted')
+                return

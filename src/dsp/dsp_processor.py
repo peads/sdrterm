@@ -30,7 +30,7 @@ import numpy as np
 from scipy import signal
 
 from dsp.data_processor import DataProcessor
-from dsp.demodulation import amDemod, fmDemod, realOutput
+from dsp.demodulation import amDemod, fmDemod
 from dsp.iq_correction import IQCorrection
 from dsp.util import applyFilters, generateBroadcastOutputFilter, generateFmOutputFilters, shiftFreq
 from misc.general_util import deinterleave, printException, vprint, eprint, initializer
@@ -44,21 +44,19 @@ class DspProcessor(DataProcessor):
                  centerFreq: float,
                  omegaOut: int,
                  tunedFreq: int,
-                 vfos: list[float] | np.ndarray[any, np.real],
+                 vfos: str,
                  correctIq: bool,
                  decimation: int,
-                 demod: Callable[[np.ndarray[any, np.complex64 | np.complex128]], np.ndarray] = realOutput,
                  multiThreaded: bool = False,
                  smooth: bool = False,
-                 **_):
+                 **kwargs):
 
         self.outputFilters = []
         self.sosIn = None
         self.__decimatedFs = self.__fs = fs
-        self.__decimationFactor = decimation
+        self._decimationFactor = decimation
         self.__decimatedFs //= decimation
         self.centerFreq = centerFreq
-        self.demod = demod
         self.bandwidth = None
         self.tunedFreq = tunedFreq
         self.vfos = vfos
@@ -74,7 +72,7 @@ class DspProcessor(DataProcessor):
     @fs.setter
     def fs(self, fs):
         self.__fs = fs
-        self.__decimatedFs = fs // self.__decimationFactor
+        self.__decimatedFs = fs // self._decimationFactor
 
     @fs.deleter
     def fs(self):
@@ -82,17 +80,17 @@ class DspProcessor(DataProcessor):
 
     @property
     def decimation(self):
-        return self.__decimationFactor
+        return self._decimationFactor
 
     @decimation.deleter
     def decimation(self):
-        del self.__decimationFactor
+        del self._decimationFactor
 
     @decimation.setter
     def decimation(self, decimation):
         if not decimation or decimation < 2:
             raise ValueError("Decimation must be at least 2.")
-        self.__decimationFactor = decimation
+        self._decimationFactor = decimation
         self.__decimatedFs = self.__fs // decimation
         self.correctIq = IQCorrection(self.__decimatedFs) if self.correctIq else None
 
@@ -104,9 +102,13 @@ class DspProcessor(DataProcessor):
     def decimatedFs(self):
         del self.__decimatedFs
 
-    def setDemod(self, fun):
-        if bool(fun):
-            self.demod = fun
+    def demod(self, y: np.ndarray[any, np.complex64 | np.complex128]) -> np.ndarray[any, np.real]:
+        pass
+
+    def setDemod(self, fun: Callable[[np.ndarray[any, np.complex64 | np.complex128]], np.ndarray[any, np.real]]) -> \
+                Callable[[np.ndarray[any, np.complex64 | np.complex128]], np.ndarray[any, np.real]]:
+        if fun is not None:
+            setattr(self, 'demod', fun)
             self.sosIn = signal.ellip(self._FILTER_DEGREE, 1, 30, [1, self.bandwidth >> 1],
                                       btype='bandpass',
                                       analog=False,
@@ -150,8 +152,8 @@ class DspProcessor(DataProcessor):
 
         y = shiftFreq(y, self.centerFreq, self.__fs)
 
-        if self.__decimationFactor > 1:
-            y = signal.decimate(y, self.__decimationFactor, ftype='fir')
+        if self._decimationFactor > 1:
+            y = signal.decimate(y, self._decimationFactor, ftype='fir')
 
         y = signal.sosfilt(self.sosIn, y)
         y = self.demod(y)
@@ -161,8 +163,10 @@ class DspProcessor(DataProcessor):
 
     def __processMultithreaded(self, isDead: Value, buffer: Queue, file):
         vprint('Processing multithreaded')
-        n = os.cpu_count()
-        n = n - 2 if n > 2 else 0
+        n = os.cpu_count() >> 1
+        if n < 2:
+            raise RuntimeError('CPU count must be at least 4')
+        vprint(f'Processing on {n} threads')
         ii = range(n)
         with Pool(processes=n, initializer=initializer, initargs=(isDead,)) as pool:
             data = []
@@ -214,8 +218,8 @@ class DspProcessor(DataProcessor):
         d = {key: value for key, value in self.__dict__.items()
              if not key.startswith('_')
              and not callable(value)
-             and not isinstance(value, np.ndarray)
-             and not isinstance(value, IQCorrection)
+             and not issubclass(type(value), np.ndarray)
+             and not issubclass(type(value), IQCorrection)
              and key not in {'outputFilters'}}
         d['fs'] = self.fs
         d['decimatedFs'] = self.decimatedFs

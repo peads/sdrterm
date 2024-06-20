@@ -18,28 +18,28 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
 from numbers import Number, Real
+from typing import Iterable
 
 import numpy as np
-from multipledispatch import dispatch
 from scipy import signal
 
 
-@dispatch(np.ndarray, np.ndarray, Real)
-def shiftFreq(y, freq, fs) -> np.ndarray:
-    if freq is None or not fs:
-        return y
-    n = len(y)
-    y = np.broadcast_to(y, (len(freq), n))
-    t = np.arange(n)
-    # shift in frequency specified in Hz
-    shift = np.array([np.exp(-2j * np.pi * (f / fs) * t) for f in freq])
+# @dispatch(np.ndarray, np.ndarray, Real)
+# def shiftFreq(y, freq, fs) -> np.ndarray:
+#     if freq is None or not fs:
+#         return y
+#     n = len(y)
+#     y = np.broadcast_to(y, (len(freq), n))
+#     t = np.arange(n)
+#     # shift in frequency specified in Hz
+#     shift = np.array([np.exp(-2j * np.pi * (f / fs) * t) for f in freq])
+#
+#     return y * shift
 
-    return y * shift
 
-
-@dispatch(np.ndarray, Real, Real)
-def shiftFreq(y, freq, fs) -> np.ndarray[any, np.complex64 | np.complex128]:
-    if not freq or not fs:
+# @dispatch(np.ndarray, Real, Real)
+def shiftFreq(y: np.ndarray[any, np.complex64 | np.complex128], freq: Real, fs: Real) -> np.ndarray[any, np.complex64 | np.complex128] | None:
+    if not freq or not fs or y is None or not len(y):
         return y
     t = np.arange(len(y))
     # shift in frequency specified in Hz
@@ -48,7 +48,7 @@ def shiftFreq(y, freq, fs) -> np.ndarray[any, np.complex64 | np.complex128]:
     return y * shift
 
 
-def applyFilters(y: np.ndarray, filters: list[np.ndarray]) -> np.ndarray:
+def applyFilters(y: np.ndarray | Iterable, filters: list[np.ndarray]) -> np.ndarray:
     for sos in filters:
         y = signal.sosfilt(sos, y)
     return y
