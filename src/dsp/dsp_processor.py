@@ -166,9 +166,9 @@ class DspProcessor(DataProcessor):
         n = os.cpu_count() >> 1
         if n < 2:
             raise RuntimeError('CPU count must be at least 4')
-        eprint(f'Processing {n} threads')
+        vprint(f'Processing on {n} threads')
         ii = range(n)
-        with Pool(processes=4, initializer=initializer, initargs=(isDead,)) as pool:
+        with Pool(processes=n, initializer=initializer, initargs=(isDead,)) as pool:
             data = []
             while not isDead.value:
                 for _ in ii:
