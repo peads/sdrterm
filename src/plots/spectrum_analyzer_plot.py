@@ -20,6 +20,8 @@
 from multiprocessing import Queue, Value
 from uuid import uuid4
 
+import numpy as np
+
 from dsp.data_processor import DataProcessor
 from dsp.iq_correction import IQCorrection
 from dsp.util import shiftFreq
@@ -50,7 +52,12 @@ class SpectrumAnalyzerPlot(DataProcessor, SpectrumAnalyzer):
 
     def receiveData(self):
         data = self.buffer.get()
-        data = data[:self.nfft]
+        # n = int(len(data) * (1 - self._inverseFs))
+        # data = data[:n]
+        length = len(data)
+        n = length // self.nfft
+        if length - self.nfft * n != 0:
+            data = data[:1 << int(np.log2(length))]
         if self.iqCorrector is not None:
             data = self.iqCorrector.correctIq(data)
         return shiftFreq(data, self.offset, self.fs)
