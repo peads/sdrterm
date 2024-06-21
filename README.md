@@ -32,7 +32,7 @@ deactivate
 #### Input data type: 8-bit unsigned-int
 #### Input: stdin
 #### Output: stdout
-`socat TCP4:<host>:<port> - | python src/sdrterm.py --fs=1024000 -b8 -eB --plot=ps | ...`
+`socat -u TCP4:<host>:<port> - | python src/sdrterm.py --fs=1024000 -b8 -eB --plot=ps | ...`
 #### Plot: Spectrum analyzer
 #### Sample rate: 2400k S/s
 #### Input data type: 8-bit unsigned-int

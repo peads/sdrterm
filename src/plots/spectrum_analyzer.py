@@ -90,11 +90,10 @@ class SpectrumAnalyzer(ABC):
         pass
 
     @classmethod
-    def start(cls, fs, *args, **kwargs):
+    def start(cls, fs, *args, **kwargs) -> int:
         from pyqtgraph.Qt import QtWidgets
         spec = cls(fs=fs, *args, **kwargs)
-        QtWidgets.QApplication.instance().exec()
-        return
+        return QtWidgets.QApplication.instance().exec()
 
     @property
     def fs(self) -> int:

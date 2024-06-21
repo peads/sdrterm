@@ -21,6 +21,7 @@ import signal as s
 import socket
 import sys
 import traceback
+from contextlib import closing
 from multiprocessing import Condition
 from typing import Callable
 
@@ -81,3 +82,28 @@ def initializer(isDead: Condition) -> None:
 def shutdownSocket(*socks: socket.socket) -> None:
     for sock in socks:
         __applyIgnoreException(lambda: sock.send(b''), lambda: sock.shutdown(socket.SHUT_RDWR))
+
+
+# taken from https://stackoverflow.com/a/45690594
+def findPort(host='localhost') -> int:
+    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
+        s.bind((host, 0))
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        return s.getsockname()[1]
+# IP_MTU_DISCOVER = 10
+# IP_PMTUDISC_DO = 2
+# IP_MTU = 14
+# def estimateMtu(self):
+#     self.__mtu = 1024 if self.__host not in ['localhost', '127.0.0.1'] else self.__BUF_SIZE
+#     if 'posix' in os.name:
+#         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+#         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+#         sock.setsockopt(socket.IPPROTO_IP, self.IP_MTU_DISCOVER, self.IP_PMTUDISC_DO)
+#         sock.connect((self.__host, self.__port))
+#         try:
+#             sock.send(b'#' * self.__BUF_SIZE)
+#         except socket.error:
+#             self.__mtu = sock.getsockopt(socket.IPPROTO_IP, self.IP_MTU)
+#             eprint(f'Estimated MTU: {self.__mtu}')
+#         else:
+#             self.__mtu = 1024

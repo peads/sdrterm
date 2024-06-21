@@ -26,9 +26,8 @@ from scipy import signal
 
 from dsp.dsp_processor import DspProcessor
 from dsp.util import applyFilters
-from misc.general_util import eprint, printException
+from misc.general_util import eprint, printException, findPort
 from misc.hooked_thread import HookedThread
-from sdr.output_server import findPort
 
 
 class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
@@ -65,8 +64,8 @@ class VfoProcessor(DspProcessor):
                 while not isDead.value:
                     try:
                         self.request.sendall(r.recv())
-                    except (EOFError, ConnectionError):
-                        eprint(f'Client disconnected: {self.request.getsockname()}')
+                    except (OSError, ConnectionError, EOFError) as ex:
+                        eprint(f'Client disconnected: {self.request.getsockname()}: {ex}')
                         pipes.remove(pipe)
                         r.close()
                         w.close()
@@ -101,14 +100,14 @@ class VfoProcessor(DspProcessor):
                     y = shift(y, length)
                     if self._decimationFactor > 1:
                         y = signal.decimate(y, self.decimation, ftype='fir')
-                    y = signal.sosfilt(self.sosIn, y)
+                    y = signal.sosfilt(self._aaFilter, y)
                     y = [self.demod(yy) for yy in y]
-                    y = applyFilters(y, self.outputFilters)
+                    y = applyFilters(y, self._outputFilters)
                     for (pipe, data) in zip(pipes, y):
                         r, w = pipe
                         try:
                             w.send(struct.pack('!' + (len(data) * 'd'), *data))
-                        except ConnectionError:
+                        except (ConnectionError, EOFError):
                             pipes.remove(pipe)
                             r.close()
                             w.close()

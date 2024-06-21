@@ -38,7 +38,7 @@ def __feedBuffers(isDead: Value, data: np.ndarray, buffers: Iterable[Queue], rea
         i += readSize
 
 
-def readFile(wordtype,
+def readFile(wordtype: np.dtype,
              buffers: Iterable[Queue],
              isDead: Value,
              f: str,
@@ -46,16 +46,18 @@ def readFile(wordtype,
              offset: int = 0,
              swapEndianness: bool = False) -> None:
     CHUNK_SIZE = 4096
-    bitdepth, structtype = wordtype
-    dt = ('>' if not swapEndianness else '<') + structtype
-    dtype = np.dtype([('re', dt), ('im', dt)])
+
+    if swapEndianness:
+         wordtype = wordtype.newbyteorder('<' if '>' == wordtype.byteorder else '>')
+    dtype = np.dtype([('re', wordtype), ('im', wordtype)])
+
     if f is not None:
         data = np.memmap(f, dtype=dtype, mode='r', offset=offset, order='C')
         readSize = (-offset + data.size) // CHUNK_SIZE
         vprint(f'Chunk size: {readSize}')
         __feedBuffers(isDead, data, buffers, readSize)
     else:
-        buffer = array.array(structtype, readSize * b'0')
+        buffer = array.array(wordtype.char, readSize * b'0')
         with open(sys.stdin.fileno(), 'rb', closefd=False) as _:
             file = io.BufferedReader(sys.stdin.buffer)
             while not isDead.value:

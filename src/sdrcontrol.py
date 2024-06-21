@@ -23,7 +23,9 @@ import socket
 import socketserver
 from importlib.resources import files
 from multiprocessing import Value, Process
+from typing import Annotated
 
+import typer
 from rich.console import RenderableType
 from textual import on
 from textual.app import App, ComposeResult
@@ -33,10 +35,11 @@ from textual.validation import Function
 from textual.widgets import Button, RichLog, Input, Select, Label, Switch
 from textual_slider import Slider
 
-from misc.general_util import shutdownSocket, eprint
+from misc.general_util import shutdownSocket, eprint, printException
 from plots.socket_spectrum_analyzer import SocketSpectrumAnalyzer
 from sdr import output_server
 from sdr.control_rtl_tcp import ControlRtlTcp
+from sdr.controller import Controller
 from sdr.rtl_tcp_commands import RtlTcpSamplingRate, RtlTcpCommands
 from sdr.socket_receiver import SocketReceiver
 
@@ -47,18 +50,30 @@ class SdrControl(App):
     fs = reactive(0)
     gain = reactive(0)
     freq = reactive(0)
+    host = reactive('')
+    port = reactive(-1)
 
     def __init__(self,
-                 rs: socket,
+                 rs: SocketReceiver,
                  srv: socketserver.TCPServer,
+                 ctrl: Controller,
                  *args, **kwargs):
         super().__init__(*args, **kwargs)
-        self.recvSckt = rs
+        self.receiver = rs
         self.server = srv
+        self.controller = ctrl
         self.graphSckt = None
-        self.controller = None
         self.graphProc = None
         self.prevGain = None
+        self.host = rs.host
+        self.port = rs.port
+
+    def exit(self, *args, **kwargs) -> None:
+        self.shutdownGraph()
+        if self.receiver is not None:
+            self.receiver.disconnect()
+            self.receiver = None
+        super().exit(*args, **kwargs)
 
     @on(Button.Pressed, '#connector')
     def onConnectorPressed(self, event: Button.Pressed) -> None:
@@ -67,17 +82,19 @@ class SdrControl(App):
 
         if event.button.has_class('connect'):
             try:
-                host = self.query_one('#host', Input).value
-                host = host if host else 'localhost'
+                self.host = self.query_one('#host', Input).value
+                self.host = self.host if self.host else 'localhost'
                 port = self.query_one('#port', Input).value
-                port = int(port) if port else 1234
+                self.port = int(port) if port else 1234
 
-                recvSckt.receiver.connect((host, port))
+                self.receiver.host = self.host
+                self.receiver.port = self.port
+                self.receiver.connect()
                 button.remove_class('connect')
                 button.add_class('disconnect')
                 event.button.watch_variant('success', 'error')
                 event.button.label = 'Disconnect'
-                self.controller = ControlRtlTcp(recvSckt.receiver)
+                self.controller = ControlRtlTcp(self.receiver.receiver)
                 inp.set(disabled=True)
 
                 gainsSlider = self.query_one('#gains_slider', Slider)
@@ -105,12 +122,11 @@ class SdrControl(App):
                 frequency.value = freq
 
                 result = f'Accepting connections on port {self.server.socket.getsockname()[1]}'
-            except (ConnectionError, OSError) as e:
-                recvSckt.receiver = None
+            except (OSError, ConnectionError, EOFError) as e:
                 result = str(e)
         elif event.button.has_class('disconnect'):
-            recvSckt.receiver = None
-            del self.controller
+            self.receiver.disconnect()
+            self.controller = None
             button.remove_class('disconnect')
             button.add_class('connect')
             event.button.watch_variant('error', 'success')
@@ -176,9 +192,32 @@ class SdrControl(App):
             value = event.value
             self.controller.setParam(RtlTcpCommands.SET_AGC_MODE.value, value)
 
+    def shutdownGraph(self):
+        if not (self.graphSckt is None or self.graphProc is None):
+            self.print('Shutting graph socket down')
+            shutdownSocket(self.graphSckt)
+            self.print('Shut graph socket down')
+
+            self.print('Joining graph process')
+            self.graphProc.join(1)
+
+            exitCode = self.graphProc.exitcode
+            if exitCode is None:
+                self.graphProc.kill()
+                self.print('Graph killed')
+            else:
+                self.graphProc.close()
+                self.print('Joined graph process')
+
+            self.graphSckt.close()
+            self.print(f'Graph exitcode: {exitCode}')
+        self.graphProc = None
+        self.graphSckt = None
+
     @on(Switch.Changed, '#graph_switch')
     def onGraphChanged(self, event: Switch.Changed) -> None:
-        if event.value and self.graphProc is None:
+        self.shutdownGraph()
+        if event.value:
             self.graphSckt = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             self.graphSckt.settimeout(1)
             self.graphSckt.connect(self.server.socket.getsockname())
@@ -187,14 +226,6 @@ class SdrControl(App):
                                      kwargs={'fs': self.fs, 'sock': self.graphSckt},
                                      daemon=True)
             self.graphProc.start()
-        elif self.graphProc:
-            shutdownSocket(self.graphSckt)
-            self.graphSckt.close()
-            self.graphProc.join(0.1)
-            if self.graphProc.exitcode is None:
-                self.graphProc.kill()
-            self.graphProc = None
-            self.graphSckt = None
 
     @staticmethod
     def print(content: RenderableType | object):
@@ -208,9 +239,19 @@ class SdrControl(App):
                             id='host',
                             classes='source',
                             valid_empty=True,
-                            validators=[Function(self.isValidHost, "Please input valid host.")])
-                yield Input(placeholder='1234', id='port', classes='source', type='integer', valid_empty=True)
-                yield Button('Connect', id='connector', classes='connect', variant='success')
+                            validators=[Function(self.isValidHost, "Please input valid host.")],
+                            value=self.host)
+
+                if self.host is not None and self.port > 0:
+                    variant = 'error'
+                    label = 'Disconnect'
+                else:
+                    variant = 'success'
+                    label = 'Connect'
+
+                port = str(self.port) if self.port > 0 else ''
+                yield Input(placeholder='1234', id='port', classes='source', type='integer', value=port)
+                yield Button(label, id='connector', classes='connect', variant=variant)
 
             yield Label('Tuning')
             with Horizontal():
@@ -247,7 +288,7 @@ class SdrControl(App):
 
         log = RichLog(highlight=True)
         yield log
-        SdrControl.print = log.write
+        setattr(SdrControl, 'print', log.write)
         setattr(output_server, 'log', log.write)
 
     def on_mount(self) -> None:
@@ -273,23 +314,38 @@ class SdrControl(App):
         return False
 
 
-if __name__ == '__main__':
+def main(host: Annotated[str, typer.Argument(help='Address of remote server')] = None,
+         port: Annotated[int, typer.Argument(help='Port of remote server')] = -1) -> None:
     isDead = Value('b', 0)
     isDead.value = 0
-    with SocketReceiver(isDead=isDead) as recvSckt:
+    controller = None
+    with SocketReceiver(isDead=isDead, host=host, port=port) as receiver:
         try:
-            server, lt, ft = output_server.initServer(recvSckt, isDead, host='0.0.0.0')
-            app = SdrControl(recvSckt, server)
+            if host is not None and port > 0:
+                receiver.connect()
+                controller = ControlRtlTcp(receiver.receiver)
+            server, lt, ft = output_server.initServer(receiver, isDead, host='0.0.0.0')
+            app = SdrControl(receiver, server, controller)
 
             ft.start()
             lt.start()
             app.run()
-        except KeyboardInterrupt:
+        except (ConnectionError, EOFError, KeyboardInterrupt):
             pass
+        except Exception as e:
+            printException(e)
         finally:
             isDead.value = 1
             server.shutdown()
             server.server_close()
+            app.exit(return_code=0)
+
             lt.join(5)
             ft.join(5)
-            app.exit(return_code=0)
+
+            eprint('UI halted')
+            return
+
+
+if __name__ == '__main__':
+    typer.run(main)

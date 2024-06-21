@@ -17,12 +17,12 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
+import array
 import socket
 import struct
 
 import numpy as np
 
-from misc.general_util import shutdownSocket
 from plots.spectrum_analyzer import SpectrumAnalyzer
 
 
@@ -36,12 +36,9 @@ class SocketSpectrumAnalyzer(SpectrumAnalyzer):
         self.bitdepth = struct.calcsize(structtype) - 1  # int(np.log2(struct.calcsize(structtype) << 3) - 2)
         dt = '>' + structtype
         self.dtype = np.dtype([('re', dt), ('im', dt)])
-
-    def __del__(self):
-        shutdownSocket(self.sock)
-        self.sock.close()
+        self.buffer = array.array('B', b'0' * readSize)
 
     def receiveData(self):
-        data = self.sock.recv(self.readSize)
-        data = np.frombuffer(data, self.dtype)
+        self.sock.recv_into(self.buffer, self.readSize)
+        data = np.frombuffer(self.buffer, self.dtype)
         return data['re'] + 1j * data['im']

@@ -72,12 +72,11 @@ class IOArgs:
         IOArgs.processes = kwargs['processes']
         IOArgs.pl = kwargs['pl'] if 'pl' in kwargs else None
         IOArgs.isDead = kwargs['isDead']
-        IOArgs.bits = kwargs['bits'] if 'bits' in kwargs else None
         IOArgs.enc = kwargs['enc'] if 'enc' in kwargs else None
         IOArgs.normalize = kwargs['normalize'] if 'normalize' in kwargs else False
         IOArgs.omegaOut = kwargs['omegaOut'] if 'omegaOut' in kwargs else None
         IOArgs.correctIq = kwargs['correctIq']
-        IOArgs.fileInfo = checkWavHeader(IOArgs.inFile, IOArgs.fs, IOArgs.bits, IOArgs.enc)
+        IOArgs.fileInfo = checkWavHeader(IOArgs.inFile, IOArgs.fs, IOArgs.enc)
         IOArgs.fs = IOArgs.fileInfo['sampRate']
         IOArgs.smooth = kwargs['smooth'] if 'smooth' in kwargs else False
         IOArgs.multiThreaded = kwargs['multiThreaded'] if 'multiThreaded' in kwargs and os.cpu_count() > 2 else False
@@ -117,7 +116,7 @@ class IOArgs:
                 for p in cls.pl.split(','):
                     buffer = Queue()
                     cls.buffers.append(buffer)
-                    psplot = selectPlotType(p, processor, cls.fileInfo['bitsPerSample'][1], cls.correctIq)
+                    psplot = selectPlotType(p, processor, cls.fileInfo['bitsPerSample'], cls.correctIq)
                     plotter = Process(target=psplot.processData,
                                       args=(cls.isDead, buffer, cls.fs),
                                       kwargs={'offset': cls.center, 'iq': cls.correctIq},

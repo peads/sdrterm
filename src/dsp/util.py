@@ -47,20 +47,12 @@ def generateDeemphFilter(fs: float, f=7.5e-5) -> np.ndarray[any, np.dtype[np.num
     return signal.tf2sos(B, A)
 
 
-def generateBroadcastOutputFilter(fs: int, deg: int, omega: float = 18000) -> tuple[any, float, any]:
-    return generateEllipFilter(fs, deg, omega, 'lowpass')
-
-
 def generateEllipFilter(fs: int, deg: int, Wn: float | Iterable[float], btype: str) -> tuple[any, float, any]:
     return signal.ellip(deg, 1, 30, Wn,
                         btype=btype,
                         analog=False,
                         output='sos',
                         fs=fs)
-
-
-def generateFmOutputFilters(fs: int, deg: int, omega: float) -> Iterable:
-    return [generateDeemphFilter(fs), generateBroadcastOutputFilter(fs, deg, omega)]
 # def normalize(x: np.ndarray | list[Number]) -> np.ndarray[np.number] | list[Number]:
 #     if x is None:
 #         raise ValueError('x is None')
