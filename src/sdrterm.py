@@ -24,7 +24,7 @@ from uuid import UUID
 
 import typer
 
-from misc.general_util import printException, vprint, eprint
+from misc.general_util import printException, vprint, eprint, tprint
 from misc.io_args import IOArgs
 from misc.read_file import readFile
 
@@ -40,15 +40,22 @@ def main(fs: Annotated[int, typer.Option('--fs', '-r', show_default=False, help=
          dec: Annotated[int, typer.Option('--decimation', help='Decimation factor')] = 2,
          bits: Annotated[int, typer.Option('--bits-per-sample', '-b', help='Bits per sample (ignored if wav file)')] = None,
          enc: Annotated[str, typer.Option('--encoding', '-e', help='Binary encoding (ignored if wav file)')] = None,
-         normalize: Annotated[bool, typer.Option(help='Toggle normalizing input analytic signal')] = False,
-         omegaOut: Annotated[int, typer.Option('--omega-out', '-m', help='Cutoff frequency in Hz')] = 12500,
+         omegaOut: Annotated[int, typer.Option('--omega-out', '-m', help='Output cutoff frequency in Hz')] = 12500,
          correct_iq: Annotated[bool, typer.Option(help='Toggle iq correction')] = False,
-         simo: Annotated[bool, typer.Option(help='N.B. unlike single-output mode--which uses the system-default endianness for output--the sockets output network-default, big-endian bytes. Enable using sockets to output data processed from multiple channels specified by the vfos option. [Implies: --vfos <csv>]')] = False,
+         simo: Annotated[bool, typer.Option(help='''
+            N.B. unlike normal mode, which uses the system-default endianness for output, the sockets output 
+            network-default, big-endian bytes. Enable using sockets to output data processed from multiple channels
+            specified by the vfos option. [Implies: --vfos <csv>]''')] = False,
          verbose: Annotated[bool, typer.Option('--verbose', '-v', help='Toggle verbose output')] = False,
-         trace: Annotated[bool, typer.Option(help='Toggle extra verbose output')] = False,
+         trace: Annotated[bool, typer.Option(help='Toggle extra verbose output [Implies --verbose]')] = False,
          multi_threaded: Annotated[bool, typer.Option(help='Toggle DSP multithreading')] = False,
          smooth_output: Annotated[bool, typer.Option(help='Toggle smoothing output when multi-threading')] = False,
-         vfo_host: Annotated[str, typer.Option(help='Address on which to listen for vfo client connections')] = 'localhost'):
+         vfo_host: Annotated[str, typer.Option(help='Address on which to listen for vfo client connections')] = 'localhost',
+         restrict_cpu: Annotated[bool, typer.Option(help='Toggle restricting DSP CPU thread usage',
+                                                    show_default='restrict-cpu => Total threads = half the total virtual/logical cores available')] = True,
+         swap_input_endianness: Annotated[bool, typer.Option('--input-endianness', '-X',
+                                                             help='Swap input endianness',
+                                                             show_default='False => network-default, big-endian')] = False):
     processes: dict[UUID, any] = {}
     isDead = Value('b', 0)
     ioArgs = IOArgs(fs=fs,
@@ -65,14 +72,14 @@ def main(fs: Annotated[int, typer.Option('--fs', '-r', show_default=False, help=
                     omegaOut=omegaOut,
                     bits=bits,
                     enc=enc,
-                    normalize=normalize,
                     correctIq=correct_iq,
                     simo=simo,
                     verbose=verbose,
                     trace=trace,
                     multiThreaded=multi_threaded,
                     smooth=smooth_output,
-                    vfoHost=vfo_host)
+                    vfoHost=vfo_host,
+                    cpu=restrict_cpu)
     try:
         for proc in processes.values():
             proc.start()
@@ -82,19 +89,26 @@ def main(fs: Annotated[int, typer.Option('--fs', '-r', show_default=False, help=
                  isDead=isDead,
                  offset=ioArgs.fileInfo['dataOffset'],
                  wordtype=ioArgs.fileInfo['bitsPerSample'],
-                 f=ioArgs.inFile)
+                 f=ioArgs.inFile,
+                 swapEndianness=swap_input_endianness)
     except KeyboardInterrupt:
         pass
     except Exception as ex:
         printException(ex)
     finally:
-        isDead.value = 1
-        for proc in processes.values():
-            proc.join(1)
-            if proc.exitcode is None:
-                proc.kill()
-        for buffer in IOArgs.buffers:
+        for buffer, proc in zip(IOArgs.buffers, processes.values()):
+            tprint(f'Closing buffer {buffer}')
+            buffer.close()
             buffer.cancel_join_thread()
+            tprint(f'Closed buffer {buffer}')
+            tprint(f'Awaiting {proc}')
+            proc.join()
+            tprint(f'{proc} completed')
+            if proc.exitcode is None:
+                vprint('Killing process {proc}')
+                proc.kill()
+                eprint('Killing process {proc}')
+        isDead.value = 1
         eprint('Main halted')
         return
 

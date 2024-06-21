@@ -19,16 +19,16 @@
 #
 
 import numpy as np
-from numpy import ndarray
 from scipy import fft, signal
 
 
 class __FMDemodulator:
-    prevRe: np.complex64 | np.complex128 | None = None
-    prevIm: np.complex64 | np.complex128 | None = None
+    prevRe = None
+    prevIm = None
 
     @classmethod
-    def fmDemod(cls, data: np.ndarray[any, np.complex64 | np.complex128]) -> np.ndarray[any, np.real]:
+    def fmDemod(cls, data: np.ndarray[any, np.dtype[np.complex64 | np.complex128]]) \
+            -> np.ndarray[any, np.dtype[np.real]]:
         re = data[0::2]
         im = data[1::2]
 
@@ -49,21 +49,22 @@ class __FMDemodulator:
         return signal.resample(np.angle(re), len(data))
 
 
-def fmDemod(data: np.ndarray[any, np.complex64 | np.complex128]) -> np.ndarray[any, np.real]:
+def fmDemod(data: np.ndarray[any,  np.dtype[np.complex64 | np.complex128]]) -> np.ndarray[any, np.dtype[np.real]]:
     return __FMDemodulator.fmDemod(data)
 
 
-def amDemod(data: np.ndarray[any, np.complex64 | np.complex128]) -> np.ndarray[any, np.real]:
+def amDemod(data: np.ndarray[any,  np.dtype[np.complex64 | np.complex128]]) -> np.ndarray[any, np.dtype[np.real]]:
     return np.abs(data)
 
 
-def realOutput(data: np.ndarray[any, np.complex64 | np.complex128]) -> ndarray[any, np.real]:
+def realOutput(data: np.ndarray[any,  np.dtype[np.complex64 | np.complex128]]) -> np.ndarray[any, np.dtype[np.real]]:
     return np.real(data)
 
 
-def imagOutput(data: np.ndarray[any, np.complex64 | np.complex128]) -> ndarray[any, np.real]:
+def imagOutput(data: np.ndarray[any,  np.dtype[np.complex64 | np.complex128]]) -> np.ndarray[any, np.dtype[np.real]]:
     return np.imag(data)
 
 
-def spectrumOutput(data: np.ndarray[any, np.complex64 | np.complex128]) -> ndarray[any, np.real]:
+def spectrumOutput(data: np.ndarray[any,  np.dtype[np.complex64 | np.complex128]]) \
+        -> np.ndarray[any, np.dtype[np.number]]:
     return np.abs(fft.fft(data))

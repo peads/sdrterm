@@ -23,7 +23,7 @@ from uuid import uuid4
 from dsp.data_processor import DataProcessor
 from dsp.iq_correction import IQCorrection
 from dsp.util import shiftFreq
-from misc.general_util import deinterleave
+from misc.general_util import tprint, eprint
 from plots.spectrum_analyzer import SpectrumAnalyzer
 
 
@@ -36,7 +36,7 @@ class SpectrumAnalyzerPlot(DataProcessor, SpectrumAnalyzer):
                  isDead: Value = None,
                  offset: int = 0,
                  **kwargs):
-        kwargs['frameRate'] = 0 # the framerate is (likely network-)IO-bound
+        kwargs['frameRate'] = 0  # the framerate is (likely network-)IO-bound
         super().__init__(**kwargs)
         self.buffer = buffer
         self.isDead = isDead
@@ -49,7 +49,8 @@ class SpectrumAnalyzerPlot(DataProcessor, SpectrumAnalyzer):
         self.buffer.cancel_join_thread()
 
     def receiveData(self):
-        data = deinterleave(self.buffer.get())
+        data = self.buffer.get()
+        data = data[:self.nfft]
         if self.iqCorrector is not None:
             data = self.iqCorrector.correctIq(data)
         return shiftFreq(data, self.offset, self.fs)
@@ -63,4 +64,10 @@ class SpectrumAnalyzerPlot(DataProcessor, SpectrumAnalyzer):
         if not self.isDead.value:
             super().update()
         else:
+            tprint(f'Closing buffer {self.buffer}-{type(self).__name__}-{self.uuid}')
+            self.buffer.close()
+            self.buffer.cancel_join_thread()
+            tprint(f'Closed buffer {self.buffer}-{type(self).__name__}-{self.uuid}')
+            tprint(f'Quitting {type(self).__name__}-{self.uuid}')
             QCoreApplication.quit()
+            eprint(f'Plot {type(self).__name__}-{self.uuid} halted')

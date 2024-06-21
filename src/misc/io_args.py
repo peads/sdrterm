@@ -24,7 +24,7 @@ from uuid import UUID, uuid4
 from dsp.dsp_processor import DspProcessor
 from dsp.vfo_processor import VfoProcessor
 from misc.file_util import checkWavHeader
-from misc.general_util import traceOn, verboseOn
+from misc.general_util import traceOn, verboseOn, eprint
 from plots.util import selectDemodulation, selectPlotType
 
 
@@ -52,6 +52,7 @@ class IOArgs:
     multiThreaded = False
     smooth = False
     vfoHost = None
+    cpu = True
 
     def __init__(self, **kwargs):
         if 'verbose' in kwargs and kwargs['verbose']:
@@ -81,6 +82,7 @@ class IOArgs:
         IOArgs.smooth = kwargs['smooth'] if 'smooth' in kwargs else False
         IOArgs.multiThreaded = kwargs['multiThreaded'] if 'multiThreaded' in kwargs and os.cpu_count() > 2 else False
         IOArgs.vfoHost = kwargs['vfoHost'] if 'vfoHost' in kwargs else 'localhost'
+        IOArgs.cpu = kwargs['cpu'] if 'cpu' in kwargs else True
 
         IOArgs.__initIOHandlers()
         IOArgs.isDead.value = 0
@@ -98,7 +100,8 @@ class IOArgs:
                                               correctIq=cls.correctIq,
                                               multiThreaded=cls.multiThreaded,
                                               smooth=cls.smooth,
-                                              host=cls.vfoHost)
+                                              host=cls.vfoHost,
+                                              cpu=cls.cpu)
         selectDemodulation(cls.dm, processor)()
         buffer = Queue()
         cls.buffers.append(buffer)
@@ -108,16 +111,19 @@ class IOArgs:
         fileWriter.name = "File writer-" + str(writerUuid)
 
         if cls.pl is not None and len(cls.pl) > 0:
-            for p in cls.pl.split(','):
-                buffer = Queue()
-                cls.buffers.append(buffer)
-                psplot = selectPlotType(p, processor, cls.fileInfo['bitsPerSample'][1], cls.correctIq)
-                plotter = Process(target=psplot.processData,
-                                  args=(cls.isDead, buffer, cls.fs),
-                                  kwargs={'offset': cls.center, 'iq': cls.correctIq},
-                                  daemon=True)
-                plotUuid = IOArgs.addConsumer(plotter, uuid=psplot.uuid)
-                plotter.name = "Plotter-" + str(plotUuid)
+            if 'posix' in os.name and 'DISPLAY' not in os.environ:
+                eprint('Warning: No display detected, but plots selected')
+            else:
+                for p in cls.pl.split(','):
+                    buffer = Queue()
+                    cls.buffers.append(buffer)
+                    psplot = selectPlotType(p, processor, cls.fileInfo['bitsPerSample'][1], cls.correctIq)
+                    plotter = Process(target=psplot.processData,
+                                      args=(cls.isDead, buffer, cls.fs),
+                                      kwargs={'offset': cls.center, 'iq': cls.correctIq},
+                                      daemon=True)
+                    plotUuid = IOArgs.addConsumer(plotter, uuid=psplot.uuid)
+                    plotter.name = "Plotter-" + str(plotUuid)
 
     @classmethod
     def addConsumer(cls, proc, uuid: UUID = None) -> UUID:

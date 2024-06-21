@@ -24,7 +24,7 @@ import os
 import struct
 import sys
 from multiprocessing import Value, Queue, Pool
-from typing import Callable
+from typing import Callable, BinaryIO
 
 import numpy as np
 from scipy import signal
@@ -32,8 +32,14 @@ from scipy import signal
 from dsp.data_processor import DataProcessor
 from dsp.demodulation import amDemod, fmDemod
 from dsp.iq_correction import IQCorrection
-from dsp.util import applyFilters, generateBroadcastOutputFilter, generateFmOutputFilters, shiftFreq
-from misc.general_util import deinterleave, printException, vprint, eprint, initializer
+from dsp.util import applyFilters, generateBroadcastOutputFilter, generateFmOutputFilters, shiftFreq, \
+    generateEllipFilter
+from misc.general_util import printException, vprint, eprint, initializer
+
+
+class _EmptyChunkError(ValueError):
+    def __init__(self):
+        super().__init__('Empty chunk')
 
 
 class DspProcessor(DataProcessor):
@@ -49,6 +55,7 @@ class DspProcessor(DataProcessor):
                  decimation: int,
                  multiThreaded: bool = False,
                  smooth: bool = False,
+                 cpu: bool = True,
                  **kwargs):
 
         self.outputFilters = []
@@ -64,6 +71,7 @@ class DspProcessor(DataProcessor):
         self.correctIq = IQCorrection(self.__decimatedFs) if correctIq else None
         self.smooth = smooth
         self.multiThreaded = multiThreaded
+        self.cpu = cpu
 
     @property
     def fs(self):
@@ -102,50 +110,51 @@ class DspProcessor(DataProcessor):
     def decimatedFs(self):
         del self.__decimatedFs
 
-    def demod(self, y: np.ndarray[any, np.complex64 | np.complex128]) -> np.ndarray[any, np.real]:
+    def demod(self, y: np.ndarray[any, np.dtype[np.complex64 | np.complex128]]) -> np.ndarray[any, np.dtype[np.real]]:
         pass
 
-    def setDemod(self, fun: Callable[[np.ndarray[any, np.complex64 | np.complex128]], np.ndarray[any, np.real]]) -> \
-                Callable[[np.ndarray[any, np.complex64 | np.complex128]], np.ndarray[any, np.real]]:
-        if fun is not None:
+    def __setDemod(self, fun: Callable[
+        [np.ndarray[any, np.dtype[np.complex64 | np.complex128]]], np.ndarray[any, np.dtype[np.real]]],
+                   *filters) \
+            -> Callable[[np.ndarray[any, np.dtype[np.complex64 | np.complex128]]], np.ndarray[any, np.dtype[np.real]]]:
+        if fun is not None and filters is not None and len(filters) > 0:
+            self.outputFilters.clear()
+            self.outputFilters.extend(*filters)
             setattr(self, 'demod', fun)
-            self.sosIn = signal.ellip(self._FILTER_DEGREE, 1, 30, [1, self.bandwidth >> 1],
-                                      btype='bandpass',
-                                      analog=False,
-                                      output='sos',
-                                      fs=self.__decimatedFs)
+            self.sosIn = generateEllipFilter(self.__decimatedFs, self._FILTER_DEGREE, [1, self.bandwidth >> 1],
+                                             'bandpass')
+            # self.sosIn = signal.ellip(self._FILTER_DEGREE, 1, 30, [1, self.bandwidth >> 1],
+            #                           btype='bandpass',
+            #                           analog=False,
+            #                           output='sos',
+            #                           fs=self.__decimatedFs)
             return self.demod
         raise ValueError("Demodulation function is not defined")
 
     def selectOuputFm(self):
         vprint('NFM Selected')
         self.bandwidth = 12500
-        self.outputFilters = [signal.ellip(self._FILTER_DEGREE, 1, 30, self.omegaOut,
-                                           btype='lowpass',
-                                           analog=False,
-                                           output='sos',
-                                           fs=self.__decimatedFs)]
-        self.setDemod(fmDemod)
+        # self.outputFilters = [signal.ellip(self._FILTER_DEGREE, 1, 30, self.omegaOut,
+        #                                    btype='lowpass',
+        #                                    analog=False,
+        #                                    output='sos',
+        #                                    fs=self.__decimatedFs)]
+        self.__setDemod(fmDemod, generateEllipFilter(self.__decimatedFs, self._FILTER_DEGREE, self.omegaOut, 'lowpass'))
 
     def selectOuputWfm(self):
         vprint('WFM Selected')
         self.bandwidth = 15000
-        self.outputFilters = generateFmOutputFilters(self.__decimatedFs, self._FILTER_DEGREE,
-                                                     18000)
-        self.setDemod(fmDemod)
+        self.__setDemod(fmDemod, generateFmOutputFilters(self.__decimatedFs, self._FILTER_DEGREE, 18000))
 
     def selectOuputAm(self):
         vprint('AM Selected')
         self.bandwidth = 10000
-        self.outputFilters = [
-            generateBroadcastOutputFilter(self.__decimatedFs, self._FILTER_DEGREE)]
-        self.setDemod(amDemod)
+        self.__setDemod(amDemod, generateBroadcastOutputFilter(self.__decimatedFs, self._FILTER_DEGREE))
 
-    def processChunk(self, y: list) -> np.ndarray[any, np.real] | None:
+    def processChunk(self, y: np.ndarray[any, np.dtype[np.complex64 | np.complex128]]) \
+            -> np.ndarray[any, np.dtype[np.real]]:
         if y is None or not len(y):
-            raise ValueError('Empty chunk')
-
-        y = deinterleave(y)
+            raise _EmptyChunkError()
 
         if self.correctIq is not None:
             y = self.correctIq.correctIq(y)
@@ -161,12 +170,16 @@ class DspProcessor(DataProcessor):
 
         return y
 
-    def __processMultithreaded(self, isDead: Value, buffer: Queue, file):
+    def __processMultithreaded(self, isDead: Value, buffer: Queue, file: BinaryIO) -> None:
         vprint('Processing multithreaded')
-        n = os.cpu_count() >> 1
-        if n < 2:
-            raise RuntimeError('CPU count must be at least 4')
-        vprint(f'Processing on {n} threads')
+        n = os.cpu_count()
+        if n < 4:
+            raise ValueError('CPU count must be at least 4')
+        if self.cpu:
+            n >>= 1
+        else:
+            n -= 2
+        eprint(f'Processing using {n} threads')
         ii = range(n)
         with Pool(processes=n, initializer=initializer, initargs=(isDead,)) as pool:
             data = []
@@ -178,11 +191,13 @@ class DspProcessor(DataProcessor):
                         break
                     data.append(temp)
 
+                if data is None or not len(data):
+                    break
                 y = pool.map_async(self.processChunk, data)
                 y = list(itertools.chain.from_iterable(y.get()))
                 if self.smooth:
                     y = signal.savgol_filter(y, 14, self._FILTER_DEGREE)
-                file.write(struct.pack('=' + (len(y) * 'd'), *y))
+                file.write(struct.pack('@' + (len(y) * 'd'), *y))
                 data.clear()
 
     def __processData(self, isDead: Value, buffer: Queue, file):
@@ -192,7 +207,7 @@ class DspProcessor(DataProcessor):
             if y is None or not len(y):
                 isDead.value = 1
                 break
-            file.write(struct.pack('=' + (len(y) * 'd'), *y))
+            file.write(struct.pack('@' + (len(y) * 'd'), *y))
 
     def processData(self, isDead: Value, buffer: Queue, f: str) -> None:
         with open(f, 'wb') if f is not None else open(sys.stdout.fileno(), 'wb', closefd=False) as file:
@@ -202,13 +217,13 @@ class DspProcessor(DataProcessor):
                 else:
                     self.__processData(isDead, buffer, file)
                 file.write(b'')
-            except (ValueError, KeyboardInterrupt):
+                file.flush()
+            except (_EmptyChunkError, KeyboardInterrupt):
                 pass
             except Exception as e:
                 eprint(f'Process {multiprocessing.current_process().name} raised exception')
                 printException(e)
             finally:
-                isDead.value = 1
                 buffer.close()
                 buffer.cancel_join_thread()
                 eprint(f'File writer halted')

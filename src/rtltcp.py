@@ -78,8 +78,8 @@ def main(host: Annotated[str, typer.Argument(help='Address of remote rtl_tcp ser
             isDead.value = 1
             server.shutdown()
             server.server_close()
-            st.join(1)
-            pt.join(1)
+            st.join(5)
+            pt.join(5)
             eprint('UI halted')
             return
 

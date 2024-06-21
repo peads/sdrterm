@@ -20,7 +20,9 @@
 import socket
 import struct
 
-from misc.general_util import shutdownSocket, deinterleave
+import numpy as np
+
+from misc.general_util import shutdownSocket
 from plots.spectrum_analyzer import SpectrumAnalyzer
 
 
@@ -32,6 +34,8 @@ class SocketSpectrumAnalyzer(SpectrumAnalyzer):
         self.readSize = readSize
         self.structtype = structtype
         self.bitdepth = struct.calcsize(structtype) - 1  # int(np.log2(struct.calcsize(structtype) << 3) - 2)
+        dt = '>' + structtype
+        self.dtype = np.dtype([('re', dt), ('im', dt)])
 
     def __del__(self):
         shutdownSocket(self.sock)
@@ -39,5 +43,5 @@ class SocketSpectrumAnalyzer(SpectrumAnalyzer):
 
     def receiveData(self):
         data = self.sock.recv(self.readSize)
-        data = struct.unpack('!' + ((len(data) >> self.bitdepth) * self.structtype), data)
-        return deinterleave(data)
+        data = np.frombuffer(data, self.dtype)
+        return data['re'] + 1j * data['im']

@@ -22,7 +22,7 @@ from abc import abstractmethod, ABC
 import numpy as np
 from scipy import fft
 
-from misc.general_util import printException
+from misc.general_util import printException, tprint
 
 
 class SpectrumAnalyzer(ABC):
@@ -77,14 +77,13 @@ class SpectrumAnalyzer(ABC):
             for amp in amps:
                 self.curve_spectrum.setData(freq, amp)
 
-        except (ValueError, KeyboardInterrupt) as e:
-            if 'reshape' not in str(e):  # probably at the EOF. so, the user's not likely to even see this frame anyway
-                printException(e)
+        except (ValueError, KeyboardInterrupt):
+            tprint(f'Quitting {type(self).__name__}...')
             QCoreApplication.quit()
         except Exception as e:
+            tprint(f'Quitting {type(self).__name__}...')
             printException(e)
             QCoreApplication.quit()
-
 
     @abstractmethod
     def receiveData(self):
@@ -95,6 +94,7 @@ class SpectrumAnalyzer(ABC):
         from pyqtgraph.Qt import QtWidgets
         spec = cls(fs=fs, *args, **kwargs)
         QtWidgets.QApplication.instance().exec()
+        return
 
     @property
     def fs(self) -> int:

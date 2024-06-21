@@ -26,7 +26,7 @@ from scipy import signal
 
 from dsp.dsp_processor import DspProcessor
 from dsp.util import applyFilters
-from misc.general_util import eprint, printException, deinterleave
+from misc.general_util import eprint, printException
 from misc.hooked_thread import HookedThread
 from sdr.output_server import findPort
 
@@ -95,8 +95,6 @@ class VfoProcessor(DspProcessor):
                         isDead.value = 1
                         break
 
-                    y = deinterleave(y)
-                    length >>= 1
                     if self.correctIq is not None:
                         y = self.correctIq.correctIq(y)
                     y = np.broadcast_to(y, (self.nFreq, length))
@@ -120,9 +118,8 @@ class VfoProcessor(DspProcessor):
             except Exception as e:
                 printException(e)
             finally:
-                isDead.value = 1
                 buffer.close()
                 buffer.cancel_join_thread()
-                thread.join(1)
+                thread.join(5)
                 eprint(f'Multi-VFO writer halted')
                 return

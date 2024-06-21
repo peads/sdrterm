@@ -22,19 +22,16 @@ import socket
 import sys
 import traceback
 from multiprocessing import Condition
-from numbers import Number
-from typing import Callable, Iterable
-
-import numpy as np
+from typing import Callable
 
 
 class __VerbosePrint:
-    @classmethod
-    def vprint(cls, *args, **kwargs) -> None:
+    @staticmethod
+    def vprint(*args, **kwargs) -> None:
         pass
 
-    @classmethod
-    def tprint(cls, *args, **kwargs) -> None:
+    @staticmethod
+    def tprint(*args, **kwargs) -> None:
         pass
 
 
@@ -50,24 +47,19 @@ def tprint(*args, **kwargs) -> None:
     __VerbosePrint.tprint(*args, **kwargs)
 
 
-# def interleave(x: list, y: list) -> list:
-#     return [x for xs in zip(x, y) for x in xs]
-
-def deinterleave(y: Iterable[Number] | np.ndarray[any, np.number]) -> np.ndarray[any, np.complex64 | np.complex128] | None:
-    return np.array([a + 1j * b for a, b in zip(y[::2], y[1::2])])
-
-
 def printException(e: Exception) -> None:
     eprint(f'Error: {e}')
     traceback.print_exc(file=sys.stderr)
 
 
-def __applyIgnoreException(*func: Callable[[], any]) -> any:
+def __applyIgnoreException(*func: Callable[[], any]) -> list:
+    ret = []
     for f in func:
         try:
-            return f()
-        except Exception:
-            pass
+            ret.append(f())
+        except Exception as e:
+            ret.append(e)
+    return ret
 
 
 def verboseOn() -> None:
@@ -86,11 +78,6 @@ def initializer(isDead: Condition) -> None:
     s.signal(s.SIGINT, handleSignal)
 
 
-def shutdownSocket(sock: socket.socket) -> None:
-    __applyIgnoreException(lambda: sock.send(b''))
-    __applyIgnoreException(lambda: sock.shutdown(socket.SHUT_RDWR))
-
-
-def shutdownSockets(*socks: socket.socket) -> None:
+def shutdownSocket(*socks: socket.socket) -> None:
     for sock in socks:
-        shutdownSocket(sock)
+        __applyIgnoreException(lambda: sock.send(b''), lambda: sock.shutdown(socket.SHUT_RDWR))

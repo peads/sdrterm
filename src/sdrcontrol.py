@@ -18,6 +18,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
+import os
 import socket
 import socketserver
 from importlib.resources import files
@@ -224,12 +225,13 @@ class SdrControl(App):
             yield Label('Sampling Rate')
             yield Select(RtlTcpSamplingRate.tuples(), prompt='Rate', classes='fs', id='fs_list')
 
-            try:
-                files('pyqtgraph')
-                yield Center(Label('Spectrum Equalizer'))
-                yield Center(Switch(id='graph_switch'))
-            except ModuleNotFoundError:
-                pass
+            if 'posix' not in os.name or 'DISPLAY' in os.environ:
+                try:
+                    files('pyqtgraph')
+                    yield Center(Label('Spectrum Equalizer'))
+                    yield Center(Switch(id='graph_switch'))
+                except ModuleNotFoundError:
+                    pass
 
             yield Label('Gains')
             with Horizontal():
@@ -288,6 +290,6 @@ if __name__ == '__main__':
             isDead.value = 1
             server.shutdown()
             server.server_close()
-            lt.join(1)
-            ft.join(1)
+            lt.join(5)
+            ft.join(5)
             app.exit(return_code=0)
