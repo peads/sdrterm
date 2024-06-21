@@ -52,11 +52,8 @@ class SpectrumAnalyzerPlot(DataProcessor, SpectrumAnalyzer):
 
     def receiveData(self):
         data = self.buffer.get()
-        # n = int(len(data) * (1 - self._inverseFs))
-        # data = data[:n]
         length = len(data)
-        n = length // self.nfft
-        if length - self.nfft * n != 0:
+        if length - self.nfft * (length // self.nfft) != 0:
             data = data[:1 << int(np.log2(length))]
         if self.iqCorrector is not None:
             data = self.iqCorrector.correctIq(data)

@@ -59,7 +59,6 @@ def readFile(wordtype,
         with open(sys.stdin.fileno(), 'rb', closefd=False) as _:
             file = io.BufferedReader(sys.stdin.buffer)
             while not isDead.value:
-                # data = file.read(readSize)
                 if not file.readinto(buffer):
                     break
                 y = np.frombuffer(buffer, dtype)

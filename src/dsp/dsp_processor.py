@@ -123,22 +123,12 @@ class DspProcessor(DataProcessor):
             setattr(self, 'demod', fun)
             self.sosIn = generateEllipFilter(self.__decimatedFs, self._FILTER_DEGREE, [1, self.bandwidth >> 1],
                                              'bandpass')
-            # self.sosIn = signal.ellip(self._FILTER_DEGREE, 1, 30, [1, self.bandwidth >> 1],
-            #                           btype='bandpass',
-            #                           analog=False,
-            #                           output='sos',
-            #                           fs=self.__decimatedFs)
             return self.demod
         raise ValueError("Demodulation function is not defined")
 
     def selectOuputFm(self):
         vprint('NFM Selected')
         self.bandwidth = 12500
-        # self.outputFilters = [signal.ellip(self._FILTER_DEGREE, 1, 30, self.omegaOut,
-        #                                    btype='lowpass',
-        #                                    analog=False,
-        #                                    output='sos',
-        #                                    fs=self.__decimatedFs)]
         self.__setDemod(fmDemod, generateEllipFilter(self.__decimatedFs, self._FILTER_DEGREE, self.omegaOut, 'lowpass'))
 
     def selectOuputWfm(self):
