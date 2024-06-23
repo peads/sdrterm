@@ -25,7 +25,7 @@ from typing import Iterable
 
 import numpy as np
 
-from misc.general_util import eprint, vprint
+from misc.general_util import eprint
 
 
 def __feedBuffers(isDead: Value, data: np.ndarray, buffers: Iterable[Queue], readSize: int):
@@ -39,22 +39,19 @@ def __feedBuffers(isDead: Value, data: np.ndarray, buffers: Iterable[Queue], rea
 
 
 def readFile(wordtype: np.dtype,
-             buffers: Iterable[Queue],
-             isDead: Value,
-             f: str,
-             readSize: int = 262144,
-             offset: int = 0,
-             swapEndianness: bool = False) -> None:
-    CHUNK_SIZE = 4096
+             offset: int,
+             buffers: Iterable[Queue] = None,
+             isDead: Value = None,
+             inFile: str = None,
+             readSize: int = 65536,
+             swapEndianness: bool = False, **_) -> None:
 
     if swapEndianness:
          wordtype = wordtype.newbyteorder('<' if '>' == wordtype.byteorder else '>')
     dtype = np.dtype([('re', wordtype), ('im', wordtype)])
 
-    if f is not None:
-        data = np.memmap(f, dtype=dtype, mode='r', offset=offset, order='C')
-        readSize = (-offset + data.size) // CHUNK_SIZE
-        vprint(f'Chunk size: {readSize}')
+    if inFile is not None:
+        data = np.memmap(inFile, dtype=dtype, mode='r', offset=offset, order='C')
         __feedBuffers(isDead, data, buffers, readSize)
     else:
         buffer = array.array(wordtype.char, readSize * b'0')

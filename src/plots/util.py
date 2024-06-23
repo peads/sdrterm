@@ -22,11 +22,8 @@ from importlib.resources import files
 from typing import Callable
 
 from dsp.dsp_processor import DspProcessor
-from plots.multi_vfo_plot import MultiVFOPlot
-from plots.ps_plot import PowerSpectrumPlot
+from plots.multi_spectrum_analyzer_plot import MultiSpectrumAnalyzerPlot
 from plots.spectrum_analyzer_plot import SpectrumAnalyzerPlot
-from plots.waterfall_plot import WaterfallPlot
-from plots.wave_form_plot import WaveFormPlot
 
 
 def selectDemodulation(demodType: str, processor: DspProcessor) -> Callable:
@@ -37,42 +34,17 @@ def selectDemodulation(demodType: str, processor: DspProcessor) -> Callable:
     elif demodType == 'am':
         raise processor.selectOuputAm
     else:
-        raise ValueError(f'Invalid plot type {demodType}')
+        raise ValueError(f'Invalid demod type {demodType}')
 
 
-def selectPlotType(plotType: string, processor: DspProcessor, dataType=None, iq=False):
-    # stupid python not having switch fall-thru >:(
-    if plotType == 'ps' or plotType == 'power':
-        try:
-            files('pyqtgraph')
+def selectPlotType(plotType: string):
+    try:
+        files('pyqtgraph')
+        if plotType == 'ps' or plotType == 'power':
             return SpectrumAnalyzerPlot
-        except ModuleNotFoundError:
-            return PowerSpectrumPlot(fs=processor.fs,
-                                     processor=processor,
-                                     centerFreq=processor.centerFreq,
-                                     tunedFreq=processor.tunedFreq,
-                                     bandwidth=processor.bandwidth,
-                                     iq=iq)
-    elif plotType == 'wave' or plotType == 'waveform':
-        return WaveFormPlot(fs=processor.fs,
-                            processor=processor,
-                            centerFreq=processor.centerFreq,
-                            iq=iq)
-    elif plotType == 'water' or plotType == 'waterfall':
-        return WaterfallPlot(fs=processor.fs,
-                             processor=processor,
-                             centerFreq=processor.centerFreq,
-                             bandwidth=processor.bandwidth,
-                             tunedFreq=processor.tunedFreq,
-                             iq=iq)
-    elif plotType == 'vfos' or plotType == 'vfo':
-        return MultiVFOPlot(fs=processor.fs,
-                            processor=processor,
-                            centerFreq=processor.centerFreq,
-                            bandwidth=processor.bandwidth,
-                            tunedFreq=processor.tunedFreq,
-                            vfos=processor.vfos,
-                            dataType=dataType,
-                            iq=iq)
-    else:
-        raise ValueError(f'Invalid plot type {plotType}')
+        elif plotType == 'vfos' or plotType == 'vfo':
+            return MultiSpectrumAnalyzerPlot
+        else:
+            raise UserWarning(f'Invalid plot type {plotType}')
+    except ModuleNotFoundError as e:
+        raise UserWarning(e)

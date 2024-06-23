@@ -54,6 +54,7 @@ def main(host: Annotated[str, typer.Argument(help='Address of remote rtl_tcp ser
                     if ('q' == inp or 'Q' == inp or 'quit' in inp.lower()
                             or 'exit' in inp.lower()):
                         isDead.value = 1
+                        raise KeyboardInterrupt
                     elif ' ' not in inp:
                         print(f'ERROR: Input invalid: {inp}. Please try again')
                     else:

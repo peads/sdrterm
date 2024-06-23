@@ -18,9 +18,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-from multiprocessing import Value, get_all_start_methods, set_start_method
+from multiprocessing import Value, get_all_start_methods, set_start_method, Process
 from typing import Annotated
-from uuid import UUID
 
 import typer
 
@@ -55,46 +54,45 @@ def main(fs: Annotated[int, typer.Option('--fs', '-r', show_default=False, help=
          swap_input_endianness: Annotated[bool, typer.Option('--input-endianness', '-X',
                                                              help='Swap input endianness',
                                                              show_default='False => network-default, big-endian')] = False):
-    processes: dict[UUID, any] = {}
+    processes: list[Process] = []
     isDead = Value('b', 0)
-    ioArgs = IOArgs(fs=fs,
-                    inFile=inFile,
-                    outFile=outFile,
-                    dec=dec,
-                    center=center,
-                    tuned=tuned,
-                    vfos=vfos,
-                    dm=dm,
-                    processes=processes,
-                    pl=pl,
-                    isDead=isDead,
-                    omegaOut=omegaOut,
-                    enc=enc,
-                    correctIq=correct_iq,
-                    simo=simo,
-                    verbose=verbose,
-                    trace=trace,
-                    multiThreaded=multi_threaded,
-                    smooth=smooth_output,
-                    vfoHost=vfo_host,
-                    cpu=restrict_cpu)
+
     try:
-        for proc in processes.values():
+        ioArgs = IOArgs(fs=fs,
+                        inFile=inFile,
+                        outFile=outFile,
+                        dec=dec,
+                        center=center,
+                        tuned=tuned,
+                        vfos=vfos,
+                        dm=dm,
+                        processes=processes,
+                        pl=pl,
+                        isDead=isDead,
+                        omegaOut=omegaOut,
+                        enc=enc,
+                        correctIq=correct_iq,
+                        simo=simo,
+                        verbose=verbose,
+                        trace=trace,
+                        multiThreaded=multi_threaded,
+                        smooth=smooth_output,
+                        vfoHost=vfo_host,
+                        cpu=restrict_cpu)
+
+        for proc in processes:
             proc.start()
 
-        vprint(IOArgs.processor)
-        readFile(buffers=IOArgs.buffers,
-                 isDead=isDead,
-                 offset=ioArgs.fileInfo['dataOffset'],
-                 wordtype=ioArgs.fileInfo['bitsPerSample'],
-                 f=ioArgs.inFile,
-                 swapEndianness=swap_input_endianness)
+        vprint(IOArgs.strct['processor'])
+        readFile(offset=ioArgs.strct['fileInfo']['dataOffset'],
+                 wordtype=ioArgs.strct['fileInfo']['bitsPerSample'],
+                 swapEndianness=swap_input_endianness, **ioArgs.strct)
     except KeyboardInterrupt:
         pass
     except Exception as ex:
         printException(ex)
     finally:
-        for buffer, proc in zip(IOArgs.buffers, processes.values()):
+        for buffer, proc in zip(IOArgs.strct['buffers'], processes):
             tprint(f'Closing buffer {buffer}')
             buffer.close()
             buffer.cancel_join_thread()

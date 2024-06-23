@@ -18,7 +18,6 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
 from multiprocessing import Queue, Value
-from uuid import uuid4
 
 import numpy as np
 
@@ -30,21 +29,18 @@ from plots.spectrum_analyzer import SpectrumAnalyzer
 
 
 class SpectrumAnalyzerPlot(DataProcessor, SpectrumAnalyzer):
-    uuid = None
-
     def __init__(self,
                  buffer: Queue,
-                 iq: bool = False,
+                 correctIq: bool = False,
                  isDead: Value = None,
-                 offset: int = 0,
+                 center: int = 0,
                  **kwargs):
         kwargs['frameRate'] = 0  # the framerate is (likely network-)IO-bound
         super().__init__(**kwargs)
         self.buffer = buffer
         self.isDead = isDead
-        self.offset = offset
-        self.uuid = uuid4()
-        self.iqCorrector = IQCorrection(self.fs) if iq else None
+        self.offset = center
+        self.iqCorrector = IQCorrection(self.fs) if correctIq else None
 
     def __del__(self):
         self.buffer.close()
@@ -52,26 +48,26 @@ class SpectrumAnalyzerPlot(DataProcessor, SpectrumAnalyzer):
 
     def receiveData(self):
         data = self.buffer.get()
-        length = len(data)
-        if length - self.nfft * (length // self.nfft) != 0:
-            data = data[:1 << int(np.log2(length))]
+        self.length = len(data)
+        if self.length - self.nfft * (self.length // self.nfft) != 0:
+            data = data[:1 << int(np.log2(self.length))]
         if self.iqCorrector is not None:
             data = self.iqCorrector.correctIq(data)
         return shiftFreq(data, self.offset, self.fs)
 
     @classmethod
-    def processData(cls, isDead, buffer, fs, **kwargs):
-        cls.start(fs, buffer=buffer, isDead=isDead, **kwargs)
+    def processData(cls, isDead: Value, buffer: Queue, fs: int, *args, **kwargs) -> None:
+        cls.start(fs, buffer=buffer, isDead=isDead, *args, **kwargs)
 
     def update(self):
         from pyqtgraph.Qt.QtCore import QCoreApplication
         if not self.isDead.value:
             super().update()
         else:
-            tprint(f'Closing buffer {self.buffer}-{type(self).__name__}-{self.uuid}')
+            tprint(f'Closing buffer {self.buffer}-{type(self).__name__}')
             self.buffer.close()
             self.buffer.cancel_join_thread()
-            tprint(f'Closed buffer {self.buffer}-{type(self).__name__}-{self.uuid}')
-            tprint(f'Quitting {type(self).__name__}-{self.uuid}')
+            tprint(f'Closed buffer {self.buffer}-{type(self).__name__}')
+            tprint(f'Quitting {type(self).__name__}')
             QCoreApplication.quit()
-            eprint(f'Plot {type(self).__name__}-{self.uuid} halted')
+            eprint(f'Plot {type(self).__name__} halted')

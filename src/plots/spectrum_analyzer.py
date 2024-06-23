@@ -30,6 +30,9 @@ class SpectrumAnalyzer(ABC):
     # frameRate default: ~60 fps
     def __init__(self, fs: int, nfft: int = 2048, frameRate=17, **kwargs):
 
+        self.freq = None
+        self.amps = None
+        self.fftData = None
         import pyqtgraph as pg
         from pyqtgraph.Qt import QtCore, QtWidgets
 
@@ -39,7 +42,7 @@ class SpectrumAnalyzer(ABC):
         self.widget = pg.PlotWidget(name="spectrum")
         self.item = self.widget.getPlotItem()
         self.fs = fs
-        self.nfft = nfft
+        self.length = self.chunk = self.nfft = nfft
 
         self.item.setXRange(-self._nyquistFs, self._nyquistFs, padding=0)
         self.app.quitOnLastWindowClosed()
@@ -64,18 +67,18 @@ class SpectrumAnalyzer(ABC):
         from pyqtgraph.Qt.QtCore import QCoreApplication
         try:
             data = self.receiveData()
-            length = len(data)
-            if data is None or not length:
+            if data is None or not self.length:
                 raise KeyboardInterrupt
-            data = np.reshape(data, (length // self.nfft, self.nfft))
+            data = np.reshape(data, (self.length // self.nfft, self.nfft))
 
-            fftData = fft.fftshift(fft.fftn(data, norm='forward'))
-            amps = np.abs(fftData)
-            amps = np.log10(amps * amps)
-            freq = fft.fftshift(fft.fftfreq(self.nfft, self._inverseFs))
+            self.fftData = fft.fftshift(fft.fftn(data, norm='forward'))
+            self.amps = np.abs(self.fftData)
+            self.amps = np.log10(self.amps * self.amps)
+            self.freq = fft.fftshift(fft.fftfreq(self.nfft, self._inverseFs))
 
-            for amp in amps:
-                self.curve_spectrum.setData(freq, amp)
+            for amp in self.amps:
+                if self.curve_spectrum is not None:
+                    self.curve_spectrum.setData(self.freq, amp)
 
         except (ValueError, KeyboardInterrupt):
             tprint(f'Quitting {type(self).__name__}...')
@@ -92,7 +95,7 @@ class SpectrumAnalyzer(ABC):
     @classmethod
     def start(cls, fs, *args, **kwargs) -> int:
         from pyqtgraph.Qt import QtWidgets
-        spec = cls(fs=fs, *args, **kwargs)
+        cls.spec = cls(fs=fs, *args, **kwargs)
         return QtWidgets.QApplication.instance().exec()
 
     @property

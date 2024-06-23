@@ -154,13 +154,12 @@ def checkWavHeader(f, fs, enc):
             # else:
             #     raise ValueError('Invalid: Wave format not supported')
 
-        buf = b''
         off = -1
         temp = file.tell()
         while -1 == off:
             buf = file.read(100)
             off = buf.find(b'data')
-        off += temp + 4
+        off = temp + 4
         # file.seek(temp)
         # off = 0
         # while 1:

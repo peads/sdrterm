@@ -41,4 +41,5 @@ class SocketSpectrumAnalyzer(SpectrumAnalyzer):
     def receiveData(self):
         self.sock.recv_into(self.buffer, self.readSize)
         data = np.frombuffer(self.buffer, self.dtype)
+        self.length = len(self.buffer)
         return data['re'] + 1j * data['im']

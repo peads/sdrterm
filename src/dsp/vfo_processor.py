@@ -22,10 +22,8 @@ import struct
 from multiprocessing import Pipe, Value, Queue, Barrier
 
 import numpy as np
-from scipy import signal
 
 from dsp.dsp_processor import DspProcessor
-from dsp.util import applyFilters
 from misc.general_util import eprint, printException, findPort
 from misc.hooked_thread import HookedThread
 
@@ -36,18 +34,55 @@ class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
 
 class VfoProcessor(DspProcessor):
 
-    def __init__(self, host: str = 'localhost', **kwargs):
-        super().__init__(**kwargs)
-        if self.vfos is None or len(self.vfos) < 1:
+    def __init__(self, fs, vfoHost: str = 'localhost', vfos: str = None, **kwargs):
+        super().__init__(fs, **kwargs)
+        if vfos is None or len(vfos) < 1:
             raise ValueError("simo mode cannot be used without the vfos option")
-        self.vfos = [float(x) + self.centerFreq for x in self.vfos.split(',') if x is not None]
+        self.vfos = vfos.split(',')
+        self.vfos = [int(x) + self.centerFreq for x in self.vfos if x is not None]
         self.vfos.append(self.centerFreq)
         self.vfos = np.array(self.vfos)
         self.nFreq = len(self.vfos)
         self.omega = -2j * np.pi * (self.vfos / self.fs)
-        self.host = host
+        self.host = vfoHost
 
-    def processData(self, isDead: Value, buffer: Queue, _) -> None:
+    def _demod(self, y: np.ndarray):
+        ret = []
+        for yy in y:
+            ret.append([self.demod(yyy) for yyy in yy])
+        return np.array(ret)
+
+    def _generateShift(self, r: int, c: int) -> np.ndarray | None:
+        if not self.centerFreq:
+            return None
+        else:
+            ret = []
+            shifts = np.exp([w * np.arange(c) for w in self.omega])
+            for shift in shifts:
+                ret.append(np.broadcast_to(shift, (r, c)))
+            return np.array(ret)
+
+    def __processData(self, isDead: Value, buffer: Queue, pipes: list[Pipe]) -> None:
+        Y = None
+        shift = None
+        while not isDead.value:
+            Y, shift, y = self._bufferChunk(isDead, buffer, Y, shift)
+
+            for (pipe, data) in zip(pipes, y):
+                r, w = pipe
+                try:
+                    w.send(struct.pack('!' + str(data.size) + 'd', *data.flat))
+                except (ConnectionError, EOFError):
+                    pipes.remove(pipe)
+                    r.close()
+                    w.close()
+        for pipe in pipes:
+            r, w = pipe
+            pipes.remove(pipe)
+            r.close()
+            w.close()
+
+    def processData(self, isDead: Value, buffer: Queue, *args, **kwargs) -> None:
         children = self.nFreq + 1
         barrier = Barrier(children)
         pipes = []
@@ -71,54 +106,27 @@ class VfoProcessor(DspProcessor):
                         w.close()
                         return
 
-        def shift(Y: np.ndarray, n: int) -> np.ndarray:
-            t = np.arange(n)
-            s = np.exp([w * t for w in self.omega])
-            ret = Y * s
-            return ret
-
         with ThreadedTCPServer((self.host, findPort()), ThreadedTCPRequestHandler) as server:
             server.max_children = children
             thread = HookedThread(isDead, target=server.serve_forever, daemon=True)
             thread.start()
 
             try:
-                eprint(f'\nAccepting connections on port {server.socket.getsockname()[1]}\n')
+                eprint(f'\nAccepting connections on {server.socket.getsockname()}\n')
                 if not barrier.broken:
                     barrier.wait()
-
-                while not isDead.value:
-                    y = buffer.get()
-                    length = len(y)
-                    if y is None or not length:
-                        isDead.value = 1
-                        break
-
-                    if self.correctIq is not None:
-                        y = self.correctIq.correctIq(y)
-                    y = np.broadcast_to(y, (self.nFreq, length))
-                    y = shift(y, length)
-                    if self._decimationFactor > 1:
-                        y = signal.decimate(y, self.decimation, ftype='fir')
-                    y = signal.sosfilt(self._aaFilter, y)
-                    y = [self.demod(yy) for yy in y]
-                    y = applyFilters(y, self._outputFilters)
-                    for (pipe, data) in zip(pipes, y):
-                        r, w = pipe
-                        try:
-                            w.send(struct.pack('!' + (len(data) * 'd'), *data))
-                        except (ConnectionError, EOFError):
-                            pipes.remove(pipe)
-                            r.close()
-                            w.close()
                     barrier.abort()
-            except (EOFError, KeyboardInterrupt, ConnectionError, TypeError):
+
+                self.__processData(isDead, buffer, pipes)
+            except (KeyboardInterrupt, TypeError):
                 pass
             except Exception as e:
                 printException(e)
             finally:
+                barrier.abort()
                 buffer.close()
                 buffer.cancel_join_thread()
+                server.shutdown()
                 thread.join(5)
                 eprint(f'Multi-VFO writer halted')
                 return

@@ -67,14 +67,12 @@ def initServer(receiver: SocketReceiver, isDead: Value, server_host: str) \
         if not receiver.barrier.broken:
             receiver.barrier.wait()
             receiver.barrier.abort()
-        # try:
         while not isDead.value:
             data = receiver.receive()
             for y in data:
                 for client in list(clients):
                     client.put(y)
-        # finally:
-            return
+        return
 
     server = ThreadedTCPServer((server_host, findPort()), ThreadedTCPRequestHandler)
     class ServerHookedThread(HookedThread):

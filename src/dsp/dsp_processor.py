@@ -35,24 +35,18 @@ from dsp.util import applyFilters, generateEllipFilter
 from misc.general_util import printException, vprint, eprint
 
 
-class _EmptyChunkError(ValueError):
-    def __init__(self):
-        super().__init__('Empty chunk')
-
-
 class DspProcessor(DataProcessor):
     _FILTER_DEGREE = 2
 
     def __init__(self,
                  fs: int,
-                 centerFreq: float,
-                 omegaOut: int,
-                 tunedFreq: int,
-                 vfos: str,
-                 correctIq: bool,
-                 decimation: int,
+                 center: float = 0.,
+                 omegaOut: int = 0,
+                 tuned: int = 0,
+                 correctIq: bool = False,
+                 dec: int = 2,
                  smooth: bool = False,
-                 cpus: int = 0,
+                 cpus: int = 1,
                  **kwargs):
 
         self.bandwidth \
@@ -62,15 +56,17 @@ class DspProcessor(DataProcessor):
             = self.__decDt \
             = self._aaFilter = None
         self._outputFilters = []
-        self._decimationFactor = decimation
+        self._decimationFactor = dec
         self.fs = fs
-        self.centerFreq = centerFreq
-        self.tunedFreq = tunedFreq
-        self.vfos = vfos
+        self.centerFreq = center
+        self.tunedFreq = tuned
         self.omegaOut = omegaOut
         if correctIq:
             setattr(self, 'correctIq', IQCorrection(self.__decimatedFs).correctIq)
         self.smooth = smooth
+
+        self._nCpus = os.cpu_count()
+        self._ii = range(self._nCpus)
 
     @staticmethod
     def correctIq(y):
@@ -118,14 +114,6 @@ class DspProcessor(DataProcessor):
     def decimatedFs(self, _):
         raise NotImplementedError('Setting the decimatedFs directly is not supported. Set fs instead')
 
-    @property
-    def inverseDfs(self):
-        return self.__decDt
-
-    @inverseDfs.setter
-    def inverseDfs(self, _):
-        raise NotImplementedError('Setting the inverseDfs directly is not supported. Set fs instead')
-
     def demod(self, y: np.ndarray[any, np.dtype[np.complex64 | np.complex128]]) -> np.ndarray[any, np.dtype[np.real]]:
         pass
 
@@ -162,49 +150,54 @@ class DspProcessor(DataProcessor):
         self.bandwidth = 10000
         self.__setDemod(amDemod, generateEllipFilter(self.__decimatedFs, self._FILTER_DEGREE, 18000, 'lowpass'))
 
-    def __processChunk(self, y: np.ndarray, shift: np.ndarray) -> np.ndarray[any, np.dtype[np.real]]:
+    def _demod(self, y: np.ndarray):
+        return [self.demod(yy) for yy in y]
+
+    def _processChunk(self, y: np.ndarray, shift: np.ndarray) -> np.ndarray[any, np.dtype[np.real]]:
         y = self.correctIq(y)
         if shift is not None:
             y = y * shift
         if self._decimationFactor > 1:
             y = signal.decimate(y, self._decimationFactor, ftype=self._aaFilter)
-        y = [self.demod(yy) for yy in y]
+        y = self._demod(y)
         return applyFilters(y, self._outputFilters)
 
+    def _bufferChunk(self, isDead: Value, buffer: Queue, Y: np.ndarray, shift: np.ndarray):
+        for i in self._ii:
+            y = buffer.get()
+            if y is None or not len(y):
+                isDead.value = 1
+                break
+            if Y is None:
+                Y = np.ndarray(shape=(self._nCpus, y.size), dtype=np.complex128)
+            if shift is None:
+                shift = self._generateShift(self._nCpus, y.size)
+            if len(y) < Y.shape[1]:
+                y = np.pad(y, (0, -len(y) + Y.shape[1]), mode='constant', constant_values=0)
+            Y[i] = y
+        return Y, shift, self._processChunk(Y, shift)
+
     def __processData(self, isDead: Value, buffer: Queue, file):
-        vprint('Processing on single-thread')
-        nCpus = os.cpu_count()
-        ii = range(nCpus)
         Y = None
         shift = None
 
-        def generateShift(r: int, c: int):
-            if self.centerFreq:
-                return np.broadcast_to(np.exp(-2j * np.pi * (self.centerFreq / self.__fs) * np.arange(c)), (r, c))
-            else:
-                return None
-
         while not isDead.value:
-            for i in ii:
-                y = buffer.get()
-                if y is None or not len(y):
-                    isDead.value = 1
-                    break
-                if Y is None:
-                    Y = np.ndarray(shape=(nCpus, y.size), dtype=np.complex128)
-                if shift is None:
-                    shift = generateShift(nCpus, y.size)
-                Y[i] = y
-            y = self.__processChunk(Y, shift)
+            Y, shift, y = self._bufferChunk(isDead, buffer, Y, shift)
             file.write(struct.pack('@' + (y.size * 'd'), *y.flat))
 
-    def processData(self, isDead: Value, buffer: Queue, f: str) -> None:
+    def _generateShift(self, r: int, c: int) -> np.ndarray | None:
+        if self.centerFreq:
+            return np.broadcast_to(np.exp(-2j * np.pi * (self.centerFreq / self.__fs) * np.arange(c)), (r, c))
+        else:
+            return None
+
+    def processData(self, isDead: Value, buffer: Queue, f: str, *args, **kwargs) -> None:
         with open(f, 'wb') if f is not None else open(sys.stdout.fileno(), 'wb', closefd=False) as file:
             try:
                 self.__processData(isDead, buffer, file)
                 file.write(b'')
                 file.flush()
-            except (_EmptyChunkError, KeyboardInterrupt):
+            except KeyboardInterrupt:
                 pass
             except Exception as e:
                 eprint(f'Process {multiprocessing.current_process().name} raised exception')
@@ -212,7 +205,7 @@ class DspProcessor(DataProcessor):
             finally:
                 buffer.close()
                 buffer.cancel_join_thread()
-                eprint(f'File writer halted')
+                eprint(f'Standard writer halted')
                 return
 
     def __repr__(self):
