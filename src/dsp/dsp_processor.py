@@ -183,7 +183,11 @@ class DspProcessor(DataProcessor):
 
         while not isDead.value:
             Y, shift, y = self._bufferChunk(isDead, buffer, Y, shift)
-            file.write(struct.pack('@' + (y.size * 'd'), *y.flat))
+            size = y.size
+            y = y.flat
+            if self.smooth:
+                y = signal.savgol_filter(y, 16, self._FILTER_DEGREE)
+            file.write(struct.pack('@' + (size * 'd'), *y))
 
     def _generateShift(self, r: int, c: int) -> np.ndarray | None:
         if self.centerFreq:

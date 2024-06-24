@@ -29,11 +29,12 @@ class ControlEnum(Enum):
 
 class RtlTcpSamplingRate(ControlEnum):
     fs0 = 250000
-    fs1 = 1024000
-    fs2 = 1200000
-    fs3 = 2048000
-    fs4 = 2400000
-    fs5 = 3200000
+    fs1 = 256000
+    fs2 = 1024000
+    fs3 = 1200000
+    fs4 = 2048000
+    fs5 = 2400000
+    fs6 = 3200000
 
     @classmethod
     def dict(cls):

@@ -18,9 +18,11 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
+import socket
 from multiprocessing import Value
 from typing import Annotated
 
+import numpy as np
 import typer
 
 from misc.general_util import eprint
@@ -36,12 +38,18 @@ def main(host: Annotated[str, typer.Argument(help='Address of remote rtl_tcp ser
          server_host: Annotated[str, typer.Option(help='Port of local distribution server')] = 'localhost') -> None:
     isDead = Value('b', 0)
     isDead.value = 0
+    socket.setdefaulttimeout(1)
     with SocketReceiver(isDead=isDead, host=host, port=port) as receiver:
-        server, st, pt = output_server.initServer(receiver, isDead, server_host)
+        server, st, pt, resetBuffers = output_server.initServer(receiver, isDead, server_host)
         receiver.connect()
-        cmdr = ControlRtlTcp(receiver.receiver)
-        st.start()
+
+        def reset(fs: int):
+            resetBuffers()
+            receiver.reset(None if fs > receiver.BUF_SIZE else (1 << int(np.log2(fs))))
+
+        cmdr = ControlRtlTcp(receiver.receiver, reset)
         pt.start()
+        st.start()
 
         try:
             while not isDead.value:
@@ -69,8 +77,6 @@ def main(host: Annotated[str, typer.Argument(help='Address of remote rtl_tcp ser
                             param = int(param)
                             cmdr.setParam(numCmd, param)
                             receiver.fs = param
-                            if RtlTcpCommands.SET_SAMPLE_RATE.value == numCmd:
-                                receiver.buffer = None
                 except (UnrecognizedInputError, ValueError, KeyError) as ex:
                     print(f'ERROR: Input invalid: {ex}. Please try again')
         except KeyboardInterrupt:

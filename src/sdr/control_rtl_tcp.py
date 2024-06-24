@@ -18,6 +18,7 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
 from struct import error as StructError, pack
+from typing import Callable
 
 from sdr.controller import Controller
 from sdr.controller import UnrecognizedInputError
@@ -25,13 +26,18 @@ from sdr.rtl_tcp_commands import RtlTcpCommands
 
 
 class ControlRtlTcp(Controller):
-    def __init__(self, connection):
+    def __init__(self, connection, resetBuffers: Callable[[int], None]):
         super().__init__(connection)
+        if resetBuffers is not None:
+            setattr(self, 'resetBuffers', resetBuffers)
         # connection.sendall(pack('>BI', RtlTcpCommands.SET_GAIN_MODE.value, 1))
         # connection.sendall(pack('>BI', RtlTcpCommands.SET_AGC_MODE.value, 0))
         # connection.sendall(pack('>BI', RtlTcpCommands.SET_TUNER_GAIN_BY_INDEX.value, 0))
         # connection.sendall(pack('>BI', RtlTcpCommands.SET_SAMPLE_RATE.value, 1024000))
         # connection.sendall(pack('>BI', RtlTcpCommands.SET_BIAS_TEE.value, 0))
+
+    def resetBuffers(self, _):
+        pass
 
     def setFrequency(self, freq):
         self.setParam(RtlTcpCommands.SET_FREQUENCY.value, freq)
@@ -46,5 +52,8 @@ class ControlRtlTcp(Controller):
                 self.connection.sendall(pack('!Bi', command, param))
             else:
                 self.connection.sendall(pack('!BI', command, param))
+
+            if RtlTcpCommands.SET_SAMPLE_RATE.value == command:
+                self.resetBuffers(param)
         except StructError as e:
             raise UnrecognizedInputError(param, e)

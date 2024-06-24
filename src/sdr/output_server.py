@@ -21,7 +21,8 @@ import socketserver
 import sys
 import threading
 from multiprocessing import Value
-from queue import Queue
+from queue import Queue, Empty
+from typing import Callable
 
 from misc.general_util import shutdownSocket, eprint, findPort
 from misc.hooked_thread import HookedThread
@@ -33,7 +34,7 @@ def log(*args, **kwargs) -> None:
 
 
 def initServer(receiver: SocketReceiver, isDead: Value, server_host: str) \
-        -> tuple[socketserver.TCPServer, HookedThread, HookedThread]:
+        -> tuple[socketserver.TCPServer, HookedThread, HookedThread, Callable[[], None]]:
     clients = []
 
     class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
@@ -47,7 +48,7 @@ def initServer(receiver: SocketReceiver, isDead: Value, server_host: str) \
 
         def handle(self):
             log(f'Connection request from {self.request.getsockname()}')
-            buffer = Queue(16)
+            buffer = Queue()
             clients.append(buffer)
             while not isDead.value:
                 try:
@@ -74,6 +75,14 @@ def initServer(receiver: SocketReceiver, isDead: Value, server_host: str) \
                     client.put(y)
         return
 
+    def reset():
+        for client in list(clients):
+            try:
+                client.get(0.1)
+            except (KeyboardInterrupt | Empty):
+                pass
+
+
     server = ThreadedTCPServer((server_host, findPort()), ThreadedTCPRequestHandler)
     class ServerHookedThread(HookedThread):
         def __init__(self, *args, **kwargs):
@@ -92,4 +101,4 @@ def initServer(receiver: SocketReceiver, isDead: Value, server_host: str) \
 
     st = ServerHookedThread(isDead, target=server.serve_forever, daemon=True)
     rt = ServerHookedThread(isDead, target=receive, daemon=True)
-    return server, st, rt
+    return server, st, rt, reset

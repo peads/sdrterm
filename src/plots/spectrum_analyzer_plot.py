@@ -35,7 +35,7 @@ class SpectrumAnalyzerPlot(DataProcessor, SpectrumAnalyzer):
                  isDead: Value = None,
                  center: int = 0,
                  **kwargs):
-        kwargs['frameRate'] = 0  # the framerate is (likely network-)IO-bound
+        # kwargs['frameRate'] = 0  # the framerate is (likely network-)IO-bound
         super().__init__(**kwargs)
         self.buffer = buffer
         self.isDead = isDead

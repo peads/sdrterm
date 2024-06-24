@@ -22,21 +22,21 @@ from multiprocessing import Value
 from threading import Condition
 from typing import Generator
 
-from misc.general_util import shutdownSocket
+from misc.general_util import shutdownSocket, eprint, printException, vprint
 from sdr.receiver import Receiver
 
 
 class SocketReceiver(Receiver):
-    __BUF_SIZE = 262144
+    BUF_SIZE = 262144
 
-    def __init__(self, isDead: Value, host: str | None, port: int | None):
+    def __init__(self, isDead: Value, host: str = None, port: int = None):
         self.host = host
         self.port = port
         self.__cond = Condition()
         self.__isConnected = False
         super().__init__()
         self.isDead = isDead
-        self.__buffer = array.array('B', self.__BUF_SIZE * b'0')
+        self.__buffer = array.array('B', self.BUF_SIZE * b'0')
 
     def __exit__(self, *ex):
         self.disconnect()
@@ -52,9 +52,6 @@ class SocketReceiver(Receiver):
         if self.__cond is not None:
             with self.__cond:
                 self.__cond.notify_all()
-
-        self._receiver = None
-        self.__cond = None
         self.__isConnected = False
 
     def connect(self):
@@ -69,8 +66,19 @@ class SocketReceiver(Receiver):
     def awaitConnection(self):
         if not self.__isConnected:
             with self.__cond:
+                eprint('Awaiting connection')
                 self.__cond.wait()
+                eprint('Connection established')
         return self.__isConnected
+
+    def reset(self, size: int = None):
+        vprint(f'Resetting buffers: {size}')
+        self.__isConnected = False
+        with self.__cond:
+            self.__buffer = array.array('B', (size if size is not None and size != self.BUF_SIZE else self.BUF_SIZE) * b'0')
+            self.__cond.notify()
+        self.__isConnected = True
+
 
     def receive(self) -> Generator:
         if not self._barrier.broken:
@@ -86,4 +94,4 @@ class SocketReceiver(Receiver):
                     yield self.__buffer[:]
             finally:
                 file.close()
-                return [b'']
+                return None
