@@ -31,7 +31,7 @@ from matplotlib import pyplot as plt
 from dsp.data_processor import DataProcessor
 from dsp.iq_correction import IQCorrection
 from dsp.util import shiftFreq
-from misc.general_util import deinterleave, printException, eprint
+from misc.general_util import printException, eprint
 
 
 class Plot(DataProcessor, ABC):

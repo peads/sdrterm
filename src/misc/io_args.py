@@ -18,110 +18,67 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
 import os
-from multiprocessing import Process, Queue
-from uuid import UUID, uuid4
+from multiprocessing import Process, Queue, Value
+from uuid import uuid4
 
 from dsp.dsp_processor import DspProcessor
 from dsp.vfo_processor import VfoProcessor
 from misc.file_util import checkWavHeader
-from misc.general_util import traceOn, verboseOn
+from misc.general_util import traceOn, verboseOn, eprint
 from plots.util import selectDemodulation, selectPlotType
 
 
 class IOArgs:
-    pl = None
-    processes = None
-    dm = None
-    normalize = False
-    vfos = None
-    tuned = 0
-    center = 0
-    dec = 0
-    enc = None
-    bits = None
-    fs = 0
-    outFile = None
-    inFile = None
-    isDead = None
-    omegaOut = 0
-    correctIq = None
-    simo = False
-    fileInfo = None
-    processor = None
-    buffers = []
-    multiThreaded = False
-    smooth = False
-    vfoHost = None
+    strct = None
 
     def __init__(self, **kwargs):
+        IOArgs.strct = kwargs
         if 'verbose' in kwargs and kwargs['verbose']:
             verboseOn()
         if 'trace' in kwargs and kwargs['trace']:
             traceOn()
-        IOArgs.simo = kwargs['simo']
-        IOArgs.fs = kwargs['fs'] if 'fs' in kwargs else None
-        IOArgs.inFile = kwargs['inFile']
-        IOArgs.outFile = kwargs['outFile']
-        IOArgs.dec = kwargs['dec'] if 'dec' in kwargs else None
-        IOArgs.center = kwargs['center']
-        IOArgs.tuned = kwargs['tuned'] if 'tuned' in kwargs else None
-        if 'vfos' in kwargs and kwargs['vfos'] is not None:
-            IOArgs.vfos = kwargs['vfos']
-        IOArgs.dm = kwargs['dm'] if 'dm' in kwargs else None
-        IOArgs.processes = kwargs['processes']
-        IOArgs.pl = kwargs['pl'] if 'pl' in kwargs else None
-        IOArgs.isDead = kwargs['isDead']
-        IOArgs.bits = kwargs['bits'] if 'bits' in kwargs else None
-        IOArgs.enc = kwargs['enc'] if 'enc' in kwargs else None
-        IOArgs.normalize = kwargs['normalize'] if 'normalize' in kwargs else False
-        IOArgs.omegaOut = kwargs['omegaOut'] if 'omegaOut' in kwargs else None
-        IOArgs.correctIq = kwargs['correctIq']
-        IOArgs.fileInfo = checkWavHeader(IOArgs.inFile, IOArgs.fs, IOArgs.bits, IOArgs.enc)
-        IOArgs.fs = IOArgs.fileInfo['sampRate']
-        IOArgs.smooth = kwargs['smooth'] if 'smooth' in kwargs else False
-        IOArgs.multiThreaded = kwargs['multiThreaded'] if 'multiThreaded' in kwargs and os.cpu_count() > 2 else False
-        IOArgs.vfoHost = kwargs['vfoHost'] if 'vfoHost' in kwargs else 'localhost'
+        kwargs['fileInfo'] = checkWavHeader(kwargs['inFile'], kwargs['fs'], kwargs['enc'])
+        kwargs['fs'] = kwargs['fileInfo']['sampRate']
+        kwargs['buffers'] = []
 
-        IOArgs.__initIOHandlers()
-        IOArgs.isDead.value = 0
+        IOArgs.__initializeOutputHandlers(**kwargs)
+        kwargs['isDead'].value = 0
 
     @classmethod
-    def __initIOHandlers(cls):
-        processor = DspProcessor if not cls.simo else VfoProcessor
-        cls.processor = processor = processor(decimation=cls.dec,
-                                              centerFreq=cls.center,
-                                              tunedFreq=cls.tuned,
-                                              vfos=cls.vfos,
-                                              fs=cls.fs,
-                                              normalize=cls.normalize,
-                                              omegaOut=cls.omegaOut,
-                                              correctIq=cls.correctIq,
-                                              multiThreaded=cls.multiThreaded,
-                                              smooth=cls.smooth,
-                                              host=cls.vfoHost)
-        selectDemodulation(cls.dm, processor)()
+    def __initializeOutputHandlers(cls,
+                                   isDead: Value = None,
+                                   fs: int = 0,
+                                   dm: str = None,
+                                   outFile: str = None,
+                                   simo: bool = False,
+                                   pl: str = None,
+                                   processes: list[Process] = None,
+                                   buffers = None,
+                                   **kwargs):
+        cls.strct['processor'] = DspProcessor if not simo else VfoProcessor
+        cls.strct['processor'] = cls.strct['processor'](fs, **kwargs)
+        selectDemodulation(dm, cls.strct['processor'])()
+
         buffer = Queue()
-        cls.buffers.append(buffer)
-        fileWriter = Process(target=processor.processData,
-                             args=(cls.isDead, buffer, cls.outFile))
-        writerUuid = IOArgs.addConsumer(fileWriter)
-        fileWriter.name = "File writer-" + str(writerUuid)
+        buffers.append(buffer)
 
-        if cls.pl is not None and len(cls.pl) > 0:
-            for p in cls.pl.split(','):
-                buffer = Queue()
-                cls.buffers.append(buffer)
-                psplot = selectPlotType(p, processor, cls.fileInfo['bitsPerSample'][1], cls.correctIq)
-                plotter = Process(target=psplot.processData,
-                                  args=(cls.isDead, buffer, cls.fs),
-                                  kwargs={'offset': cls.center, 'iq': cls.correctIq},
-                                  daemon=True)
-                plotUuid = IOArgs.addConsumer(plotter, uuid=psplot.uuid)
-                plotter.name = "Plotter-" + str(plotUuid)
+        fileWriter = Process(target=cls.strct['processor'].processData,
+                             args=(isDead, buffer, outFile))
+        fileWriter.name = "File writer-" + type(cls.strct['processor']).__name__
+        processes.append(fileWriter)
 
-    @classmethod
-    def addConsumer(cls, proc, uuid: UUID = None) -> UUID:
-        if uuid is None:
-            uuid = uuid4()
-        cls.processes[uuid] = proc
-        return uuid
+        if pl is not None and len(pl) > 0:
+            if 'posix' in os.name and 'DISPLAY' not in os.environ:
+                eprint('Warning: No display detected, but plots selected')
+            else:
+                for p in pl.split(','):
+                    buffer = Queue()
+                    buffers.append(buffer)
+                    psplot = selectPlotType(p)
+                    kwargs['bandwidth'] = cls.strct['processor'].bandwidth
+                    plotter = Process(target=psplot.processData,
+                                      args=(isDead, buffer, fs),
+                                      kwargs=kwargs,
+                                      daemon=True)
+                    processes.append(plotter)
+                    plotter.name = "Plotter-" + type(psplot).__name__

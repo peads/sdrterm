@@ -18,12 +18,14 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
+import socket
 from multiprocessing import Value
 from typing import Annotated
 
+import numpy as np
 import typer
 
-from misc.general_util import printException, eprint
+from misc.general_util import eprint
 from sdr import output_server
 from sdr.control_rtl_tcp import ControlRtlTcp
 from sdr.controller import UnrecognizedInputError
@@ -32,16 +34,22 @@ from sdr.socket_receiver import SocketReceiver
 
 
 def main(host: Annotated[str, typer.Argument(help='Address of remote rtl_tcp server')],
-         port: Annotated[int, typer.Argument(help='Port of remote rtl_tcp server')]) -> None:
+         port: Annotated[int, typer.Argument(help='Port of remote rtl_tcp server')],
+         server_host: Annotated[str, typer.Option(help='Port of local distribution server')] = 'localhost') -> None:
     isDead = Value('b', 0)
     isDead.value = 0
-    with SocketReceiver(isDead=isDead) as recvSckt:
-        recvSckt.receiver.connect((host, port))
-        cmdr = ControlRtlTcp(recvSckt.receiver)
-        server, st, pt = output_server.initServer(recvSckt, isDead, host='0.0.0.0')
+    # socket.setdefaulttimeout(1)
+    with SocketReceiver(isDead=isDead, host=host, port=port) as receiver:
+        server, st, pt, resetBuffers = output_server.initServer(receiver, isDead, server_host)
+        receiver.connect()
 
-        st.start()
+        def reset(fs: int):
+            resetBuffers()
+            receiver.reset(None if fs > receiver.BUF_SIZE else (1 << int(np.log2(fs))))
+
+        cmdr = ControlRtlTcp(receiver.receiver, reset)
         pt.start()
+        st.start()
 
         try:
             while not isDead.value:
@@ -54,6 +62,7 @@ def main(host: Annotated[str, typer.Argument(help='Address of remote rtl_tcp ser
                     if ('q' == inp or 'Q' == inp or 'quit' in inp.lower()
                             or 'exit' in inp.lower()):
                         isDead.value = 1
+                        raise KeyboardInterrupt
                     elif ' ' not in inp:
                         print(f'ERROR: Input invalid: {inp}. Please try again')
                     else:
@@ -67,13 +76,11 @@ def main(host: Annotated[str, typer.Argument(help='Address of remote rtl_tcp ser
                         else:
                             param = int(param)
                             cmdr.setParam(numCmd, param)
-                            recvSckt.fs = param
+                            receiver.fs = param
                 except (UnrecognizedInputError, ValueError, KeyError) as ex:
                     print(f'ERROR: Input invalid: {ex}. Please try again')
-        except (ConnectionResetError, ConnectionAbortedError):
-            eprint(f'Connection lost')
-        except Exception as e:
-            printException(e)
+        except KeyboardInterrupt:
+            pass
         finally:
             isDead.value = 1
             server.shutdown()

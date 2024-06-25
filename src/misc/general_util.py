@@ -21,20 +21,18 @@ import signal as s
 import socket
 import sys
 import traceback
+from contextlib import closing
 from multiprocessing import Condition
-from numbers import Number
-from typing import Callable, Iterable
-
-import numpy as np
+from typing import Callable
 
 
 class __VerbosePrint:
-    @classmethod
-    def vprint(cls, *args, **kwargs) -> None:
+    @staticmethod
+    def vprint(*args, **kwargs) -> None:
         pass
 
-    @classmethod
-    def tprint(cls, *args, **kwargs) -> None:
+    @staticmethod
+    def tprint(*args, **kwargs) -> None:
         pass
 
 
@@ -50,24 +48,19 @@ def tprint(*args, **kwargs) -> None:
     __VerbosePrint.tprint(*args, **kwargs)
 
 
-# def interleave(x: list, y: list) -> list:
-#     return [x for xs in zip(x, y) for x in xs]
-
-def deinterleave(y: Iterable[Number] | np.ndarray[any, np.number]) -> np.ndarray[any, np.complex64 | np.complex128] | None:
-    return np.array([a + 1j * b for a, b in zip(y[::2], y[1::2])])
-
-
 def printException(e: Exception) -> None:
     eprint(f'Error: {e}')
     traceback.print_exc(file=sys.stderr)
 
 
-def __applyIgnoreException(*func: Callable[[], any]) -> any:
+def __applyIgnoreException(*func: Callable[[], any]) -> list:
+    ret = []
     for f in func:
         try:
-            return f()
-        except Exception:
-            pass
+            ret.append(f())
+        except Exception as e:
+            ret.append(e)
+    return ret
 
 
 def verboseOn() -> None:
@@ -86,11 +79,31 @@ def initializer(isDead: Condition) -> None:
     s.signal(s.SIGINT, handleSignal)
 
 
-def shutdownSocket(sock: socket.socket) -> None:
-    __applyIgnoreException(lambda: sock.send(b''))
-    __applyIgnoreException(lambda: sock.shutdown(socket.SHUT_RDWR))
-
-
-def shutdownSockets(*socks: socket.socket) -> None:
+def shutdownSocket(*socks: socket.socket) -> None:
     for sock in socks:
-        shutdownSocket(sock)
+        __applyIgnoreException(lambda: sock.send(b''), lambda: sock.shutdown(socket.SHUT_RDWR))
+
+
+# taken from https://stackoverflow.com/a/45690594
+def findPort(host='localhost') -> int:
+    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
+        s.bind((host, 0))
+        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        return s.getsockname()[1]
+# IP_MTU_DISCOVER = 10
+# IP_PMTUDISC_DO = 2
+# IP_MTU = 14
+# def estimateMtu(self):
+#     self.__mtu = 1024 if self.__host not in ['localhost', '127.0.0.1'] else self.__BUF_SIZE
+#     if 'posix' in os.name:
+#         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+#         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+#         sock.setsockopt(socket.IPPROTO_IP, self.IP_MTU_DISCOVER, self.IP_PMTUDISC_DO)
+#         sock.connect((self.__host, self.__port))
+#         try:
+#             sock.send(b'#' * self.__BUF_SIZE)
+#         except socket.error:
+#             self.__mtu = sock.getsockopt(socket.IPPROTO_IP, self.IP_MTU)
+#             eprint(f'Estimated MTU: {self.__mtu}')
+#         else:
+#             self.__mtu = 1024

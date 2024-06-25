@@ -19,6 +19,7 @@
 #
 from abc import ABC, abstractmethod
 from multiprocessing import Barrier
+from typing import Generator
 
 
 def prevent_out_of_context_execution(method):
@@ -33,8 +34,7 @@ def prevent_out_of_context_execution(method):
 def remove_context(method):
     def decorator(self, *args, **kwargs):
         self._inside_context = False
-        if hasattr(self, '_barrier'):
-            self._barrier.abort()
+        self._barrier.abort()
         return method(self, *args, **kwargs)
 
     return decorator
@@ -42,9 +42,9 @@ def remove_context(method):
 
 class Receiver(ABC):
 
-    def __init__(self, receiver=None, barrier=Barrier(2)):
+    def __init__(self, barrier=Barrier(2)):
         self._inside_context = False
-        self._receiver = self.receiver = receiver
+        self._receiver = None
         self._barrier = barrier
 
     def __enter__(self):
@@ -71,7 +71,22 @@ class Receiver(ABC):
     def barrier(self):
         del self._barrier
 
+    @property
+    @prevent_out_of_context_execution
+    def receiver(self):
+        return self._receiver
+
+    @receiver.setter
+    @prevent_out_of_context_execution
+    def receiver(self, _):
+        raise UserWarning('Illegal operation')
+
+    @receiver.deleter
+    @prevent_out_of_context_execution
+    def receiver(self):
+        del self._receiver
+
     @abstractmethod
     @prevent_out_of_context_execution
-    def receive(self):
+    def receive(self) -> Generator:
         pass

@@ -56,8 +56,9 @@ class IQCorrection:
     def inductance(self):
         del self.__inductance
 
-    def correctIq(self, data: np.ndarray[any, np.complex64 | np.complex128]) -> np.ndarray[any, np.complex64 | np.complex128]:
+    def correctIq(self, data: np.ndarray[any, np.dtype[np.complex64 | np.complex128]]) \
+        -> np.ndarray[any,  np.dtype[np.complex64 | np.complex128]]:
         for i in range(len(data)):
-            z = data[i] = data[i] - self.__off
-            self.__off += z * self.__inductance
+            data[i] -= self.__off
+            self.__off += data[i] * self.__inductance
         return data

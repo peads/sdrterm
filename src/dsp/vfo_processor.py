@@ -20,15 +20,13 @@
 import socketserver
 import struct
 from multiprocessing import Pipe, Value, Queue, Barrier
+from threading import BrokenBarrierError
 
 import numpy as np
-from scipy import signal
 
 from dsp.dsp_processor import DspProcessor
-from dsp.util import applyFilters
-from misc.general_util import eprint, printException, deinterleave
+from misc.general_util import eprint, printException, findPort
 from misc.hooked_thread import HookedThread
-from sdr.output_server import findPort
 
 
 class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
@@ -37,27 +35,71 @@ class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
 
 class VfoProcessor(DspProcessor):
 
-    def __init__(self, host: str = 'localhost', **kwargs):
-        super().__init__(**kwargs)
-        if self.vfos is None or len(self.vfos) < 1:
+    def __init__(self, fs, vfoHost: str = 'localhost', vfos: str = None, **kwargs):
+        super().__init__(fs, **kwargs)
+        if vfos is None or len(vfos) < 1:
             raise ValueError("simo mode cannot be used without the vfos option")
-        self.vfos = [float(x) + self.centerFreq for x in self.vfos.split(',') if x is not None]
+        self.vfos = vfos.split(',')
+        self.vfos = [int(x) + self.centerFreq for x in self.vfos if x is not None]
         self.vfos.append(self.centerFreq)
         self.vfos = np.array(self.vfos)
         self.nFreq = len(self.vfos)
         self.omega = -2j * np.pi * (self.vfos / self.fs)
-        self.host = host
+        self.host = vfoHost
 
-    def processData(self, isDead: Value, buffer: Queue, _) -> None:
+    def _demod(self, y: np.ndarray):
+        ret = []
+        for yy in y:
+            ret.append([self.demod(yyy) for yyy in yy])
+        return np.array(ret)
+
+    def _generateShift(self, r: int, c: int) -> np.ndarray | None:
+        if not self.centerFreq:
+            return None
+        else:
+            ret = []
+            shifts = np.exp([w * np.arange(c) for w in self.omega])
+            for shift in shifts:
+                ret.append(np.broadcast_to(shift, (r, c)))
+            return np.array(ret)
+
+    def __processData(self, isDead: Value, buffer: Queue, pipes: list[Pipe]) -> None:
+        Y = None
+        shift = None
+        while not isDead.value:
+            Y, shift, y = self._bufferChunk(isDead, buffer, Y, shift)
+
+            for (pipe, data) in zip(pipes, y):
+                r, w = pipe
+                try:
+                    w.send(struct.pack('!' + str(data.size) + 'd', *data.flat))
+                except (ConnectionError, EOFError):
+                    pipes.remove(pipe)
+                    r.close()
+                    w.close()
+        for pipe in pipes:
+            r, w = pipe
+            pipes.remove(pipe)
+            r.close()
+            w.close()
+
+    def processData(self, isDead: Value, buffer: Queue, *args, **kwargs) -> None:
         children = self.nFreq + 1
         barrier = Barrier(children)
         pipes = []
 
+        def awaitBarrier():
+            try:
+                if not barrier.broken:
+                    barrier.wait()
+                    barrier.abort()
+            except BrokenBarrierError:
+                pass
+
         class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler):
             def setup(self):
                 eprint(f'Connection request from {self.request.getsockname()}')
-                if not barrier.broken:
-                    barrier.wait()
+                awaitBarrier()
 
             def handle(self):
                 r, w = pipe = Pipe(False)
@@ -65,18 +107,12 @@ class VfoProcessor(DspProcessor):
                 while not isDead.value:
                     try:
                         self.request.sendall(r.recv())
-                    except (EOFError, ConnectionError):
-                        eprint(f'Client disconnected: {self.request.getsockname()}')
+                    except (ConnectionError, EOFError) as ex:
+                        eprint(f'Client disconnected: {self.request.getsockname()}: {ex}')
                         pipes.remove(pipe)
                         r.close()
                         w.close()
                         return
-
-        def shift(Y: np.ndarray, n: int) -> np.ndarray:
-            t = np.arange(n)
-            s = np.exp([w * t for w in self.omega])
-            ret = Y * s
-            return ret
 
         with ThreadedTCPServer((self.host, findPort()), ThreadedTCPRequestHandler) as server:
             server.max_children = children
@@ -84,45 +120,19 @@ class VfoProcessor(DspProcessor):
             thread.start()
 
             try:
-                eprint(f'\nAccepting connections on port {server.socket.getsockname()[1]}\n')
-                if not barrier.broken:
-                    barrier.wait()
-
-                while not isDead.value:
-                    y = buffer.get()
-                    length = len(y)
-                    if y is None or not length:
-                        isDead.value = 1
-                        break
-
-                    y = deinterleave(y)
-                    length >>= 1
-                    if self.correctIq is not None:
-                        y = self.correctIq.correctIq(y)
-                    y = np.broadcast_to(y, (self.nFreq, length))
-                    y = shift(y, length)
-                    if self._decimationFactor > 1:
-                        y = signal.decimate(y, self.decimation, ftype='fir')
-                    y = signal.sosfilt(self.sosIn, y)
-                    y = [self.demod(yy) for yy in y]
-                    y = applyFilters(y, self.outputFilters)
-                    for (pipe, data) in zip(pipes, y):
-                        r, w = pipe
-                        try:
-                            w.send(struct.pack('!' + (len(data) * 'd'), *data))
-                        except ConnectionError:
-                            pipes.remove(pipe)
-                            r.close()
-                            w.close()
-                    barrier.abort()
-            except (EOFError, KeyboardInterrupt, ConnectionError, TypeError):
+                eprint(f'\nAccepting connections on {server.socket.getsockname()}\n')
+                awaitBarrier()
+                eprint('Connection(s) established')
+                self.__processData(isDead, buffer, pipes)
+            except (KeyboardInterrupt, TypeError):
                 pass
             except Exception as e:
                 printException(e)
             finally:
-                isDead.value = 1
+                barrier.abort()
                 buffer.close()
                 buffer.cancel_join_thread()
-                thread.join(1)
+                server.shutdown()
+                thread.join(5)
                 eprint(f'Multi-VFO writer halted')
                 return

@@ -16,70 +16,82 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
+import array
 import socket
 from multiprocessing import Value
+from threading import Condition
+from typing import Generator
 
-import numpy as np
-
-from misc.general_util import shutdownSocket, vprint
+from misc.general_util import shutdownSocket, eprint, printException, vprint
 from sdr.receiver import Receiver
 
 
 class SocketReceiver(Receiver):
     BUF_SIZE = 262144
 
-    def __init__(self, isDead: Value, readSize: int = 4096):
+    def __init__(self, isDead: Value, host: str = None, port: int = None):
+        self.host = host
+        self.port = port
+        self.__cond = Condition()
+        self.__isConnected = False
         super().__init__()
         self.isDead = isDead
-        if readSize < 32:  # minimum is the size in bytes of four doubles representing two 128-bit complex numbers
-            self.readSize = 32
-        else:
-            self.readSize = 1 << int(np.round(np.log2(readSize)))
-        vprint(f'Requested read size: {readSize}\nRead size: {self.readSize}')
-        self.data = bytearray()
+        self.__buffer = array.array('B', self.BUF_SIZE * b'0')
 
     def __exit__(self, *ex):
-        shutdownSocket(self._receiver)
+        self.disconnect()
 
-    @property
-    def receiver(self):
-        return self._receiver
-
-    @receiver.setter
-    def receiver(self, _):
+    def disconnect(self):
         if self._receiver is not None:
+            shutdownSocket(self._receiver)
             self._receiver.close()
-        self._receiver = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        self._receiver.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        self._receiver.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
-        self._receiver.settimeout(2)
 
-    @receiver.deleter
-    def receiver(self):
-        del self._receiver
+        if not self.barrier.broken:
+            self.barrier.abort()
 
-    def receive(self):
+        if self.__cond is not None:
+            with self.__cond:
+                self.__cond.notify_all()
+        self.__isConnected = False
+
+    def connect(self):
+        if not (self.host is None or self.port is None):
+            self._receiver = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            self._receiver.settimeout(1)
+            self._receiver.connect((self.host, self.port))
+            with self.__cond:
+                self.__cond.notify()
+            self.__isConnected = True
+
+    def awaitConnection(self):
+        if not self.__isConnected:
+            with self.__cond:
+                eprint('Awaiting connection')
+                self.__cond.wait()
+                eprint('Connection established')
+        return self.__isConnected
+
+    def reset(self, size: int = None):
+        vprint(f'Resetting buffers: {size}')
+        self.__isConnected = False
+        with self.__cond:
+            self.__buffer = array.array('B', (size if size is not None and size != self.BUF_SIZE else self.BUF_SIZE) * b'0')
+            self.__cond.notify()
+        self.__isConnected = True
+
+
+    def receive(self) -> Generator:
         if not self._barrier.broken:
             self._barrier.wait()
             self._barrier.abort()
 
-        try:
-            length = len(self.data)
-            while not self.isDead.value:
-                readSize = -length + self.BUF_SIZE
-                readSize = readSize if readSize < self.readSize else self.readSize
-                if readSize < 1:
-                    break
-                temp = self.receiver.recv(readSize)
-                if temp is None or not len(temp):
-                    break
-                self.data += temp
-                length = len(self.data)
-            if length != self.BUF_SIZE:
-                vprint(f'Receive unexpected number of bytes: {"overrun" if length > self.BUF_SIZE else "underrun"}')
-            ret = bytes(self.data)
-            self.data.clear()
-
-            return ret
-        except (ValueError, ConnectionError, EOFError):
-            return b''
+        if self._receiver is not None:
+            file = self._receiver.makefile('rb')
+            try:
+                while not self.isDead.value and self.awaitConnection():
+                    if not file.readinto(self.__buffer):
+                        break
+                    yield self.__buffer[:]
+            finally:
+                file.close()
+                return None

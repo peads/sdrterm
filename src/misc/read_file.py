@@ -17,30 +17,54 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-import struct
+import array
+import io
 import sys
-from multiprocessing import Value
+from multiprocessing import Value, Queue
 from typing import Iterable
+
+import numpy as np
 
 from misc.general_util import eprint
 
 
-def readFile(wordtype, buffers: Iterable, isDead: Value, f: str, readSize: int = 262144, offset: int = 0) -> None:
+def __feedBuffers(isDead: Value, data: np.ndarray, buffers: Iterable[Queue], readSize: int):
+    i = 0
+    while not isDead.value and i < data.shape[0]:
+        y = data[i:i + readSize]
+        y = y['re'] + 1j * y['im']
+        for buffer in buffers:
+            buffer.put(y)
+        i += readSize
 
-    bitdepth, structtype = wordtype
 
-    with open(f, 'rb') if f is not None else open(sys.stdin.fileno(), 'rb', closefd=False) as file:
-        if offset:
-            file.seek(offset)  # skip the wav header(s)
+def readFile(wordtype: np.dtype,
+             offset: int,
+             buffers: Iterable[Queue] = None,
+             isDead: Value = None,
+             inFile: str = None,
+             readSize: int = 65536,
+             swapEndianness: bool = False, **_) -> None:
 
-        while not isDead.value:
-            data = file.read(readSize)
-            y = struct.unpack('!' + (len(data) >> bitdepth) * structtype, data)
+    if swapEndianness:
+         wordtype = wordtype.newbyteorder('<' if '>' == wordtype.byteorder else '>')
+    dtype = np.dtype([('re', wordtype), ('im', wordtype)])
 
-            for buffer in buffers:
-                buffer.put(y)
+    if inFile is not None:
+        data = np.memmap(inFile, dtype=dtype, mode='r', offset=offset, order='C')
+        __feedBuffers(isDead, data, buffers, readSize)
+    else:
+        buffer = array.array(wordtype.char, readSize * b'0')
+        with open(sys.stdin.fileno(), 'rb', closefd=False) as _:
+            file = io.BufferedReader(sys.stdin.buffer)
+            while not isDead.value:
+                if not file.readinto(buffer):
+                    break
+                y = np.frombuffer(buffer, dtype)
+                __feedBuffers(isDead, y, buffers, readSize)
 
     for buffer in buffers:
+        buffer.put(b'')
         buffer.close()
 
     eprint('File reader halted')

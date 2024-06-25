@@ -20,24 +20,25 @@
 from enum import Enum
 
 class ControlEnum(Enum):
-    @staticmethod
-    def dict():
-        return {i.name: i.value for i in RtlTcpSamplingRate}
+    @classmethod
+    def dict(cls):
+        return {i.name: i.value for i in cls}
     @classmethod
     def tuples(cls):
         return list(cls.dict().items())
 
 class RtlTcpSamplingRate(ControlEnum):
     fs0 = 250000
-    fs1 = 1024000
-    fs2 = 1200000
-    fs3 = 2048000
-    fs4 = 2400000
-    fs5 = 3200000
+    fs1 = 256000
+    fs2 = 1024000
+    fs3 = 1200000
+    fs4 = 2048000
+    fs5 = 2400000
+    fs6 = 3200000
 
-    @staticmethod
-    def dict():
-        return {str(i.value): i.value for i in RtlTcpSamplingRate}
+    @classmethod
+    def dict(cls):
+        return {str(i.value): i.value for i in cls}
 
 # translated directly from rtl_tcp.c
 class RtlTcpCommands(ControlEnum):

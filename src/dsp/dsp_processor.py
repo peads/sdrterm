@@ -17,13 +17,12 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-import itertools
 import json
 import multiprocessing
 import os
 import struct
 import sys
-from multiprocessing import Value, Queue, Pool
+from multiprocessing import Value, Queue
 from typing import Callable
 
 import numpy as np
@@ -32,8 +31,8 @@ from scipy import signal
 from dsp.data_processor import DataProcessor
 from dsp.demodulation import amDemod, fmDemod
 from dsp.iq_correction import IQCorrection
-from dsp.util import applyFilters, generateBroadcastOutputFilter, generateFmOutputFilters, shiftFreq
-from misc.general_util import deinterleave, printException, vprint, eprint, initializer
+from dsp.util import applyFilters, generateEllipFilter
+from misc.general_util import printException, vprint, eprint
 
 
 class DspProcessor(DataProcessor):
@@ -41,42 +40,55 @@ class DspProcessor(DataProcessor):
 
     def __init__(self,
                  fs: int,
-                 centerFreq: float,
-                 omegaOut: int,
-                 tunedFreq: int,
-                 vfos: str,
-                 correctIq: bool,
-                 decimation: int,
-                 multiThreaded: bool = False,
+                 center: int = 0,
+                 omegaOut: int = 0,
+                 tuned: int = 0,
+                 correctIq: bool = False,
+                 dec: int = 2,
                  smooth: bool = False,
+                 cpus: int = 1,
                  **kwargs):
 
-        self.outputFilters = []
-        self.sosIn = None
-        self.__decimatedFs = self.__fs = fs
-        self._decimationFactor = decimation
-        self.__decimatedFs //= decimation
-        self.centerFreq = centerFreq
-        self.bandwidth = None
-        self.tunedFreq = tunedFreq
-        self.vfos = vfos
+        self.bandwidth \
+            = self.__fs \
+            = self.__dt \
+            = self.__decimatedFs \
+            = self.__decDt \
+            = self._aaFilter = None
+        self._outputFilters = []
+        self._decimationFactor = dec
+        self.fs = fs
+        self.centerFreq = center
+        self.tunedFreq = tuned
         self.omegaOut = omegaOut
-        self.correctIq = IQCorrection(self.__decimatedFs) if correctIq else None
+        if correctIq:
+            setattr(self, 'correctIq', IQCorrection(self.__decimatedFs).correctIq)
         self.smooth = smooth
-        self.multiThreaded = multiThreaded
+
+        self._nCpus = os.cpu_count()
+        self._ii = range(self._nCpus)
+
+    @staticmethod
+    def correctIq(y):
+        return y
 
     @property
     def fs(self):
         return self.__fs
 
     @fs.setter
-    def fs(self, fs):
+    def fs(self, fs: int):
         self.__fs = fs
+        self.__dt = 1 / fs
         self.__decimatedFs = fs // self._decimationFactor
+        self.__decDt = self._decimationFactor * self.__dt
 
     @fs.deleter
     def fs(self):
         del self.__fs
+        del self.__dt
+        del self.__decimatedFs
+        del self.__decDt
 
     @property
     def decimation(self):
@@ -87,131 +99,117 @@ class DspProcessor(DataProcessor):
         del self._decimationFactor
 
     @decimation.setter
-    def decimation(self, decimation):
+    def decimation(self, decimation: int):
         if not decimation or decimation < 2:
             raise ValueError("Decimation must be at least 2.")
         self._decimationFactor = decimation
-        self.__decimatedFs = self.__fs // decimation
-        self.correctIq = IQCorrection(self.__decimatedFs) if self.correctIq else None
+        self.fs = self.__fs
+        setattr(self, 'correctIq', IQCorrection(self.__decimatedFs).correctIq)
 
     @property
     def decimatedFs(self):
         return self.__decimatedFs
 
-    @decimatedFs.deleter
-    def decimatedFs(self):
-        del self.__decimatedFs
+    @decimatedFs.setter
+    def decimatedFs(self, _):
+        raise NotImplementedError('Setting the decimatedFs directly is not supported. Set fs instead')
 
-    def demod(self, y: np.ndarray[any, np.complex64 | np.complex128]) -> np.ndarray[any, np.real]:
+    def demod(self, y: np.ndarray[any, np.dtype[np.complex64 | np.complex128]]) -> np.ndarray[any, np.dtype[np.real]]:
         pass
 
-    def setDemod(self, fun: Callable[[np.ndarray[any, np.complex64 | np.complex128]], np.ndarray[any, np.real]]) -> \
-                Callable[[np.ndarray[any, np.complex64 | np.complex128]], np.ndarray[any, np.real]]:
-        if fun is not None:
+    def __setDemod(self, fun: Callable[
+        [np.ndarray[any, np.dtype[np.complex64 | np.complex128]]], np.ndarray[any, np.dtype[np.real]]],
+                   *filters) \
+            -> Callable[[np.ndarray[any, np.dtype[np.complex64 | np.complex128]]], np.ndarray[any, np.dtype[np.real]]]:
+        if fun is not None and filters is not None and len(filters) > 0:
+            self._outputFilters.clear()
+            self._outputFilters.extend(*filters)
             setattr(self, 'demod', fun)
-            self.sosIn = signal.ellip(self._FILTER_DEGREE, 1, 30, [1, self.bandwidth >> 1],
-                                      btype='bandpass',
-                                      analog=False,
-                                      output='sos',
-                                      fs=self.__decimatedFs)
+            self._aaFilter = signal.ellip(self._FILTER_DEGREE << 1, 1, 30,
+                                          Wn=self.bandwidth,
+                                          btype='lowpass',
+                                          analog=False,
+                                          output='zpk',
+                                          fs=self.__fs)
+            self._aaFilter = signal.ZerosPolesGain(*self._aaFilter, dt=self.__dt)
             return self.demod
-        raise ValueError("Demodulation function is not defined")
+        raise ValueError("Demodulation function, or filters not defined")
 
     def selectOuputFm(self):
         vprint('NFM Selected')
         self.bandwidth = 12500
-        self.outputFilters = [signal.ellip(self._FILTER_DEGREE, 1, 30, self.omegaOut,
-                                           btype='lowpass',
-                                           analog=False,
-                                           output='sos',
-                                           fs=self.__decimatedFs)]
-        self.setDemod(fmDemod)
+        self.__setDemod(fmDemod, generateEllipFilter(self.__decimatedFs, self._FILTER_DEGREE, self.omegaOut, 'lowpass'))
 
     def selectOuputWfm(self):
         vprint('WFM Selected')
-        self.bandwidth = 15000
-        self.outputFilters = generateFmOutputFilters(self.__decimatedFs, self._FILTER_DEGREE,
-                                                     18000)
-        self.setDemod(fmDemod)
+        self.bandwidth = 25000
+        self.__setDemod(fmDemod, generateEllipFilter(self.__decimatedFs, self._FILTER_DEGREE, 18000, 'lowpass'))
 
     def selectOuputAm(self):
         vprint('AM Selected')
         self.bandwidth = 10000
-        self.outputFilters = [
-            generateBroadcastOutputFilter(self.__decimatedFs, self._FILTER_DEGREE)]
-        self.setDemod(amDemod)
+        self.__setDemod(amDemod, generateEllipFilter(self.__decimatedFs, self._FILTER_DEGREE, 18000, 'lowpass'))
 
-    def processChunk(self, y: list) -> np.ndarray[any, np.real] | None:
-        if y is None or not len(y):
-            raise ValueError('Empty chunk')
+    def _demod(self, y: np.ndarray):
+        return [self.demod(yy) for yy in y]
 
-        y = deinterleave(y)
-
-        if self.correctIq is not None:
-            y = self.correctIq.correctIq(y)
-
-        y = shiftFreq(y, self.centerFreq, self.__fs)
-
+    def _processChunk(self, y: np.ndarray, shift: np.ndarray) -> np.ndarray[any, np.dtype[np.real]]:
+        y = self.correctIq(y)
+        if shift is not None:
+            y = y * shift
         if self._decimationFactor > 1:
-            y = signal.decimate(y, self._decimationFactor, ftype='fir')
+            y = signal.decimate(y, self._decimationFactor, ftype=self._aaFilter)
+        y = self._demod(y)
+        return applyFilters(y, self._outputFilters)
 
-        y = signal.sosfilt(self.sosIn, y)
-        y = self.demod(y)
-        y = applyFilters(y, self.outputFilters)
-
-        return y
-
-    def __processMultithreaded(self, isDead: Value, buffer: Queue, file):
-        vprint('Processing multithreaded')
-        n = os.cpu_count() >> 1
-        if n < 2:
-            raise RuntimeError('CPU count must be at least 4')
-        vprint(f'Processing on {n} threads')
-        ii = range(n)
-        with Pool(processes=n, initializer=initializer, initargs=(isDead,)) as pool:
-            data = []
-            while not isDead.value:
-                for _ in ii:
-                    temp = buffer.get()
-                    if temp is None or not len(temp):
-                        isDead.value = 1
-                        break
-                    data.append(temp)
-
-                y = pool.map_async(self.processChunk, data)
-                y = list(itertools.chain.from_iterable(y.get()))
-                if self.smooth:
-                    y = signal.savgol_filter(y, 14, self._FILTER_DEGREE)
-                file.write(struct.pack('=' + (len(y) * 'd'), *y))
-                data.clear()
-
-    def __processData(self, isDead: Value, buffer: Queue, file):
-        vprint('Processing on single-thread')
-        while not isDead.value:
-            y = self.processChunk(buffer.get())
+    def _bufferChunk(self, isDead: Value, buffer: Queue, Y: np.ndarray, shift: np.ndarray):
+        for i in self._ii:
+            y = buffer.get()
             if y is None or not len(y):
                 isDead.value = 1
                 break
-            file.write(struct.pack('=' + (len(y) * 'd'), *y))
+            if Y is None:
+                Y = np.ndarray(shape=(self._nCpus, y.size), dtype=np.complex128)
+            if shift is None:
+                shift = self._generateShift(self._nCpus, y.size)
+            if len(y) < Y.shape[1]:
+                y = np.pad(y, (0, -len(y) + Y.shape[1]), mode='constant', constant_values=0)
+            Y[i] = y
+        return Y, shift, self._processChunk(Y, shift)
 
-    def processData(self, isDead: Value, buffer: Queue, f: str) -> None:
+    def __processData(self, isDead: Value, buffer: Queue, file):
+        Y = None
+        shift = None
+
+        while not isDead.value:
+            Y, shift, y = self._bufferChunk(isDead, buffer, Y, shift)
+            size = y.size
+            y = y.flat
+            if self.smooth:
+                y = signal.savgol_filter(y, 16, self._FILTER_DEGREE)
+            file.write(struct.pack('@' + (size * 'd'), *y))
+
+    def _generateShift(self, r: int, c: int) -> np.ndarray | None:
+        if self.centerFreq:
+            return np.broadcast_to(np.exp(-2j * np.pi * (self.centerFreq / self.__fs) * np.arange(c)), (r, c))
+        else:
+            return None
+
+    def processData(self, isDead: Value, buffer: Queue, f: str, *args, **kwargs) -> None:
         with open(f, 'wb') if f is not None else open(sys.stdout.fileno(), 'wb', closefd=False) as file:
             try:
-                if self.multiThreaded:
-                    self.__processMultithreaded(isDead, buffer, file)
-                else:
-                    self.__processData(isDead, buffer, file)
+                self.__processData(isDead, buffer, file)
                 file.write(b'')
-            except (ValueError, KeyboardInterrupt):
+                file.flush()
+            except KeyboardInterrupt:
                 pass
             except Exception as e:
                 eprint(f'Process {multiprocessing.current_process().name} raised exception')
                 printException(e)
             finally:
-                isDead.value = 1
                 buffer.close()
                 buffer.cancel_join_thread()
-                eprint(f'File writer halted')
+                eprint(f'Standard writer halted')
                 return
 
     def __repr__(self):
@@ -219,8 +217,9 @@ class DspProcessor(DataProcessor):
              if not key.startswith('_')
              and not callable(value)
              and not issubclass(type(value), np.ndarray)
+             and not issubclass(type(value), signal.dlti)
              and not issubclass(type(value), IQCorrection)
              and key not in {'outputFilters'}}
-        d['fs'] = self.fs
-        d['decimatedFs'] = self.decimatedFs
+        d['fs'] = self.__fs
+        d['decimatedFs'] = self.__decimatedFs
         return json.dumps(d, indent=2)

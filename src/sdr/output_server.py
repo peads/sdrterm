@@ -17,30 +17,26 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-import socket
 import socketserver
-from contextlib import closing
+import sys
+import threading
 from multiprocessing import Value
-from queue import Queue
+from queue import Queue, Empty
+from typing import Callable
 
-from misc.general_util import shutdownSocket, eprint
+from misc.general_util import shutdownSocket, eprint, findPort
 from misc.hooked_thread import HookedThread
-from sdr.receiver import Receiver
-
-
-# taken from https://stackoverflow.com/a/45690594
-def findPort(host='localhost') -> int:
-    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
-        s.bind((host, 0))
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        return s.getsockname()[1]
+from sdr.socket_receiver import SocketReceiver
 
 
 def log(*args, **kwargs) -> None:
     eprint(*args, **kwargs)
 
-def initServer(receiver: Receiver, isDead: Value, host='localhost', port=findPort()):
+
+def initServer(receiver: SocketReceiver, isDead: Value, server_host: str) \
+        -> tuple[socketserver.TCPServer, HookedThread, HookedThread, Callable[[], None]]:
     clients = []
+
     class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
         pass
 
@@ -52,19 +48,21 @@ def initServer(receiver: Receiver, isDead: Value, host='localhost', port=findPor
 
         def handle(self):
             log(f'Connection request from {self.request.getsockname()}')
-            buffer = Queue(16)
+            buffer = Queue()
             clients.append(buffer)
             while not isDead.value:
                 try:
                     data = buffer.get()
                     self.request.sendall(data)
                     buffer.task_done()
-                except (ValueError, ConnectionError, EOFError):
-                    log(f'Client disconnected: {self.request.getsockname()}')
-                    shutdownSocket(self.request)
+                except (ConnectionError, EOFError, ValueError) as e:
+                    log(f'Client disconnected: {self.request.getsockname()}: {e}')
                     clients.remove(buffer)
                     break
-            del buffer
+            shutdownSocket(self.request)
+            self.request.close()
+            buffer.join()
+            return
 
     def receive():
         if not receiver.barrier.broken:
@@ -72,10 +70,35 @@ def initServer(receiver: Receiver, isDead: Value, host='localhost', port=findPor
             receiver.barrier.abort()
         while not isDead.value:
             data = receiver.receive()
-            for client in list(clients):
-                client.put(data)
+            for y in data:
+                for client in list(clients):
+                    client.put(y)
+        return
 
-    server = ThreadedTCPServer((host, port), ThreadedTCPRequestHandler)
-    st = HookedThread(isDead, target=server.serve_forever, daemon=True)
-    rt = HookedThread(isDead, target=receive, daemon=True)
-    return server, st, rt
+    def reset():
+        for client in list(clients):
+            try:
+                client.get(0.1)
+            except (KeyboardInterrupt | Empty):
+                pass
+
+
+    server = ThreadedTCPServer((server_host, findPort()), ThreadedTCPRequestHandler)
+    class ServerHookedThread(HookedThread):
+        def __init__(self, *args, **kwargs):
+            super().__init__(*args, **kwargs)
+            def handleException(e, *argv):
+                isDead.value = 1
+                receiver.disconnect()
+                for client in list(clients):
+                    clients.remove(client)
+                    client.join()
+                if issubclass(type(e), KeyboardInterrupt):
+                    sys.__excepthook__(e, *argv)
+                return
+
+            threading.excepthook = handleException
+
+    st = ServerHookedThread(isDead, target=server.serve_forever, daemon=True)
+    rt = ServerHookedThread(isDead, target=receive, daemon=True)
+    return server, st, rt, reset
