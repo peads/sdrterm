@@ -38,7 +38,7 @@ def main(host: Annotated[str, typer.Argument(help='Address of remote rtl_tcp ser
          server_host: Annotated[str, typer.Option(help='Port of local distribution server')] = 'localhost') -> None:
     isDead = Value('b', 0)
     isDead.value = 0
-    socket.setdefaulttimeout(1)
+    # socket.setdefaulttimeout(1)
     with SocketReceiver(isDead=isDead, host=host, port=port) as receiver:
         server, st, pt, resetBuffers = output_server.initServer(receiver, isDead, server_host)
         receiver.connect()

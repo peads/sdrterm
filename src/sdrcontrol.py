@@ -18,12 +18,10 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-import os
 import socket
 import socketserver
 import struct
-from importlib.resources import files
-from multiprocessing import Value, Process
+from multiprocessing import Value
 from threading import Thread
 from typing import Annotated
 
@@ -39,10 +37,8 @@ from textual.widgets import Button, RichLog, Input, Select, Label, Switch
 from textual_slider import Slider
 
 from misc.general_util import shutdownSocket, eprint, printException
-from plots.socket_spectrum_analyzer import SocketSpectrumAnalyzer
 from sdr import output_server
 from sdr.control_rtl_tcp import ControlRtlTcp
-from sdr.controller import Controller
 from sdr.rtl_tcp_commands import RtlTcpSamplingRate, RtlTcpCommands
 from sdr.socket_receiver import SocketReceiver
 
@@ -65,15 +61,12 @@ class SdrControl(App):
         self.receiver = rs
         self.server = srv
         self.controller = None
-        self.graphSckt = None
-        self.graphProc = None
         self.prevGain = None
         self.host = rs.host
         self.port = rs.port
         self.thread = None
 
     def exit(self, *args, **kwargs) -> None:
-        self.shutdownGraph()
         if self.receiver is not None:
             self.receiver.disconnect()
             self.receiver = None
@@ -84,7 +77,7 @@ class SdrControl(App):
         if self.thread is not None:
             self.thread.join(5)
 
-    def reset(self, _):
+    def resetBuffers(self, _):
         pass
 
     @on(Button.Pressed, '#connector')
@@ -200,41 +193,6 @@ class SdrControl(App):
             value = event.value
             self.controller.setParam(RtlTcpCommands.SET_AGC_MODE.value, value)
 
-    def shutdownGraph(self):
-        if not (self.graphSckt is None or self.graphProc is None):
-            self.print('Shutting graph socket down')
-            shutdownSocket(self.graphSckt)
-            self.print('Shut graph socket down')
-
-            self.print('Joining graph process')
-            self.graphProc.join(1)
-
-            exitCode = self.graphProc.exitcode
-            if exitCode is None:
-                self.graphProc.kill()
-                self.print('Graph killed')
-            else:
-                self.graphProc.close()
-                self.print('Joined graph process')
-
-            self.graphSckt.close()
-            self.print(f'Graph exitcode: {exitCode}')
-        self.graphProc = None
-        self.graphSckt = None
-
-    @on(Switch.Changed, '#graph_switch')
-    def onGraphChanged(self, event: Switch.Changed) -> None:
-        self.shutdownGraph()
-        if event.value:
-            self.graphSckt = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self.graphSckt.settimeout(1)
-            self.graphSckt.connect(self.server.socket.getsockname())
-            self.graphProc = Process(target=SocketSpectrumAnalyzer.start,
-                                     args=(),
-                                     kwargs={'fs': self.fs, 'sock': self.graphSckt},
-                                     daemon=True)
-            self.graphProc.start()
-
     @staticmethod
     def print(content: RenderableType | object):
         eprint(content)
@@ -322,14 +280,6 @@ class SdrControl(App):
             yield Label('Sampling Rate')
             yield Select(RtlTcpSamplingRate.tuples(), prompt='Rate', classes='fs', id='fs_list')
 
-            if 'posix' not in os.name or 'DISPLAY' in os.environ:
-                try:
-                    files('pyqtgraph')
-                    yield Center(Label('Spectrum Equalizer'))
-                    yield Center(Switch(id='graph_switch'))
-                except ModuleNotFoundError:
-                    pass
-
             yield Label('Gains')
             with Horizontal():
                 with Vertical():
@@ -369,7 +319,7 @@ class SdrControl(App):
 def main(server_host: Annotated[str, typer.Option(help='Port of local distribution server')] = 'localhost') -> None:
     isDead = Value('b', 0)
     isDead.value = 0
-    socket.setdefaulttimeout(1)
+    # socket.setdefaulttimeout(1)
     with SocketReceiver(isDead=isDead) as receiver:
         try:
             server, lt, ft, resetBuffers = output_server.initServer(receiver, isDead, server_host=server_host)

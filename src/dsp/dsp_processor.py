@@ -40,7 +40,7 @@ class DspProcessor(DataProcessor):
 
     def __init__(self,
                  fs: int,
-                 center: float = 0.,
+                 center: int = 0,
                  omegaOut: int = 0,
                  tuned: int = 0,
                  correctIq: bool = False,

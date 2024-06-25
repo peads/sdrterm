@@ -29,7 +29,7 @@ from misc.read_file import readFile
 
 
 def main(fs: Annotated[int, typer.Option('--fs', '-r', show_default=False, help='Sampling frequency in Samples/s')] = None,
-         center: Annotated[float, typer.Option('--center-frequency', '-c', help='Offset from tuned frequency in Hz')] = 0,
+         center: Annotated[int, typer.Option('--center-frequency', '-c', help='Offset from tuned frequency in Hz')] = 0,
          inFile: Annotated[str, typer.Option('--input', '-i', show_default='stdin', help='Input device')] = None,
          outFile: Annotated[str, typer.Option('--output', '-o', show_default='stdout', help='Output device')] = None,
          pl: Annotated[str, typer.Option('--plot', help='1D-Comma-separated value of plot type(s)')] = None,
@@ -48,8 +48,6 @@ def main(fs: Annotated[int, typer.Option('--fs', '-r', show_default=False, help=
          trace: Annotated[bool, typer.Option(help='Toggle extra verbose output [Implies --verbose]')] = False,
          smooth_output: Annotated[bool, typer.Option(help='Toggle smoothing output when multi-threading')] = False,
          vfo_host: Annotated[str, typer.Option(help='Address on which to listen for vfo client connections')] = 'localhost',
-         restrict_cpu: Annotated[bool, typer.Option(help='Toggle restricting DSP CPU thread usage',
-                                                    show_default='restrict-cpu => Total threads = half the total virtual/logical cores available')] = True,
          swap_input_endianness: Annotated[bool, typer.Option('--input-endianness', '-X',
                                                              help='Swap input endianness',
                                                              show_default='False => network-default, big-endian')] = False):
@@ -75,8 +73,7 @@ def main(fs: Annotated[int, typer.Option('--fs', '-r', show_default=False, help=
                         verbose=verbose,
                         trace=trace,
                         smooth=smooth_output,
-                        vfoHost=vfo_host,
-                        cpu=restrict_cpu)
+                        vfoHost=vfo_host)
 
         for proc in processes:
             proc.start()
@@ -93,11 +90,11 @@ def main(fs: Annotated[int, typer.Option('--fs', '-r', show_default=False, help=
         for buffer, proc in zip(IOArgs.strct['buffers'], processes):
             tprint(f'Closing buffer {buffer}')
             buffer.close()
-            buffer.cancel_join_thread()
             tprint(f'Closed buffer {buffer}')
             tprint(f'Awaiting {proc}')
             proc.join()
             tprint(f'{proc} completed')
+            buffer.cancel_join_thread()
             if proc.exitcode is None:
                 vprint('Killing process {proc}')
                 proc.kill()

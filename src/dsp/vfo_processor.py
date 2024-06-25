@@ -20,6 +20,7 @@
 import socketserver
 import struct
 from multiprocessing import Pipe, Value, Queue, Barrier
+from threading import BrokenBarrierError
 
 import numpy as np
 
@@ -87,11 +88,18 @@ class VfoProcessor(DspProcessor):
         barrier = Barrier(children)
         pipes = []
 
+        def awaitBarrier():
+            try:
+                if not barrier.broken:
+                    barrier.wait()
+                    barrier.abort()
+            except BrokenBarrierError:
+                pass
+
         class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler):
             def setup(self):
                 eprint(f'Connection request from {self.request.getsockname()}')
-                if not barrier.broken:
-                    barrier.wait()
+                awaitBarrier()
 
             def handle(self):
                 r, w = pipe = Pipe(False)
@@ -99,7 +107,7 @@ class VfoProcessor(DspProcessor):
                 while not isDead.value:
                     try:
                         self.request.sendall(r.recv())
-                    except (OSError, ConnectionError, EOFError) as ex:
+                    except (ConnectionError, EOFError) as ex:
                         eprint(f'Client disconnected: {self.request.getsockname()}: {ex}')
                         pipes.remove(pipe)
                         r.close()
@@ -113,10 +121,8 @@ class VfoProcessor(DspProcessor):
 
             try:
                 eprint(f'\nAccepting connections on {server.socket.getsockname()}\n')
-                if not barrier.broken:
-                    barrier.wait()
-                    barrier.abort()
-
+                awaitBarrier()
+                eprint('Connection(s) established')
                 self.__processData(isDead, buffer, pipes)
             except (KeyboardInterrupt, TypeError):
                 pass

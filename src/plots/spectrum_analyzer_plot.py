@@ -68,6 +68,6 @@ class SpectrumAnalyzerPlot(DataProcessor, SpectrumAnalyzer):
             self.buffer.close()
             self.buffer.cancel_join_thread()
             tprint(f'Closed buffer {self.buffer}-{type(self).__name__}')
-            tprint(f'Quitting {type(self).__name__}')
-            QCoreApplication.quit()
             eprint(f'Plot {type(self).__name__} halted')
+            QCoreApplication.quit()
+            return
