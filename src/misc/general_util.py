@@ -48,8 +48,8 @@ def tprint(*args, **kwargs) -> None:
     __VerbosePrint.tprint(*args, **kwargs)
 
 
-def printException(e: Exception) -> None:
-    eprint(f'Error: {e}')
+def printException(e: Exception, *args) -> None:
+    eprint(*args, e)
     traceback.print_exc(file=sys.stderr)
 
 

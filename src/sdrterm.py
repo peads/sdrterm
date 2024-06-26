@@ -29,7 +29,7 @@ from misc.read_file import readFile
 
 
 def main(fs: Annotated[int, typer.Option('--fs', '-r', show_default=False, help='Sampling frequency in Samples/s')] = None,
-         center: Annotated[int, typer.Option('--center-frequency', '-c', help='Offset from tuned frequency in Hz')] = 0,
+         center: Annotated[float, typer.Option('--center-frequency', '-c', help='Offset from tuned frequency in Hz')] = 0,
          inFile: Annotated[str, typer.Option('--input', '-i', show_default='stdin', help='Input device')] = None,
          outFile: Annotated[str, typer.Option('--output', '-o', show_default='stdout', help='Output device')] = None,
          pl: Annotated[str, typer.Option('--plot', help='1D-Comma-separated value of plot type(s)')] = None,
@@ -44,9 +44,9 @@ def main(fs: Annotated[int, typer.Option('--fs', '-r', show_default=False, help=
             N.B. unlike normal mode, which uses the system-default endianness for output, the sockets output 
             network-default, big-endian bytes. Enable using sockets to output data processed from multiple channels
             specified by the vfos option. [Implies: --vfos <csv>]''')] = False,
-         verbose: Annotated[bool, typer.Option('--verbose', '-v', help='Toggle verbose output')] = False,
-         trace: Annotated[bool, typer.Option(help='Toggle extra verbose output [Implies --verbose]')] = False,
-         smooth_output: Annotated[bool, typer.Option(help='Toggle smoothing output when multi-threading')] = False,
+         verbose: Annotated[list[bool], typer.Option('--verbose', '-v', help='Toggle verbose output. Repetition increases verbosity (e.g. -vv, or -v -v)')] = None,
+         smooth_output: Annotated[int, typer.Option(help='Provide length of polynomial for smoothing output with Savitzky–Golay filter. More is more aggresive filtering.',
+                                                    show_default='0 => no filtering')] = 0,
          vfo_host: Annotated[str, typer.Option(help='Address on which to listen for vfo client connections')] = 'localhost',
          swap_input_endianness: Annotated[bool, typer.Option('--input-endianness', '-X',
                                                              help='Swap input endianness',
@@ -70,8 +70,8 @@ def main(fs: Annotated[int, typer.Option('--fs', '-r', show_default=False, help=
                         enc=enc,
                         correctIq=correct_iq,
                         simo=simo,
-                        verbose=verbose,
-                        trace=trace,
+                        verbose=len(verbose) > 0,
+                        trace=len(verbose) > 1,
                         smooth=smooth_output,
                         vfoHost=vfo_host)
 
@@ -89,12 +89,12 @@ def main(fs: Annotated[int, typer.Option('--fs', '-r', show_default=False, help=
     finally:
         for buffer, proc in zip(IOArgs.strct['buffers'], processes):
             tprint(f'Closing buffer {buffer}')
+            buffer.cancel_join_thread()
             buffer.close()
             tprint(f'Closed buffer {buffer}')
             tprint(f'Awaiting {proc}')
             proc.join()
             tprint(f'{proc} completed')
-            buffer.cancel_join_thread()
             if proc.exitcode is None:
                 vprint('Killing process {proc}')
                 proc.kill()

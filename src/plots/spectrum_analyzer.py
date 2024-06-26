@@ -18,21 +18,30 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
 from abc import abstractmethod, ABC
+from multiprocessing import Value, Queue
 
 import numpy as np
 from scipy import fft
 
+from dsp.data_processor import DataProcessor
 from misc.general_util import printException, tprint
+from plots.plot_interface import PlotInterface
 
 
-class SpectrumAnalyzer(ABC):
+class SpectrumAnalyzer(DataProcessor, PlotInterface, ABC):
 
     # frameRate default: ~60 fps
-    def __init__(self, fs: int, nfft: int = 2048, frameRate=17, **kwargs):
+    def __init__(self,
+                 fs: int,
+                 nfft: int = 2048,
+                 frameRate=17,
+                 isDead: Value = None,
+                 **kwargs):
 
         self.freq = None
         self.amps = None
         self.fftData = None
+        self.isDead = isDead
         import pyqtgraph as pg
         from pyqtgraph.Qt import QtCore, QtWidgets
 
@@ -49,14 +58,14 @@ class SpectrumAnalyzer(ABC):
         self.window.setWindowTitle("SpectrumAnalyzer")
         self.window.resize(800, 600)
         self.window.setCentralWidget(self.centralWidget)
-        self.layout = QtWidgets.QVBoxLayout()
+        self.layout = QtWidgets.QGridLayout()
         self.centralWidget.setLayout(self.layout)
         self.item.setMouseEnabled(x=False, y=False)
         self.item.setYRange(-6, 4)
         self.axis = self.item.getAxis("bottom")
         self.axis.setLabel("Frequency [Hz]")
-        self.curve_spectrum = self.item.plot()
-        self.layout.addWidget(self.widget)
+        self.line = self.item.plot()
+        self.layout.addWidget(self.widget, 0, 0)
         self.window.show()
 
         self.timer = QtCore.QTimer()
@@ -64,10 +73,9 @@ class SpectrumAnalyzer(ABC):
         self.timer.start(frameRate)
 
     def update(self):
-        from pyqtgraph.Qt.QtCore import QCoreApplication
         try:
             data = self.receiveData()
-            if data is None or not self.length:
+            if data is None or not self.length or self.isDead.value:
                 raise KeyboardInterrupt
             data = np.reshape(data, (self.length // self.nfft, self.nfft))
 
@@ -77,26 +85,28 @@ class SpectrumAnalyzer(ABC):
             self.freq = fft.fftshift(fft.fftfreq(self.nfft, self._inverseFs))
 
             for amp in self.amps:
-                if self.curve_spectrum is not None:
-                    self.curve_spectrum.setData(self.freq, amp)
-
+                if self.line is not None:
+                    self.line.setData(self.freq, amp)
         except (ValueError, KeyboardInterrupt):
             tprint(f'Quitting {type(self).__name__}...')
-            QCoreApplication.quit()
+            self.quit()
         except Exception as e:
             tprint(f'Quitting {type(self).__name__}...')
             printException(e)
-            QCoreApplication.quit()
+            self.quit()
 
     @abstractmethod
     def receiveData(self):
         pass
 
+    # @classmethod
+    # def processData(cls, isDead: Value, buffer: Queue, fs: int, *args, **kwargs) -> None:
+    #     cls.start(fs, buffer=buffer, isDead=isDead, *args, **kwargs)
     @classmethod
-    def start(cls, fs, *args, **kwargs) -> int:
+    def processData(cls, isDead: Value, buffer: Queue, fs: int, *args, **kwargs) -> None:
         from pyqtgraph.Qt import QtWidgets
-        cls.spec = cls(fs=fs, *args, **kwargs)
-        return QtWidgets.QApplication.instance().exec()
+        cls.spec = cls(fs=fs, buffer=buffer, isDead=isDead, *args, **kwargs)
+        QtWidgets.QApplication.instance().exec()
 
     @property
     def fs(self) -> int:

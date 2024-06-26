@@ -18,14 +18,18 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
 from abc import ABC, abstractmethod
-from threading import Thread
 
 
-class HookedThread(Thread, ABC):
-    def __init__(self, group=None, target=None, name=None,
-                 args=(), daemon=None):
-        super().__init__(group=group, target=target, name=name, daemon=daemon, args=args)
+class PlotInterface(ABC):
+    @abstractmethod
+    def receiveData(self):
+        pass
 
     @abstractmethod
-    def handleExceptionHook(self):
+    def update(self):
         pass
+
+    @staticmethod
+    def quit():
+        from pyqtgraph.Qt.QtCore import QCoreApplication
+        QCoreApplication.quit()

@@ -17,23 +17,43 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
+from multiprocessing import Queue, Value
 
-import matplotlib.pyplot as plt
 import numpy as np
 from scipy.signal import ShortTimeFFT
 
-from plots.abstract_plot import Plot
+from dsp.data_processor import DataProcessor
+from dsp.iq_correction import IQCorrection
+from dsp.util import shiftFreq
+from misc.general_util import tprint
+from plots.plot_interface import PlotInterface
 
 
-class WaterfallPlot(Plot):
+class WaterfallPlot(DataProcessor, PlotInterface):
     NPERSEG = 1024
     NOOVERLAP = NPERSEG >> 1
     NFFT = NPERSEG
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.t = 0
-        self.dt = 1
+    def __init__(self,
+                 fs: int,
+                 buffer: Queue,
+                 isDead: Value,
+                 correctIq: bool = False,
+                 nfft: int = 2048,
+                 frameRate=17,
+                 center: int = 0,
+                 *args,
+                 **kwargs):
+        import pyqtgraph as pg
+        from pyqtgraph.Qt import QtWidgets, QtCore
+        self.fs = fs
+        self.nfft = nfft
+        self.frameRate = frameRate
+        self.buffer = buffer
+        self.isDead = isDead
+        self.dt = 1 / self.fs
+        self.offset = center
+        self.iqCorrector = IQCorrection(self.fs) if correctIq else None
         self._SFT = ShortTimeFFT.from_window(('kaiser', 5),
                                              self.fs,
                                              self.NPERSEG,
@@ -44,46 +64,50 @@ class WaterfallPlot(Plot):
                                              phase_shift=None)
         self.pad_xextent = (self.NFFT - self.NOOVERLAP) / (self.fs * 2)
 
-    def initPlot(self):
-        super().initPlot()
-        self.fig, self.ax = plt.subplots()
+        self.app = QtWidgets.QApplication([])
+        self.window = QtWidgets.QMainWindow()
+        self.centralWidget = QtWidgets.QWidget()
+        self.widget = pg.GraphicsLayoutWidget(show=True)
+        self.layout = QtWidgets.QVBoxLayout()
+        self.centralWidget.setLayout(self.layout)
 
-        xticks = (-1 / 2 + np.arange(0, 9/8, 1 / 8)) * self.fs
-        xlabels = [str(round(x, 3)) for x in xticks / self.fs + self.tunedFreq / 10E+5]
-        self.ax.set_yticks([])
-        self.ax.set_xticks(xticks, xlabels)
-        if self.tunedFreq:
-            self.ax.set_xlabel(f'{self.tunedFreq / 10E+5} [MHz]')
-        plt.ioff()
-        plt.show(block=False)
-        self.initBlit()
-        # self.fig.canvas.mpl_connect('resize_event', self.resize)
+        self.surf = self.widget.addPlot(title="non-interactive")
+        self.item = pg.ImageItem(colorMap='CET-CBL2')
+        self.surf.addItem(self.item)
+        self.surf.setMouseEnabled(x=False, y=False)
+        self.surf.hideButtons()
+        self.surf.showAxes(True, showValues=(True, False, False, True))
+        self.timer = QtCore.QTimer()
+        self.timer.timeout.connect(self.update)
+        self.timer.start(frameRate)
 
+    def receiveData(self):
+        data = self.buffer.get()
+        if self.iqCorrector is not None:
+            data = self.iqCorrector.correctIq(data)
+        return shiftFreq(data, self.offset, self.fs)
 
-    # def resize(self, _):
-    #     self.ax.set_xticks(self.xticks)
-    #     # self.ax.autoscale_view()
-    #     self.ax.relim(visible_only=True)
-    #     self.bg = self.fig.canvas.copy_from_bbox(self.fig.bbox)
-    #     self.fig.canvas.restore_region(self.bg)
-    #     # self.fig.draw_without_rendering()
-    #     self.fig.canvas.blit(self.fig.bbox)
-    #     self.fig.canvas.flush_events()
+    def update(self):
+        try:
+            y = self.receiveData()
+            if y is None or not len(y) or self.isDead.value:
+                raise KeyboardInterrupt
+            Zxx = self._SFT.stft(y)
+            # extent = xmin, xmax, fmin, fmax = self._SFT.extent(len(y), center_bins=True)
+            # xmin -= self.pad_xextent
+            # xmax += self.pad_xextent
 
-    def animate(self, y):
-        Zxx = self._SFT.stft(y)
-        extent = xmin, xmax, fmin, fmax = self._SFT.extent(len(y), center_bins=True)
-        xmin -= self.pad_xextent
-        xmax += self.pad_xextent
+            data = 10. * np.log10(np.abs(Zxx))
+            self.item.setImage(data)
+        except KeyboardInterrupt:
+            tprint(f'Quitting {type(self).__name__}...')
+            self.quit()
+        except Exception as e:
+            tprint(f'Quitting {type(self).__name__}...')
+            self.quit()
 
-        if not self.isInit:
-            self.initPlot()
-
-        self.fig.canvas.restore_region(self.bg)
-        self.ln = self.ax.imshow(np.flipud(10. * np.log10(np.abs(Zxx).T)),
-                                 extent=extent,
-                                 aspect="auto",
-                                 animated=True)
-        self.ax.draw_artist(self.ln)
-        self.fig.canvas.blit(self.fig.bbox)
-        self.fig.canvas.flush_events()
+    @classmethod
+    def processData(cls, isDead: Value, buffer: Queue, fs: int, *args, **kwargs) -> None:
+        from pyqtgraph.Qt import QtWidgets
+        cls.spec = cls(fs=fs, buffer=buffer, isDead=isDead, *args, **kwargs)
+        QtWidgets.QApplication.instance().exec()

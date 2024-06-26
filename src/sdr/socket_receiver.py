@@ -22,7 +22,7 @@ from multiprocessing import Value
 from threading import Condition
 from typing import Generator
 
-from misc.general_util import shutdownSocket, eprint, printException, vprint
+from misc.general_util import shutdownSocket, eprint, vprint
 from sdr.receiver import Receiver
 
 

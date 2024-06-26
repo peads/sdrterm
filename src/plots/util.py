@@ -23,6 +23,7 @@ from typing import Callable
 
 from dsp.dsp_processor import DspProcessor
 from plots.multi_spectrum_analyzer_plot import MultiSpectrumAnalyzerPlot
+from plots.waterfall_plot import WaterfallPlot
 from plots.spectrum_analyzer_plot import SpectrumAnalyzerPlot
 
 
@@ -40,10 +41,12 @@ def selectDemodulation(demodType: str, processor: DspProcessor) -> Callable:
 def selectPlotType(plotType: string):
     try:
         files('pyqtgraph')
-        if plotType == 'ps' or plotType == 'power':
+        if plotType == 'ps' or plotType == 'spec':
             return SpectrumAnalyzerPlot
         elif plotType == 'vfos' or plotType == 'vfo':
             return MultiSpectrumAnalyzerPlot
+        elif plotType == 'water' or plotType == 'waterfall':
+            return WaterfallPlot
         else:
             raise UserWarning(f'Invalid plot type {plotType}')
     except ModuleNotFoundError as e:

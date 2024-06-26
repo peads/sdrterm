@@ -186,7 +186,7 @@ class DspProcessor(DataProcessor):
             size = y.size
             y = y.flat
             if self.smooth:
-                y = signal.savgol_filter(y, 16, self._FILTER_DEGREE)
+                y = signal.savgol_filter(y, self.smooth, self._FILTER_DEGREE)
             file.write(struct.pack('@' + (size * 'd'), *y))
 
     def _generateShift(self, r: int, c: int) -> np.ndarray | None:

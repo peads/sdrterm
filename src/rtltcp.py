@@ -18,7 +18,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-import socket
 from multiprocessing import Value
 from typing import Annotated
 
@@ -56,7 +55,7 @@ def main(host: Annotated[str, typer.Argument(help='Address of remote rtl_tcp ser
                 try:
                     print('Available commands are:\n')
                     [print(f'{e.value}\t{e.name}') for e in RtlTcpCommands]
-                    print(f'\nAccepting connections on port {server.socket.getsockname()[1]}\n')
+                    print(f'\nAccepting connections on port {server.socket.getsockname()}\n')
                     inp = input(
                         'Provide a space-delimited, command-value pair (e.g. SET_GAIN 1):\n')
                     if ('q' == inp or 'Q' == inp or 'quit' in inp.lower()

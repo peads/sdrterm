@@ -146,27 +146,12 @@ def checkWavHeader(f, fs, enc):
             if b'\x00\x00\x00\x00\x10\x00\x80\x00\x00\xAA\x00\x38\x9B\x71' != file.read(14):
                 raise ValueError('Invalid SubFormat GUID')
 
-            # TODO probably unnecessary if/until x-law input
-            # if subFormat == ExWaveFormat.PCM_S_BE or subFormat == ExWaveFormat.PCM_S_LE:
-            #     ret['bitsPerSample'] = (bitsPerSample, ret['bitsPerSample'].name)
-            # elif subFormat == ExWaveFormat.PCM_U_BE or subFormat == ExWaveFormat.PCM_U_LE:
-            #     ret['bitsPerSample'] = (bitsPerSample, ret['bitsPerSample'].name)
-            # else:
-            #     raise ValueError('Invalid: Wave format not supported')
-
         off = -1
         temp = file.tell()
         while -1 == off:
             buf = file.read(100)
             off = buf.find(b'data')
         off = temp + 4
-        # file.seek(temp)
-        # off = 0
-        # while 1:
-        #     buf += file.read(1)
-        #     if len(buf) > 3 and buf[-4:] == b'data':  # 0x64617461:
-        #         off = file.tell()
-        #         break
         ret['dataOffset'] = off
     return ret
 

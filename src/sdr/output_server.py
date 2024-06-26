@@ -18,14 +18,13 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
 import socketserver
-import sys
-import threading
 from multiprocessing import Value
 from queue import Queue, Empty
 from typing import Callable
 
 from misc.general_util import shutdownSocket, eprint, findPort
 from misc.hooked_thread import HookedThread
+from misc.keyboard_interruptable_thread import KeyboardInterruptableThread
 from sdr.socket_receiver import SocketReceiver
 
 
@@ -35,7 +34,7 @@ def log(*args, **kwargs) -> None:
 
 def initServer(receiver: SocketReceiver, isDead: Value, server_host: str) \
         -> tuple[socketserver.TCPServer, HookedThread, HookedThread, Callable[[], None]]:
-    clients = []
+    clients: list[Queue] = []
 
     class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
         pass
@@ -58,10 +57,14 @@ def initServer(receiver: SocketReceiver, isDead: Value, server_host: str) \
                 except (ConnectionError, EOFError, ValueError) as e:
                     log(f'Client disconnected: {self.request.getsockname()}: {e}')
                     clients.remove(buffer)
-                    break
+                    shutdownSocket(self.request)
+                    del buffer
+                    self.request.close()
+                    return
+            clients.remove(buffer)
             shutdownSocket(self.request)
+            del buffer
             self.request.close()
-            buffer.join()
             return
 
     def receive():
@@ -78,27 +81,20 @@ def initServer(receiver: SocketReceiver, isDead: Value, server_host: str) \
     def reset():
         for client in list(clients):
             try:
-                client.get(0.1)
+                client.get()
             except (KeyboardInterrupt | Empty):
                 pass
 
-
     server = ThreadedTCPServer((server_host, findPort()), ThreadedTCPRequestHandler)
-    class ServerHookedThread(HookedThread):
-        def __init__(self, *args, **kwargs):
-            super().__init__(*args, **kwargs)
-            def handleException(e, *argv):
-                isDead.value = 1
-                receiver.disconnect()
-                for client in list(clients):
-                    clients.remove(client)
-                    client.join()
-                if issubclass(type(e), KeyboardInterrupt):
-                    sys.__excepthook__(e, *argv)
-                return
 
-            threading.excepthook = handleException
+    def handleExceptionHook():
+        isDead.value = 1
+        receiver.disconnect()
+        for client in list(clients):
+            clients.remove(client)
+            client.join()
+            del client
 
-    st = ServerHookedThread(isDead, target=server.serve_forever, daemon=True)
-    rt = ServerHookedThread(isDead, target=receive, daemon=True)
+    st = KeyboardInterruptableThread(handleExceptionHook, target=server.serve_forever, daemon=True)
+    rt = KeyboardInterruptableThread(handleExceptionHook, target=receive, daemon=True)
     return server, st, rt, reset
