@@ -25,7 +25,7 @@ from threading import BrokenBarrierError
 import numpy as np
 
 from dsp.dsp_processor import DspProcessor
-from misc.general_util import eprint, printException, findPort, tprint
+from misc.general_util import eprint, printException, findPort, tprint, vprint
 from misc.keyboard_interruptable_thread import KeyboardInterruptableThread
 
 
@@ -78,12 +78,12 @@ class VfoProcessor(DspProcessor):
     @staticmethod
     def removePipe(pipes, pipe):
         try:
-            eprint(f'Removing pipe {pipe}')
+            tprint(f'Removing pipe {pipe}')
             pipes.remove(pipe)
             r, w = pipe
             r.close()
             w.close()
-            eprint(f'Removed pipe {pipe}')
+            tprint(f'Removed pipe {pipe}')
             return True
         except (OSError, ValueError):
             return False
@@ -162,5 +162,5 @@ class VfoProcessor(DspProcessor):
                 tprint(f'Awaiting {thread}')
                 thread.join(5)
                 tprint(f'{thread} joined')
-                eprint(f'Multi-VFO writer halted')
+                vprint(f'Multi-VFO writer halted')
                 return

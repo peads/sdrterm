@@ -25,34 +25,24 @@ from scipy.signal import ShortTimeFFT
 from dsp.data_processor import DataProcessor
 from dsp.iq_correction import IQCorrection
 from dsp.util import shiftFreq
-from misc.general_util import tprint
-from plots.plot_interface import PlotInterface
+from misc.general_util import tprint, printException
+from plots.abstract_plot import AbstractPlot
 
 
-class WaterfallPlot(DataProcessor, PlotInterface):
-    NPERSEG = 1024
+class WaterfallPlot(DataProcessor, AbstractPlot):
+    NPERSEG = 256
     NOOVERLAP = NPERSEG >> 1
-    NFFT = NPERSEG
+    NFFT = 1024
 
     def __init__(self,
-                 fs: int,
                  buffer: Queue,
-                 isDead: Value,
                  correctIq: bool = False,
-                 nfft: int = 2048,
-                 frameRate=17,
-                 center: int = 0,
                  *args,
                  **kwargs):
+        super().__init__(*args, **kwargs)
         import pyqtgraph as pg
         from pyqtgraph.Qt import QtWidgets, QtCore
-        self.fs = fs
-        self.nfft = nfft
-        self.frameRate = frameRate
         self.buffer = buffer
-        self.isDead = isDead
-        self.dt = 1 / self.fs
-        self.offset = center
         self.iqCorrector = IQCorrection(self.fs) if correctIq else None
         self._SFT = ShortTimeFFT.from_window(('kaiser', 5),
                                              self.fs,
@@ -62,7 +52,7 @@ class WaterfallPlot(DataProcessor, PlotInterface):
                                              fft_mode='centered',
                                              scale_to='magnitude',
                                              phase_shift=None)
-        self.pad_xextent = (self.NFFT - self.NOOVERLAP) / (self.fs * 2)
+        self.pad_extent = (self.NFFT - self.NOOVERLAP) / (self.fs << 1)
 
         self.app = QtWidgets.QApplication([])
         self.window = QtWidgets.QMainWindow()
@@ -71,39 +61,63 @@ class WaterfallPlot(DataProcessor, PlotInterface):
         self.layout = QtWidgets.QVBoxLayout()
         self.centralWidget.setLayout(self.layout)
 
-        self.surf = self.widget.addPlot(title="non-interactive")
+        self.window.setWindowTitle("Waterfall")
+        self.surf = self.widget.addPlot()
         self.item = pg.ImageItem(colorMap='CET-CBL2')
+        self.axis = self.surf.getAxis("bottom")
+        self.axis.setLabel("Frequency [MHz]")
         self.surf.addItem(self.item)
         self.surf.setMouseEnabled(x=False, y=False)
+        self.surf.setMenuEnabled(False)
         self.surf.hideButtons()
-        self.surf.showAxes(True, showValues=(True, False, False, True))
+        self.surf.showAxes(True, showValues=(False, False, False, True))
         self.timer = QtCore.QTimer()
         self.timer.timeout.connect(self.update)
-        self.timer.start(frameRate)
+        self.timer.start(self.frameRate)
+        self.ticks = None
 
-    def receiveData(self):
+    def quit(self):
+        self.timer.stop()
+        self.buffer.close()
+        self.buffer.cancel_join_thread()
+        super().quit()
+
+    def receiveData(self) -> tuple[int, np.ndarray]:
         data = self.buffer.get()
         if self.iqCorrector is not None:
             data = self.iqCorrector.correctIq(data)
-        return shiftFreq(data, self.offset, self.fs)
+        return len(data), shiftFreq(data, self.offset, self.fs)
 
     def update(self):
         try:
-            y = self.receiveData()
-            if y is None or not len(y) or self.isDead.value:
+            _, y = self.receiveData()
+            if y is None or not len(y):
                 raise KeyboardInterrupt
             Zxx = self._SFT.stft(y)
-            # extent = xmin, xmax, fmin, fmax = self._SFT.extent(len(y), center_bins=True)
-            # xmin -= self.pad_xextent
-            # xmax += self.pad_xextent
+            # extent = tmin, tmax, fmin, fmax = self._SFT.extent(len(y), center_bins=True)
+            # tmin -= self.pad_extent
+            # tmax += self.pad_extent
 
             data = 10. * np.log10(np.abs(Zxx))
+            if self.ticks is None:
+                xr, yr = self.surf.viewRange()
+                if xr[0] != -0.5 and xr[1] != 0.5:
+                    # ax = self.surf.getAxis('bottom')
+                    # self.ticks = [[(float(u), str(round((v + self.tuned) / 10E+5, 3)))
+                    #                for u, v in zip(np.linspace(xr[0], xr[1], 11),
+                    #                                np.linspace(-self.nyquistFs, self.nyquistFs, 11))]]
+                    # ax.setTicks(self.ticks)
+                    self.ticks = self._setTicks(self.surf.getAxis('bottom'), xr,
+                                                (-self.nyquistFs, self.nyquistFs), 11,
+                                                lambda v: str(round((v + self.tuned) / 10E+5, 3)))
+
             self.item.setImage(data)
         except KeyboardInterrupt:
             tprint(f'Quitting {type(self).__name__}...')
             self.quit()
         except Exception as e:
             tprint(f'Quitting {type(self).__name__}...')
+            printException(e)
             self.quit()
 
     @classmethod

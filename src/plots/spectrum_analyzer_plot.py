@@ -19,6 +19,8 @@
 #
 from multiprocessing import Queue
 
+import numpy as np
+
 from dsp.iq_correction import IQCorrection
 from dsp.util import shiftFreq
 from plots.spectrum_analyzer import SpectrumAnalyzer
@@ -28,24 +30,22 @@ class SpectrumAnalyzerPlot(SpectrumAnalyzer):
     def __init__(self,
                  buffer: Queue,
                  correctIq: bool = False,
-                 center: int = 0,
+                 *args,
                  **kwargs):
-        # kwargs['frameRate'] = 0  # the framerate is (likely network-)IO-bound
-        super().__init__(**kwargs)
+        super().__init__(*args, **kwargs)
         self.buffer = buffer
-        self.offset = center
         self.iqCorrector = IQCorrection(self.fs) if correctIq else None
 
-    def __del__(self):
-        self.buffer.close()
-        self.buffer.cancel_join_thread()
-        self.quit()
-
-    def receiveData(self):
+    def receiveData(self) -> tuple[int, np.ndarray]:
         data = self.buffer.get()
-        self.length = len(data)
-        # if self.length != self.nfft * (self.length // self.nfft):
-        #     data = data[:1 << int(np.log2(self.length))]
+        length = len(data)
+        # if  length - self.nfft * (length // self.nfft) != 0:
+        #     data = data[:1 << int(np.log2(length))]
         if self.iqCorrector is not None:
             data = self.iqCorrector.correctIq(data)
-        return shiftFreq(data, self.offset, self.fs)
+        return length, shiftFreq(data, self.offset, self.fs)
+
+    def quit(self):
+        self.buffer.close()
+        self.buffer.cancel_join_thread()
+        super().quit()

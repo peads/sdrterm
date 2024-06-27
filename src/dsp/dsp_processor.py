@@ -36,7 +36,7 @@ from misc.general_util import printException, vprint, eprint
 
 
 class DspProcessor(DataProcessor):
-    _FILTER_DEGREE = 2
+    _FILTER_DEGREE = 3
 
     def __init__(self,
                  fs: int,
@@ -125,12 +125,13 @@ class DspProcessor(DataProcessor):
             self._outputFilters.clear()
             self._outputFilters.extend(*filters)
             setattr(self, 'demod', fun)
-            self._aaFilter = signal.ellip(self._FILTER_DEGREE << 1, 1, 30,
+            self._aaFilter = (
+                signal.ellip(self._FILTER_DEGREE << 1, 0.5, 10,
                                           Wn=self.bandwidth,
                                           btype='lowpass',
                                           analog=False,
                                           output='zpk',
-                                          fs=self.__fs)
+                                          fs=self.__fs))
             self._aaFilter = signal.ZerosPolesGain(*self._aaFilter, dt=self.__dt)
             return self.demod
         raise ValueError("Demodulation function, or filters not defined")
@@ -209,7 +210,7 @@ class DspProcessor(DataProcessor):
             finally:
                 buffer.close()
                 buffer.cancel_join_thread()
-                eprint(f'Standard writer halted')
+                vprint(f'Standard writer halted')
                 return
 
     def __repr__(self):

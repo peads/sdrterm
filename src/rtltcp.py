@@ -24,7 +24,7 @@ from typing import Annotated
 import numpy as np
 import typer
 
-from misc.general_util import eprint
+from misc.general_util import vprint, printException
 from sdr import output_server
 from sdr.control_rtl_tcp import ControlRtlTcp
 from sdr.controller import UnrecognizedInputError
@@ -70,23 +70,26 @@ def main(host: Annotated[str, typer.Argument(help='Address of remote rtl_tcp ser
                             numCmd = RtlTcpCommands(int(cmd)).value
                         else:
                             numCmd = RtlTcpCommands[cmd].value
-                        if not param.isnumeric():
+
+                        if not (('-' in param or param.isnumeric())
+                                and (len(param) < 2 or param[1:].isnumeric())):
                             print(f'ERROR: Input invalid: {cmd}: {param}. Please try again')
                         else:
                             param = int(param)
                             cmdr.setParam(numCmd, param)
-                            receiver.fs = param
                 except (UnrecognizedInputError, ValueError, KeyError) as ex:
                     print(f'ERROR: Input invalid: {ex}. Please try again')
         except KeyboardInterrupt:
             pass
+        except Exception as e:
+            printException(e)
         finally:
             isDead.value = 1
             server.shutdown()
             server.server_close()
             st.join(1)
             pt.join(1)
-            eprint('UI halted')
+            vprint('UI halted')
             return
 
 

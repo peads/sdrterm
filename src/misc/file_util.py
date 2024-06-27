@@ -59,19 +59,20 @@ class DataType(Enum):
     thirtytwo = {'S': i, 'U': I, 'None': i}
 
     @classmethod
-    def fromWav(cls, bits: int, aFormat: Enum):
+    def fromWav(cls, bits: int, aFormat: Enum, bFormat: Enum):
         ret = None
         if WaveFormat.WAVE_FORMAT_IEEE_FLOAT == aFormat:
             if 32 == bits:
-                ret = cls.f
+                ret = cls.f.value
             elif 64 == bits:
-                ret = cls.d
-        elif WaveFormat.WAVE_FORMAT_PCM == aFormat or aFormat in ExWaveFormat:
+                ret = cls.d.value
+        elif WaveFormat.WAVE_FORMAT_PCM == aFormat or WaveFormat.WAVE_FORMAT_EXTENSIBLE == aFormat:
             istZahl = None
             splt = aFormat.name.split('_')
 
-            if issubclass(type(aFormat), ExWaveFormat):
-                istZahl = 'S' == splt[1]
+            if bFormat is not None and bFormat in ExWaveFormat:
+                splt = bFormat.name.split('_')
+                istZahl = splt[1]
 
             if 8 == bits:
                 return cls.eight.value[str(istZahl)]
@@ -133,18 +134,20 @@ def checkWavHeader(f, fs, enc):
                # 20
                ) = struct.unpack('<IHHIIHH', file.read(20))
         ret = zipRet(ret)
+        subFormat = None
 
-        ret['bitsPerSample'] = DataType.fromWav(bitsPerSample, WaveFormat(ret['audioFormat']))
-        ret['bitRate'] = (bitsPerSample * byteRate * blockAlign) >> 3
-
-        if WaveFormat.WAVE_FORMAT_EXTENSIBLE == ret['audioFormat']:
+        if WaveFormat.WAVE_FORMAT_EXTENSIBLE.value == ret['audioFormat']:
             extraParamSize, = struct.unpack('<H', file.read(2))
-
-            extraParams = struct.unpack('<B' + (extraParamSize - 16), file.read(extraParamSize - 16))
+            subFormatOffset = extraParamSize - 16
+            extraParams = struct.unpack('<' + str(subFormatOffset) + 'B', file.read(subFormatOffset))
+            # file.seek(file.tell() + subFormatOffset)
             subFormat, = struct.unpack('<H', file.read(2))
-
             if b'\x00\x00\x00\x00\x10\x00\x80\x00\x00\xAA\x00\x38\x9B\x71' != file.read(14):
                 raise ValueError('Invalid SubFormat GUID')
+            subFormat = ExWaveFormat(subFormat)
+
+        ret['bitsPerSample'] = DataType.fromWav(bitsPerSample, WaveFormat(ret['audioFormat']), subFormat)
+        ret['bitRate'] = (bitsPerSample * byteRate * blockAlign) >> 3
 
         off = -1
         temp = file.tell()

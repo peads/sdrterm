@@ -23,18 +23,19 @@ from plots.spectrum_analyzer_plot import SpectrumAnalyzerPlot
 
 
 class MultiSpectrumAnalyzerPlot(SpectrumAnalyzerPlot):
-    def __init__(self, bandwidth: int = -1, vfos: str = None, tuned: int = 0, *args, **kwargs):
-        # if vfos is None:
-        #     raise ValueError("MultiSpectrumAnalyzerPlot cannot be used without the vfos option")
-        kwargs['nfft'] = 8192
+    def __init__(self,
+                 bandwidth: int = 1,
+                 vfos: str = None,
+                 *args,
+                 **kwargs):
+        if vfos is None:
+            raise ValueError("MultiSpectrumAnalyzerPlot cannot be used without the vfos option")
         super().__init__(*args, **kwargs)
         vfos = '' if vfos is None else vfos
         self.vfos = vfos.split(',')
         self.vfos = [int(vfo) for vfo in self.vfos if vfo is not None and len(vfo)]
         self.item.setXRange(-bandwidth, bandwidth)
-        self.widgets = [self.widget]
         self.items = [self.item]
-        self.lines = [self.line]
         self.axes = [self.axis]
 
         size = np.sqrt(len(self.vfos) + 1)
@@ -42,7 +43,6 @@ class MultiSpectrumAnalyzerPlot(SpectrumAnalyzerPlot):
         rows = int(np.round(size))
 
         bandwidth >>= 1
-        self.axis.setLabel(tuned)
         self.item.setXRange(-bandwidth, bandwidth)
         import pyqtgraph as pg
 
@@ -53,36 +53,21 @@ class MultiSpectrumAnalyzerPlot(SpectrumAnalyzerPlot):
             if i >= rows:
                 i = 1
 
-            b = vfo
             widget = pg.PlotWidget()
             item = widget.getPlotItem()
-            item.setXRange(-bandwidth + b, bandwidth + b)
+            item.setXRange(-bandwidth + vfo, bandwidth + vfo)
             item.setYRange(-6, 4)
             item.setMouseEnabled(x=False, y=False)
+            item.setMenuEnabled(False)
+            item.showAxes(True, showValues=(False, False, False, True))
+            item.hideButtons()
             axis = item.getAxis("bottom")
-            axis.setLabel(str(vfo + tuned))
-            # TODO explore ViewBox::linkView
-            line = item.plot()
+            axis.setLabel("Frequency [MHz]")
 
-            self.widgets.append(widget)
+            self.widgets.append((widget, vfo))
             self.items.append(item)
-            self.lines.append(line)
+            self.lines.append(item.plot())
             self.axes.append(axis)
             self.layout.addWidget(widget, j, i)
             j += 1
         self.window.setWindowTitle("MultiSpectrumAnalyzer")
-
-    def update(self):
-        try:
-            nfft = self.nfft << 1
-            if nfft < self.length:
-                self.nfft = nfft
-            super().update()
-            for curve in self.lines:
-                for amp in self.amps:
-                    curve.setData(self.freq, amp)
-        except KeyboardInterrupt:
-            pass
-        finally:
-            self.quit()
-            return

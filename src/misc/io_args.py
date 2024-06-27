@@ -42,10 +42,10 @@ class IOArgs:
 
     @classmethod
     def __initializeProcess(cls, isDead: Value, processor: DataProcessor, *args,
-                            name: str = 'Process') -> tuple[Queue, Process]:
+                            name: str = 'Process', **kwargs) -> tuple[Queue, Process]:
         buffer = Queue()
-        proc = Process(target=processor.processData, args=(isDead, buffer, *args))
-        proc.name = name + type(cls.strct['processor']).__name__
+        proc = Process(target=processor.processData, args=(isDead, buffer, *args), kwargs=kwargs)
+        proc.name = name + type(processor).__name__
         return buffer, proc
 
     @classmethod
@@ -76,11 +76,17 @@ class IOArgs:
                 for p in pl.split(','):
                     psplot = selectPlotType(p)
                     kwargs['bandwidth'] = cls.strct['processor'].bandwidth
-                    buffer, proc = cls.__initializeProcess(isDead, psplot, fs, name="Plotter-" + type(psplot).__name__)
+                    buffer, proc = cls.__initializeProcess(isDead,
+                                                           psplot,
+                                                           fs, name="Plotter-" + type(psplot).__name__,
+                                                           **kwargs)
                     processes.append(proc)
                     buffers.append(buffer)
 
-        buffer, proc = cls.__initializeProcess(isDead, cls.strct['processor'], outFile,
-                                               name="File writer-" + type(cls.strct['processor']).__name__)
+        buffer, proc = cls.__initializeProcess(isDead,
+                                               cls.strct['processor'],
+                                               outFile,
+                                               name="File writer-" + type(cls.strct['processor']).__name__,
+                                               **kwargs)
         processes.append(proc)
         buffers.append(buffer)

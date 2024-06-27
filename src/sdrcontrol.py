@@ -36,7 +36,7 @@ from textual.validation import Function
 from textual.widgets import Button, RichLog, Input, Select, Label, Switch
 from textual_slider import Slider
 
-from misc.general_util import shutdownSocket, eprint, printException
+from misc.general_util import shutdownSocket, eprint, printException, vprint
 from sdr import output_server
 from sdr.control_rtl_tcp import ControlRtlTcp
 from sdr.rtl_tcp_commands import RtlTcpSamplingRate, RtlTcpCommands
@@ -345,7 +345,7 @@ def main(server_host: Annotated[str, typer.Option(help='Port of local distributi
             lt.join(5)
             ft.join(5)
 
-            eprint('UI halted')
+            vprint('UI halted')
             return
 
 

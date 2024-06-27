@@ -23,8 +23,8 @@ from typing import Callable
 
 from dsp.dsp_processor import DspProcessor
 from plots.multi_spectrum_analyzer_plot import MultiSpectrumAnalyzerPlot
-from plots.waterfall_plot import WaterfallPlot
 from plots.spectrum_analyzer_plot import SpectrumAnalyzerPlot
+from plots.waterfall_plot import WaterfallPlot
 
 
 def selectDemodulation(demodType: str, processor: DspProcessor) -> Callable:
