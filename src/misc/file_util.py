@@ -23,6 +23,8 @@ from typing import Iterable
 
 import numpy as np
 
+from misc.mappable_enum import MappableEnum
+
 
 class WaveFormat(Enum):
     WAVE_FORMAT_PCM = 0x0001  # , ('B','h','i')
@@ -41,7 +43,7 @@ class ExWaveFormat(Enum):
     PCM_U_PDP = 0x07  # b'x07'
 
 
-class DataType(Enum):
+class DataType(MappableEnum):
     b = np.dtype('>b')
     B = np.dtype('>B')
 
@@ -54,12 +56,15 @@ class DataType(Enum):
     f = np.dtype('>f4')
     d = np.dtype('>f8')
 
-    eight = {'S': b, 'U': B, 'None': B}
-    sixteen = {'S': h, 'U': H, 'None': h}
-    thirtytwo = {'S': i, 'U': I, 'None': i}
+    def __str__(self):
+        return self.name
 
     @classmethod
     def fromWav(cls, bits: int, aFormat: Enum, bFormat: Enum):
+        eight = {'S': cls.b, 'U': cls.B, 'None': cls.B}
+        sixteen = {'S': cls.h, 'U': cls.H, 'None': cls.h}
+        thirtytwo = {'S': cls.i, 'U': cls.I, 'None': cls.i}
+
         ret = None
         if WaveFormat.WAVE_FORMAT_IEEE_FLOAT == aFormat:
             if 32 == bits:
@@ -75,11 +80,11 @@ class DataType(Enum):
                 istZahl = splt[1]
 
             if 8 == bits:
-                return cls.eight.value[str(istZahl)]
+                return eight[str(istZahl)].value
             elif 16 == bits:
-                ret = cls.sixteen.value[str(istZahl)]
+                ret = sixteen[str(istZahl)].value
             elif 32 == bits:
-                ret = cls.thirtytwo.value[str(istZahl)]
+                ret = thirtytwo[str(istZahl)].value
 
             if 'LE' == splt[2]:
                 ret = ret.newbyteorder('<')
@@ -88,6 +93,7 @@ class DataType(Enum):
             return ret
 
         raise ValueError(f'Unsupported format: {bits}: {aFormat}')
+
 
 def parseRawType(fs, enc):
     if fs is None or fs < 1 or enc is None:

@@ -214,13 +214,13 @@ class DspProcessor(DataProcessor):
                 return
 
     def __repr__(self):
-        d = {key: value for key, value in self.__dict__.items()
-             if not key.startswith('_')
-             and not callable(value)
-             and not issubclass(type(value), np.ndarray)
-             and not issubclass(type(value), signal.dlti)
-             and not issubclass(type(value), IQCorrection)
-             and key not in {'outputFilters'}}
+        d = {(key if 'Str' not in key else key[:-3]): value for key, value in self.__dict__.items()
+             if not (key.startswith('_')
+             or callable(value)
+             or issubclass(type(value), np.ndarray)
+             or issubclass(type(value), signal.dlti)
+             or issubclass(type(value), IQCorrection)
+             or key in {'outputFilters'})}
         d['fs'] = self.__fs
         d['decimatedFs'] = self.__decimatedFs
         return json.dumps(d, indent=2)

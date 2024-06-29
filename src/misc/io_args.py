@@ -25,13 +25,13 @@ from dsp.data_processor import DataProcessor
 class IOArgs:
     strct = None
 
-    def __init__(self, **kwargs):
+    def __init__(self, verbose: int = 0, **kwargs):
         from misc.general_util import traceOn, verboseOn
         from misc.file_util import checkWavHeader
         IOArgs.strct = kwargs
-        if 'verbose' in kwargs and kwargs['verbose']:
+        if 1 == verbose:
             verboseOn()
-        if 'trace' in kwargs and kwargs['trace']:
+        elif verbose > 1:
             traceOn()
         kwargs['fileInfo'] = checkWavHeader(kwargs['inFile'], kwargs['fs'], kwargs['enc'])
         kwargs['fs'] = kwargs['fileInfo']['sampRate']

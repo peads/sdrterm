@@ -38,12 +38,13 @@ class VfoProcessor(DspProcessor):
     def __init__(self, fs, vfoHost: str = 'localhost', vfos: str = None, **kwargs):
         super().__init__(fs, **kwargs)
         if vfos is None or len(vfos) < 1:
-            raise ValueError("simo mode cannot be used without the vfos option")
+            raise ValueError('simo mode cannot be used without the vfos option')
+        self.vfosStr = vfos + ',0'
         self.vfos = vfos.split(',')
         self.vfos = [int(x) + self.centerFreq for x in self.vfos if x is not None]
         self.vfos.append(self.centerFreq)
         self.vfos = np.array(self.vfos)
-        self.nFreq = len(self.vfos)
+        self._nFreq = len(self.vfos)
         self.omega = -2j * np.pi * (self.vfos / self.fs)
         self.host = vfoHost
 
@@ -94,7 +95,7 @@ class VfoProcessor(DspProcessor):
             VfoProcessor.removePipe(pipes, pipe)
 
     def processData(self, isDead: Value, buffer: Queue, *args, **kwargs) -> None:
-        children: int = self.nFreq + 1
+        children: int = self._nFreq + 1
         barrier: Barrier = Barrier(children)
         pipes: list[Pipe] = []
 

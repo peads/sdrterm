@@ -27,7 +27,7 @@ from sdr.receiver import Receiver
 
 
 class SocketReceiver(Receiver):
-    BUF_SIZE = 1048576
+    BUF_SIZE = 262144
 
     def __init__(self, isDead: Value, host: str = None, port: int = None):
         self.host = host
