@@ -18,14 +18,13 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-import socket
 from multiprocessing import Value
 from typing import Annotated
 
 import numpy as np
 import typer
 
-from misc.general_util import eprint
+from misc.general_util import vprint, printException
 from sdr import output_server
 from sdr.control_rtl_tcp import ControlRtlTcp
 from sdr.controller import UnrecognizedInputError
@@ -56,7 +55,7 @@ def main(host: Annotated[str, typer.Argument(help='Address of remote rtl_tcp ser
                 try:
                     print('Available commands are:\n')
                     [print(f'{e.value}\t{e.name}') for e in RtlTcpCommands]
-                    print(f'\nAccepting connections on port {server.socket.getsockname()[1]}\n')
+                    print(f'\nAccepting connections on port {server.socket.getsockname()}\n')
                     inp = input(
                         'Provide a space-delimited, command-value pair (e.g. SET_GAIN 1):\n')
                     if ('q' == inp or 'Q' == inp or 'quit' in inp.lower()
@@ -71,23 +70,26 @@ def main(host: Annotated[str, typer.Argument(help='Address of remote rtl_tcp ser
                             numCmd = RtlTcpCommands(int(cmd)).value
                         else:
                             numCmd = RtlTcpCommands[cmd].value
-                        if not param.isnumeric():
+
+                        if not (('-' in param or param.isnumeric())
+                                and (len(param) < 2 or param[1:].isnumeric())):
                             print(f'ERROR: Input invalid: {cmd}: {param}. Please try again')
                         else:
                             param = int(param)
                             cmdr.setParam(numCmd, param)
-                            receiver.fs = param
                 except (UnrecognizedInputError, ValueError, KeyError) as ex:
                     print(f'ERROR: Input invalid: {ex}. Please try again')
         except KeyboardInterrupt:
             pass
+        except Exception as e:
+            printException(e)
         finally:
             isDead.value = 1
             server.shutdown()
             server.server_close()
             st.join(1)
             pt.join(1)
-            eprint('UI halted')
+            vprint('UI halted')
             return
 
 

@@ -23,6 +23,8 @@ from typing import Iterable
 
 import numpy as np
 
+from misc.mappable_enum import MappableEnum
+
 
 class WaveFormat(Enum):
     WAVE_FORMAT_PCM = 0x0001  # , ('B','h','i')
@@ -41,7 +43,7 @@ class ExWaveFormat(Enum):
     PCM_U_PDP = 0x07  # b'x07'
 
 
-class DataType(Enum):
+class DataType(MappableEnum):
     b = np.dtype('>b')
     B = np.dtype('>B')
 
@@ -54,31 +56,35 @@ class DataType(Enum):
     f = np.dtype('>f4')
     d = np.dtype('>f8')
 
-    eight = {'S': b, 'U': B, 'None': B}
-    sixteen = {'S': h, 'U': H, 'None': h}
-    thirtytwo = {'S': i, 'U': I, 'None': i}
+    def __str__(self):
+        return self.name
 
     @classmethod
-    def fromWav(cls, bits: int, aFormat: Enum):
+    def fromWav(cls, bits: int, aFormat: Enum, bFormat: Enum):
+        eight = {'S': cls.b, 'U': cls.B, 'None': cls.B}
+        sixteen = {'S': cls.h, 'U': cls.H, 'None': cls.h}
+        thirtytwo = {'S': cls.i, 'U': cls.I, 'None': cls.i}
+
         ret = None
         if WaveFormat.WAVE_FORMAT_IEEE_FLOAT == aFormat:
             if 32 == bits:
-                ret = cls.f
+                ret = cls.f.value
             elif 64 == bits:
-                ret = cls.d
-        elif WaveFormat.WAVE_FORMAT_PCM == aFormat or aFormat in ExWaveFormat:
+                ret = cls.d.value
+        elif WaveFormat.WAVE_FORMAT_PCM == aFormat or WaveFormat.WAVE_FORMAT_EXTENSIBLE == aFormat:
             istZahl = None
             splt = aFormat.name.split('_')
 
-            if issubclass(type(aFormat), ExWaveFormat):
-                istZahl = 'S' == splt[1]
+            if bFormat is not None and bFormat in ExWaveFormat:
+                splt = bFormat.name.split('_')
+                istZahl = splt[1]
 
             if 8 == bits:
-                return cls.eight.value[str(istZahl)]
+                return eight[str(istZahl)].value
             elif 16 == bits:
-                ret = cls.sixteen.value[str(istZahl)]
+                ret = sixteen[str(istZahl)].value
             elif 32 == bits:
-                ret = cls.thirtytwo.value[str(istZahl)]
+                ret = thirtytwo[str(istZahl)].value
 
             if 'LE' == splt[2]:
                 ret = ret.newbyteorder('<')
@@ -87,6 +93,7 @@ class DataType(Enum):
             return ret
 
         raise ValueError(f'Unsupported format: {bits}: {aFormat}')
+
 
 def parseRawType(fs, enc):
     if fs is None or fs < 1 or enc is None:
@@ -133,26 +140,20 @@ def checkWavHeader(f, fs, enc):
                # 20
                ) = struct.unpack('<IHHIIHH', file.read(20))
         ret = zipRet(ret)
+        subFormat = None
 
-        ret['bitsPerSample'] = DataType.fromWav(bitsPerSample, WaveFormat(ret['audioFormat']))
-        ret['bitRate'] = (bitsPerSample * byteRate * blockAlign) >> 3
-
-        if WaveFormat.WAVE_FORMAT_EXTENSIBLE == ret['audioFormat']:
+        if WaveFormat.WAVE_FORMAT_EXTENSIBLE.value == ret['audioFormat']:
             extraParamSize, = struct.unpack('<H', file.read(2))
-
-            extraParams = struct.unpack('<B' + (extraParamSize - 16), file.read(extraParamSize - 16))
+            subFormatOffset = extraParamSize - 16
+            extraParams = struct.unpack('<' + str(subFormatOffset) + 'B', file.read(subFormatOffset))
+            # file.seek(file.tell() + subFormatOffset)
             subFormat, = struct.unpack('<H', file.read(2))
-
             if b'\x00\x00\x00\x00\x10\x00\x80\x00\x00\xAA\x00\x38\x9B\x71' != file.read(14):
                 raise ValueError('Invalid SubFormat GUID')
+            subFormat = ExWaveFormat(subFormat)
 
-            # TODO probably unnecessary if/until x-law input
-            # if subFormat == ExWaveFormat.PCM_S_BE or subFormat == ExWaveFormat.PCM_S_LE:
-            #     ret['bitsPerSample'] = (bitsPerSample, ret['bitsPerSample'].name)
-            # elif subFormat == ExWaveFormat.PCM_U_BE or subFormat == ExWaveFormat.PCM_U_LE:
-            #     ret['bitsPerSample'] = (bitsPerSample, ret['bitsPerSample'].name)
-            # else:
-            #     raise ValueError('Invalid: Wave format not supported')
+        ret['bitsPerSample'] = DataType.fromWav(bitsPerSample, WaveFormat(ret['audioFormat']), subFormat)
+        ret['bitRate'] = (bitsPerSample * byteRate * blockAlign) >> 3
 
         off = -1
         temp = file.tell()
@@ -160,13 +161,6 @@ def checkWavHeader(f, fs, enc):
             buf = file.read(100)
             off = buf.find(b'data')
         off = temp + 4
-        # file.seek(temp)
-        # off = 0
-        # while 1:
-        #     buf += file.read(1)
-        #     if len(buf) > 3 and buf[-4:] == b'data':  # 0x64617461:
-        #         off = file.tell()
-        #         break
         ret['dataOffset'] = off
     return ret
 

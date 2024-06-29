@@ -17,17 +17,10 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-from enum import Enum
+from misc.mappable_enum import MappableEnum
 
-class ControlEnum(Enum):
-    @classmethod
-    def dict(cls):
-        return {i.name: i.value for i in cls}
-    @classmethod
-    def tuples(cls):
-        return list(cls.dict().items())
 
-class RtlTcpSamplingRate(ControlEnum):
+class RtlTcpSamplingRate(MappableEnum):
     fs0 = 250000
     fs1 = 256000
     fs2 = 1024000
@@ -41,7 +34,7 @@ class RtlTcpSamplingRate(ControlEnum):
         return {str(i.value): i.value for i in cls}
 
 # translated directly from rtl_tcp.c
-class RtlTcpCommands(ControlEnum):
+class RtlTcpCommands(MappableEnum):
     SET_FREQUENCY = 0x01
     SET_SAMPLE_RATE = 0x02
     SET_GAIN_MODE = 0x03

@@ -18,99 +18,97 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
 from abc import abstractmethod, ABC
+from multiprocessing import Value, Queue
 
 import numpy as np
 from scipy import fft
 
-from misc.general_util import printException, tprint
+from dsp.data_processor import DataProcessor
+from misc.general_util import printException
+from plots.abstract_plot import AbstractPlot
 
 
-class SpectrumAnalyzer(ABC):
+class SpectrumAnalyzer(DataProcessor, AbstractPlot, ABC):
 
-    # frameRate default: ~60 fps
-    def __init__(self, fs: int, nfft: int = 2048, frameRate=17, **kwargs):
-
-        self.freq = None
-        self.amps = None
-        self.fftData = None
+    def __init__(self,
+                 nfft: int = 2048,
+                 *args,
+                 **kwargs):
+        super().__init__(*args, **kwargs)
         import pyqtgraph as pg
         from pyqtgraph.Qt import QtCore, QtWidgets
+
+        self.nfft = nfft
 
         self.app = QtWidgets.QApplication([])
         self.window = QtWidgets.QMainWindow()
         self.centralWidget = QtWidgets.QWidget()
-        self.widget = pg.PlotWidget(name="spectrum")
+        self.widget = pg.PlotWidget(show=True)
+        self.widgets = [(self.widget, 0)]
         self.item = self.widget.getPlotItem()
-        self.fs = fs
-        self.length = self.chunk = self.nfft = nfft
 
-        self.item.setXRange(-self._nyquistFs, self._nyquistFs, padding=0)
+        self.item.setXRange(-self.nyquistFs, self.nyquistFs, padding=0)
         self.app.quitOnLastWindowClosed()
         self.window.setWindowTitle("SpectrumAnalyzer")
         self.window.resize(800, 600)
         self.window.setCentralWidget(self.centralWidget)
-        self.layout = QtWidgets.QVBoxLayout()
+        self.layout = QtWidgets.QGridLayout()
         self.centralWidget.setLayout(self.layout)
         self.item.setMouseEnabled(x=False, y=False)
         self.item.setYRange(-6, 4)
+        self.item.setMenuEnabled(False)
+        self.item.showAxes(True, showValues=(False, False, False, True))
+        self.item.hideButtons()
         self.axis = self.item.getAxis("bottom")
-        self.axis.setLabel("Frequency [Hz]")
-        self.curve_spectrum = self.item.plot()
-        self.layout.addWidget(self.widget)
+        self.axis.setLabel("Frequency [MHz]")
+        self.lines = [self.item.plot()]
+        self.layout.addWidget(self.widget, 0, 0)
+        self.ticks = None
         self.window.show()
 
         self.timer = QtCore.QTimer()
         self.timer.timeout.connect(self.update)
-        self.timer.start(frameRate)
+        self.timer.start(self.frameRate)
 
     def update(self):
-        from pyqtgraph.Qt.QtCore import QCoreApplication
         try:
-            data = self.receiveData()
-            if data is None or not self.length:
+            length, data = self.receiveData()
+            if data is None or not length:
                 raise KeyboardInterrupt
-            data = np.reshape(data, (self.length // self.nfft, self.nfft))
 
-            self.fftData = fft.fftshift(fft.fftn(data, norm='forward'))
-            self.amps = np.abs(self.fftData)
-            self.amps = np.log10(self.amps * self.amps)
-            self.freq = fft.fftshift(fft.fftfreq(self.nfft, self._inverseFs))
+            amps = fft.fftn(data, norm='forward')
+            # amps = signal.decimate(amps, amps.size // self.nfft)
+            amps = np.abs(fft.fftshift(amps))
+            amps = np.log10(amps * amps)
+            freq = fft.fftshift(fft.fftfreq(amps.size, self.dt))
 
-            for amp in self.amps:
-                if self.curve_spectrum is not None:
-                    self.curve_spectrum.setData(self.freq, amp)
+            if self.ticks is None:
+                for widget, offset in self.widgets:
+                    xr, yr = widget.viewRange()
+                    if xr[0] != -0.5 and xr[1] != 0.5:
+                        self.ticks = self._setTicks(widget.getAxis('bottom'), xr,
+                                                    (-self.nyquistFs, self.nyquistFs), 11,
+                                                    lambda v: str(round((v + self.tuned + offset) / 10E+5, 3)))
+
+            for line in self.lines:
+                line.setData(freq, amps)
 
         except (ValueError, KeyboardInterrupt):
-            tprint(f'Quitting {type(self).__name__}...')
-            QCoreApplication.quit()
+            self.quit()
         except Exception as e:
-            tprint(f'Quitting {type(self).__name__}...')
             printException(e)
-            QCoreApplication.quit()
+            self.quit()
 
     @abstractmethod
-    def receiveData(self):
+    def receiveData(self) -> tuple[int, any]:
         pass
 
     @classmethod
-    def start(cls, fs, *args, **kwargs) -> int:
+    def processData(cls, isDead: Value, buffer: Queue, fs: int, *args, **kwargs) -> None:
         from pyqtgraph.Qt import QtWidgets
-        cls.spec = cls(fs=fs, *args, **kwargs)
-        return QtWidgets.QApplication.instance().exec()
+        cls.spec = cls(fs=fs, buffer=buffer, isDead=isDead, *args, **kwargs)
+        QtWidgets.QApplication.instance().exec()
 
-    @property
-    def fs(self) -> int:
-        return self._fs
-
-    @fs.setter
-    def fs(self, value: int) -> None:
-        self._fs = value
-        self._inverseFs = 1 / value
-        self._nyquistFs = value >> 1
-        self.item.setXRange(-self._nyquistFs, self._nyquistFs, padding=0)
-
-    @fs.deleter
-    def fs(self) -> None:
-        del self._fs
-        del self._inverseFs
-        del self._nyquistFs
+    def quit(self):
+        self.timer.stop()
+        super().quit()

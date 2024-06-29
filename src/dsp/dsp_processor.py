@@ -36,7 +36,7 @@ from misc.general_util import printException, vprint, eprint
 
 
 class DspProcessor(DataProcessor):
-    _FILTER_DEGREE = 2
+    _FILTER_DEGREE = 3
 
     def __init__(self,
                  fs: int,
@@ -125,12 +125,13 @@ class DspProcessor(DataProcessor):
             self._outputFilters.clear()
             self._outputFilters.extend(*filters)
             setattr(self, 'demod', fun)
-            self._aaFilter = signal.ellip(self._FILTER_DEGREE << 1, 1, 30,
+            self._aaFilter = (
+                signal.ellip(self._FILTER_DEGREE << 1, 0.5, 10,
                                           Wn=self.bandwidth,
                                           btype='lowpass',
                                           analog=False,
                                           output='zpk',
-                                          fs=self.__fs)
+                                          fs=self.__fs))
             self._aaFilter = signal.ZerosPolesGain(*self._aaFilter, dt=self.__dt)
             return self.demod
         raise ValueError("Demodulation function, or filters not defined")
@@ -186,7 +187,7 @@ class DspProcessor(DataProcessor):
             size = y.size
             y = y.flat
             if self.smooth:
-                y = signal.savgol_filter(y, 16, self._FILTER_DEGREE)
+                y = signal.savgol_filter(y, self.smooth, self._FILTER_DEGREE)
             file.write(struct.pack('@' + (size * 'd'), *y))
 
     def _generateShift(self, r: int, c: int) -> np.ndarray | None:
@@ -209,17 +210,17 @@ class DspProcessor(DataProcessor):
             finally:
                 buffer.close()
                 buffer.cancel_join_thread()
-                eprint(f'Standard writer halted')
+                vprint(f'Standard writer halted')
                 return
 
     def __repr__(self):
-        d = {key: value for key, value in self.__dict__.items()
-             if not key.startswith('_')
-             and not callable(value)
-             and not issubclass(type(value), np.ndarray)
-             and not issubclass(type(value), signal.dlti)
-             and not issubclass(type(value), IQCorrection)
-             and key not in {'outputFilters'}}
+        d = {(key if 'Str' not in key else key[:-3]): value for key, value in self.__dict__.items()
+             if not (key.startswith('_')
+             or callable(value)
+             or issubclass(type(value), np.ndarray)
+             or issubclass(type(value), signal.dlti)
+             or issubclass(type(value), IQCorrection)
+             or key in {'outputFilters'})}
         d['fs'] = self.__fs
         d['decimatedFs'] = self.__decimatedFs
         return json.dumps(d, indent=2)

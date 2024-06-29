@@ -28,8 +28,13 @@ from plots.spectrum_analyzer import SpectrumAnalyzer
 
 class SocketSpectrumAnalyzer(SpectrumAnalyzer):
 
-    def __init__(self, sock: socket.socket, readSize: int = 4096, structtype: str = 'B', **kwargs):
-        super().__init__(**kwargs)
+    def __init__(self,
+                 sock: socket.socket,
+                 readSize: int = 4096,
+                 structtype: str = 'B',
+                 *args,
+                 **kwargs):
+        super().__init__(*args, **kwargs)
         self.sock = sock
         self.readSize = readSize
         self.structtype = structtype

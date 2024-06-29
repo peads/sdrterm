@@ -17,15 +17,14 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-from abc import ABC, abstractmethod
-from threading import Thread
+from enum import Enum
 
 
-class HookedThread(Thread, ABC):
-    def __init__(self, group=None, target=None, name=None,
-                 args=(), daemon=None):
-        super().__init__(group=group, target=target, name=name, daemon=daemon, args=args)
+class MappableEnum(Enum):
+    @classmethod
+    def dict(cls) -> dict[str, ...]:
+        return {i.name: i.value for i in cls}
 
-    @abstractmethod
-    def handleExceptionHook(self):
-        pass
+    @classmethod
+    def tuples(cls) -> tuple[str, ...]:
+        return tuple(cls.dict().items())

@@ -25,17 +25,7 @@ from typing import Iterable
 
 import numpy as np
 
-from misc.general_util import eprint
-
-
-def __feedBuffers(isDead: Value, data: np.ndarray, buffers: Iterable[Queue], readSize: int):
-    i = 0
-    while not isDead.value and i < data.shape[0]:
-        y = data[i:i + readSize]
-        y = y['re'] + 1j * y['im']
-        for buffer in buffers:
-            buffer.put(y)
-        i += readSize
+from misc.general_util import vprint
 
 
 def readFile(wordtype: np.dtype,
@@ -45,26 +35,32 @@ def readFile(wordtype: np.dtype,
              inFile: str = None,
              readSize: int = 65536,
              swapEndianness: bool = False, **_) -> None:
-
     if swapEndianness:
-         wordtype = wordtype.newbyteorder('<' if '>' == wordtype.byteorder else '>')
+        wordtype = wordtype.newbyteorder('<' if '>' == wordtype.byteorder else '>')
     dtype = np.dtype([('re', wordtype), ('im', wordtype)])
+    isFile = inFile is not None
+    buffer = array.array(wordtype.char, readSize * b'0')
 
-    if inFile is not None:
-        data = np.memmap(inFile, dtype=dtype, mode='r', offset=offset, order='C')
-        __feedBuffers(isDead, data, buffers, readSize)
-    else:
-        buffer = array.array(wordtype.char, readSize * b'0')
-        with open(sys.stdin.fileno(), 'rb', closefd=False) as _:
-            file = io.BufferedReader(sys.stdin.buffer)
-            while not isDead.value:
-                if not file.readinto(buffer):
-                    break
-                y = np.frombuffer(buffer, dtype)
-                __feedBuffers(isDead, y, buffers, readSize)
+    def feedBuffers(x: np.ndarray) -> None:
+        x = x['re'] + 1j * x['im']
+        for client in buffers:
+            client.put(x)
+
+    with open(inFile if isFile else sys.stdin.fileno(), 'rb', closefd=isFile) as file:
+        reader = io.BufferedReader(file if isFile else sys.stdin.buffer)
+
+        if offset and file.seekable():
+            file.seek(offset)
+
+        while not isDead.value:
+            if not reader.readinto(buffer):
+                break
+            y = np.frombuffer(buffer, dtype)
+            feedBuffers(y)
 
     for buffer in buffers:
         buffer.put(b'')
         buffer.close()
 
-    eprint('File reader halted')
+    vprint('File reader halted')
+    return

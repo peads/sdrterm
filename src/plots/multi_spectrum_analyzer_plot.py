@@ -17,55 +17,57 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
+import numpy as np
 
 from plots.spectrum_analyzer_plot import SpectrumAnalyzerPlot
 
 
 class MultiSpectrumAnalyzerPlot(SpectrumAnalyzerPlot):
-    def __init__(self, bandwidth: int = -1, vfos: str = None, tuned: int = 0, *args, **kwargs):
+    def __init__(self,
+                 bandwidth: int = 1,
+                 vfos: str = None,
+                 *args,
+                 **kwargs):
         if vfos is None:
             raise ValueError("MultiSpectrumAnalyzerPlot cannot be used without the vfos option")
-        kwargs['nfft'] = 8192
         super().__init__(*args, **kwargs)
+        vfos = '' if vfos is None else vfos
         self.vfos = vfos.split(',')
-        self.vfos = [int(vfo) for vfo in self.vfos if vfo is not None]
+        self.vfos = [int(vfo) for vfo in self.vfos if vfo is not None and len(vfo)]
         self.item.setXRange(-bandwidth, bandwidth)
-        self.widgets = [self.widget]
         self.items = [self.item]
-        self.curves = [self.curve_spectrum]
         self.axes = [self.axis]
 
+        size = np.sqrt(len(self.vfos) + 1)
+        cols = int(np.ceil(size))
+        rows = int(np.round(size))
+
         bandwidth >>= 1
-        self.axis.setLabel(tuned)
         self.item.setXRange(-bandwidth, bandwidth)
         import pyqtgraph as pg
-        for vfo in self.vfos:
-            b = vfo
+
+        j = 1
+        for i, vfo in enumerate(self.vfos, start=0):
+            if j >= cols:
+                j = 0
+            if i >= rows:
+                i = 1
+
             widget = pg.PlotWidget()
             item = widget.getPlotItem()
-            item.setXRange(-bandwidth + b, bandwidth + b)
+            item.setXRange(-bandwidth + vfo, bandwidth + vfo)
             item.setYRange(-6, 4)
             item.setMouseEnabled(x=False, y=False)
+            item.setMenuEnabled(False)
+            item.showAxes(True, showValues=(False, False, False, True))
+            item.hideButtons()
             axis = item.getAxis("bottom")
-            axis.setLabel(str(vfo + tuned))
-            curve = item.plot()
+            axis.setLabel("Frequency [MHz]")
 
-            self.widgets.append(widget)
+            self.widgets.append((widget, vfo))
             self.items.append(item)
-            self.curves.append(curve)
+            self.lines.append(item.plot())
             self.axes.append(axis)
-            self.layout.addWidget(widget)
+            self.layout.addWidget(widget, j, i)
+            j += 1
         self.window.setWindowTitle("MultiSpectrumAnalyzer")
-
-    def update(self):
-        from pyqtgraph.Qt.QtCore import QCoreApplication
-        nfft = self.nfft << 1
-        if nfft < self.length:
-            self.nfft = nfft
-        try:
-            super().update()
-            for curve in self.curves:
-                for amp in self.amps:
-                    curve.setData(self.freq, amp)
-        except KeyboardInterrupt:
-            QCoreApplication.quit()
