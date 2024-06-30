@@ -24,7 +24,7 @@ from typing import Annotated
 import numpy as np
 import typer
 
-from misc.general_util import vprint, printException
+from misc.general_util import vprint, printException, eprint, setSignalHandlers
 from sdr import output_server
 from sdr.control_rtl_tcp import ControlRtlTcp
 from sdr.controller import UnrecognizedInputError
@@ -35,12 +35,24 @@ from sdr.socket_receiver import SocketReceiver
 def main(host: Annotated[str, typer.Argument(help='Address of remote rtl_tcp server')],
          port: Annotated[int, typer.Argument(help='Port of remote rtl_tcp server')],
          server_host: Annotated[str, typer.Option(help='Port of local distribution server')] = 'localhost') -> None:
+    from os import getpid
     isDead = Value('b', 0)
     isDead.value = 0
-    # socket.setdefaulttimeout(1)
+    pid = getpid()
+
     with SocketReceiver(isDead=isDead, host=host, port=port) as receiver:
         server, st, pt, resetBuffers = output_server.initServer(receiver, isDead, server_host)
         receiver.connect()
+
+        def stopProcessing(sig: int = None):
+            if sig is not None:
+                from signal import Signals
+                eprint(f'pid: {pid} stopping processing due to {Signals(sig).name}')
+            isDead.value = 1
+            server.shutdown()
+            server.server_close()
+
+        setSignalHandlers(pid, stopProcessing)
 
         def reset(fs: int):
             resetBuffers()
@@ -79,14 +91,12 @@ def main(host: Annotated[str, typer.Argument(help='Address of remote rtl_tcp ser
                             cmdr.setParam(numCmd, param)
                 except (UnrecognizedInputError, ValueError, KeyError) as ex:
                     print(f'ERROR: Input invalid: {ex}. Please try again')
-        except KeyboardInterrupt:
+        except KeyboardInterrupt | EOFError:
             pass
         except Exception as e:
             printException(e)
         finally:
-            isDead.value = 1
-            server.shutdown()
-            server.server_close()
+            stopProcessing()
             st.join(1)
             pt.join(1)
             vprint('UI halted')

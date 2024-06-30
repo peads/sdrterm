@@ -22,10 +22,6 @@ from threading import Thread
 
 
 class HookedThread(Thread, ABC):
-    def __init__(self, group=None, target=None, name=None,
-                 args=(), daemon=None):
-        super().__init__(group=group, target=target, name=name, daemon=daemon, args=args)
-
     @abstractmethod
-    def handleExceptionHook(self):
+    def createExceptionHook(self):
         pass

@@ -130,7 +130,7 @@ class VfoProcessor(DspProcessor):
                 return
 
         with ThreadedTCPServer((self.host, findPort()), ThreadedTCPRequestHandler) as server:
-            def handleExceptionHook():
+            def handleShutdown():
                 isDead.value = 1
                 barrier.abort()
                 self.removePipes(pipes)
@@ -138,7 +138,7 @@ class VfoProcessor(DspProcessor):
                 buffer.cancel_join_thread()
 
             server.max_children = children
-            thread = KeyboardInterruptableThread(handleExceptionHook, target=server.serve_forever, daemon=True)
+            thread = KeyboardInterruptableThread(handleShutdown, target=server.serve_forever, daemon=True)
             thread.start()
 
             try:
@@ -151,17 +151,20 @@ class VfoProcessor(DspProcessor):
             except Exception as e:
                 printException(e)
             finally:
-                handleExceptionHook()
-                tprint(f'{type(server).__name__} shutting down')
+                serverName = server.__class__.__name__
+                threadName = thread.__class__.__name__
+
+                handleShutdown()
+                tprint(f'{serverName} shutting down')
                 server.shutdown()
                 server.server_close()
-                tprint(f'{type(server).__name__} shutdown')
-                tprint(f'{type(buffer).__name__} shutting down')
+                tprint(f'{serverName} shutdown')
+                tprint(f'{buffer} shutting down')
                 buffer.close()
                 buffer.join_thread()
-                tprint(f'{type(buffer).__name__} shut down')
-                tprint(f'Awaiting {thread}')
+                tprint(f'{buffer} shut down')
+                tprint(f'Awaiting {threadName}')
                 thread.join(5)
-                tprint(f'{thread} joined')
+                tprint(f'{threadName} joined')
                 vprint(f'Multi-VFO writer halted')
                 return

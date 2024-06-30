@@ -209,7 +209,7 @@ class DspProcessor(DataProcessor):
                 printException(e)
             finally:
                 buffer.close()
-                buffer.cancel_join_thread()
+                buffer.join_thread()
                 vprint(f'Standard writer halted')
                 return
 
@@ -224,3 +224,6 @@ class DspProcessor(DataProcessor):
         d['fs'] = self.__fs
         d['decimatedFs'] = self.__decimatedFs
         return json.dumps(d, indent=2)
+
+    def __str__(self):
+        return self.__class__.__name__

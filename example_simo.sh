@@ -1,5 +1,23 @@
 #!/bin/bash
-
+#
+# This file is part of the sdrterm distribution
+# (https://github.com/peads/sdrterm).
+# with code originally part of the demodulator distribution
+# (https://github.com/peads/demodulator).
+# Copyright (c) 2023-2024 Patrick Eads.
+#
+# This program is free software: you can redistribute it and/or modify
+# it under the terms of the GNU General Public License as published by
+# the Free Software Foundation, version 3.
+#
+# This program is distributed in the hope that it will be useful, but
+# WITHOUT ANY WARRANTY; without even the implied warranty of
+# MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
+# General Public License for more details.
+#
+# You should have received a copy of the GNU General Public License
+# along with this program. If not, see <http://www.gnu.org/licenses/>.
+#
 host="localhost:1234";
 port=0;
 outPath="/mnt/d";
@@ -37,7 +55,7 @@ coproc SOCAT { eval "$cmd"; }
 exec {SOCAT_IN}<&${SOCAT[0]}- {SOCAT_OUT}>&${SOCAT[1]}-
 unset cmd;
 
-cmd="python src/sdrterm.py -c${offset} -t${tuned} --plot=ps --vfos=${vfos} -vv --correct-iq -r${fs} -eB --simo --decimation=${decimation} -w5000 2>&1 0<&${SOCAT_IN}";
+cmd="python src/sdrterm.py ${7} -c${offset} -t${tuned} --vfos=${vfos} --correct-iq -r${fs} -eB --simo --decimation=${decimation} -w5000 2>&1 0<&${SOCAT_IN}";
 set -u;
 echo "LOG: ${cmd}";
 coproc SDRTERM { eval "$cmd"; }
@@ -63,8 +81,8 @@ while IFS= ; read -r line; do
   fi
 done <&"${SDR_IN}"
 
-pipes=();
-pids=();
+declare -A pipes;
+declare -A pids;
 i="\0";
 set -u;
 IFS=, ; read -r -a vfos <<< "$vfos";
@@ -75,24 +93,33 @@ for i in "${vfos[@]}"; do
   set -u;
   freq=$(( i + tuned ));
   set -u;
-  fileName="/tmp/log-${freq}";
-  logFiles=("${logFiles[@]}" "$fileName");
-  cmd="socat TCP4:localhost:${port} - | sox -q -v0.8 -D -B -traw -b64 -ef -r${decimatedFs} - -traw -b16 -es -r48k - 2>/dev/null | dsd -i - -n -f1 -w ${outPath}/out-${freq}.wav 2>&1 > ${fileName};"
+  coprocName="SOCAT_${freq}";
   set -u;
+  fileName="/tmp/log-${freq}";
+  set -u;
+  cmd="socat TCP4:localhost:${port} - | sox -q -D -B -traw -b64 -ef -r${decimatedFs} - -traw -b16 -es -r48k - 2>/dev/null | dsd -i - -o /dev/null -n -f1 -w ${outPath}/out-${freq}.wav 2>&1;" #> ${fileName};"
+  set -u;
+
+  logFiles=("${logFiles[@]}" "$fileName");
+
   echo "LOG: ${cmd}";
-  coproc { eval "$cmd"; }
-  exec {tmp_in}<&${COPROC[0]}- {tmp_out}>&${COPROC[1]}-
-  pipes=(${pipes[@]} tmp_in);
-  pipes=(${pipes[@]} tmp_out);
-  pids=(${pids[@]} COPROC_PID);
+  eval "coproc ${coprocName} { ${cmd} }"
+  eval "exec {tmp_in}<&\${${coprocName}[0]}- {tmp_out}>&\${${coprocName}[1]}-";
+  eval "pids[\"${coprocName}\"]=\${${coprocName}_PID}";
+  eval "pipes[\"${coprocName}\",1]=${tmp_in}; pipes[\"${coprocName}\",2]=${tmp_out}";
+
+  unset fileName;
+  unset coprocName;
   unset freq;
   unset cmd;
   unset tmp_in;
   unset tmp_out;
 done
 unset i;
-echo "$pipes";
-echo "$pids";
+
+echo "LOG: ${pids[@]}";
+echo "LOG: ${pipes[@]}";
+echo "LOG: ${logFiles[@]}";
 
 while IFS= ; read -r line; do
   echo "LOG: ${line}"
@@ -101,12 +128,20 @@ while IFS= ; read -r line; do
   fi
 done <&"${SDR_IN}"
 
+echo "LOG: Awaiting sdrterm"
 wait $SDRTERM_PID;
+
 i="\0";
 set -u;
-for i in "${logFiles[@]}"; do
-  printf "\n${i}\n";
-#  sh -c "grep -v 'Sync:' ${i}";
-  cat $i;
+bar="\0"
+for i in "${!pids[@]}"; do
+  echo "LOG: Awaiting ${i}";
+  eval "wait ${pids[$i]}";
+  while IFS= ; read -r line; do
+    IFS=_ ; read -ra splt <<< "$i";
+    freq=${splt[1]};
+    freq=$(( freq / 1000 ));
+    echo "LOG_${freq}: ${line}";
+  done <&"${pipes[${i},1]}"
 done
 unset i;

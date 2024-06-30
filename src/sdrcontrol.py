@@ -36,7 +36,7 @@ from textual.validation import Function
 from textual.widgets import Button, RichLog, Input, Select, Label, Switch
 from textual_slider import Slider
 
-from misc.general_util import shutdownSocket, eprint, printException, vprint
+from misc.general_util import shutdownSocket, eprint, printException
 from sdr import output_server
 from sdr.control_rtl_tcp import ControlRtlTcp
 from sdr.rtl_tcp_commands import RtlTcpSamplingRate, RtlTcpCommands
@@ -51,6 +51,7 @@ class SdrControl(App):
     freq = reactive(0)
     host = reactive('')
     port = reactive(-1)
+    ppm = reactive(0)
 
     def __init__(self,
                  rs: SocketReceiver,
@@ -145,7 +146,7 @@ class SdrControl(App):
             label.update('')
             result = 'Disconnected'
         else:
-            raise RuntimeWarning(f'Unexpected input {event.button}')
+            result = f'Unexpected input {event.button}'
         self.print(result)
 
     @on(Select.Changed, '#fs_list')
@@ -317,13 +318,27 @@ class SdrControl(App):
 
 
 def main(server_host: Annotated[str, typer.Option(help='Port of local distribution server')] = 'localhost') -> None:
+    from os import getpid
     isDead = Value('b', 0)
     isDead.value = 0
-    # socket.setdefaulttimeout(1)
+    pid = getpid()
+
     with SocketReceiver(isDead=isDead) as receiver:
         try:
+            from misc.general_util import setSignalHandlers
             server, lt, ft, resetBuffers = output_server.initServer(receiver, isDead, server_host=server_host)
             app = SdrControl(receiver, server)
+
+            def stopProcessing(sig: int = None):
+                if sig is not None:
+                    from signal import Signals
+                    SdrControl.print(f'pid: {pid} stopping processing due to {Signals(sig).name}')
+                isDead.value = 1
+                server.shutdown()
+                server.server_close()
+                app.exit(return_code=0)
+
+            setSignalHandlers(pid, stopProcessing)
 
             def reset(fs: int):
                 resetBuffers()
@@ -338,14 +353,10 @@ def main(server_host: Annotated[str, typer.Option(help='Port of local distributi
         except Exception as e:
             printException(e)
         finally:
-            isDead.value = 1
-            server.shutdown()
-            server.server_close()
-            app.exit(return_code=0)
+            stopProcessing()
             lt.join(5)
             ft.join(5)
-
-            vprint('UI halted')
+            SdrControl.print('UI halted')
             return
 
 

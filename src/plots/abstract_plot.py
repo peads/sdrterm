@@ -23,7 +23,7 @@ from typing import Callable
 from misc.general_util import vprint
 
 
-def check_halt_condition(method) -> Callable[[any], any]:
+def check_halt_condition(method: Callable[[any], any]) -> Callable[[any], any]:
     def decorator(self) -> any:
         if self.isDead.value:
             return None
@@ -34,7 +34,6 @@ def check_halt_condition(method) -> Callable[[any], any]:
 
 class AbstractPlot(ABC):
     from multiprocessing import Value
-    from pyqtgraph import AxisItem
 
     # frameRate default: ~60 fps
     def __init__(self,
@@ -104,7 +103,7 @@ class AbstractPlot(ABC):
         pass
 
     @staticmethod
-    def _setTicks(ax: AxisItem,
+    def _setTicks(ax,
                   oldRange: tuple[any, any],
                   newRange: tuple[any, any],
                   num: int,
@@ -120,4 +119,7 @@ class AbstractPlot(ABC):
     def quit(self) -> None:
         from pyqtgraph.Qt.QtCore import QCoreApplication
         QCoreApplication.quit()
-        vprint(f'Quit {type(self).__name__}')
+        vprint(f'Quit {self.__class__.__name__}')
+
+    def __str__(self):
+        return self.__class__.__name__

@@ -30,11 +30,11 @@ class KeyboardInterruptableThread(HookedThread):
         if func is None:
             raise ValueError("func cannot be None")
         super().__init__(*args, **kwargs)
-        setattr(self, 'handleExceptionHook', func)
+        setattr(self, 'createExceptionHook', func)
 
         def handleException(e, *argv):
             try:
-                self.handleExceptionHook()
+                self.createExceptionHook()
             except Exception as ex:
                 printException(ex, f'{self.name} caught {ex} while handling {e}')
 
@@ -46,5 +46,5 @@ class KeyboardInterruptableThread(HookedThread):
 
         threading.excepthook = handleException
 
-    def handleExceptionHook(self):
+    def createExceptionHook(self):
         pass

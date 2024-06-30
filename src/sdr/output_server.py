@@ -23,7 +23,6 @@ from queue import Queue, Empty
 from typing import Callable
 
 from misc.general_util import shutdownSocket, eprint, findPort
-from misc.hooked_thread import HookedThread
 from misc.keyboard_interruptable_thread import KeyboardInterruptableThread
 from sdr.socket_receiver import SocketReceiver
 
@@ -33,7 +32,7 @@ def log(*args, **kwargs) -> None:
 
 
 def initServer(receiver: SocketReceiver, isDead: Value, server_host: str) \
-        -> tuple[socketserver.TCPServer, HookedThread, HookedThread, Callable[[], None]]:
+        -> tuple[socketserver.TCPServer, KeyboardInterruptableThread, KeyboardInterruptableThread, Callable[[], None]]:
     clients: list[Queue] = []
 
     class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
