@@ -24,7 +24,7 @@ from typing import Annotated
 import numpy as np
 import typer
 
-from misc.general_util import vprint, printException, eprint, setSignalHandlers
+from misc.general_util import vprint, printException
 from sdr import output_server
 from sdr.control_rtl_tcp import ControlRtlTcp
 from sdr.controller import UnrecognizedInputError
@@ -44,15 +44,15 @@ def main(host: Annotated[str, typer.Argument(help='Address of remote rtl_tcp ser
         server, st, pt, resetBuffers = output_server.initServer(receiver, isDead, server_host)
         receiver.connect()
 
-        def stopProcessing(sig: int = None):
-            if sig is not None:
-                from signal import Signals
-                eprint(f'pid: {pid} stopping processing due to {Signals(sig).name}')
-            isDead.value = 1
-            server.shutdown()
-            server.server_close()
-
-        setSignalHandlers(pid, stopProcessing)
+        # def stopProcessing(sig: int = None):
+        #     if sig is not None:
+        #         from signal import Signals
+        #         eprint(f'pid: {pid} stopping processing due to {Signals(sig).name}')
+        #     isDead.value = 1
+        #     server.shutdown()
+        #     server.server_close()
+        #
+        # setSignalHandlers(pid, stopProcessing)
 
         def reset(fs: int):
             resetBuffers()
@@ -72,8 +72,9 @@ def main(host: Annotated[str, typer.Argument(help='Address of remote rtl_tcp ser
                         'Provide a space-delimited, command-value pair (e.g. SET_GAIN 1):\n')
                     if ('q' == inp or 'Q' == inp or 'quit' in inp.lower()
                             or 'exit' in inp.lower()):
-                        isDead.value = 1
-                        raise KeyboardInterrupt
+                        break
+                        # isDead.value = 1
+                        # raise KeyboardInterrupt
                     elif ' ' not in inp:
                         print(f'ERROR: Input invalid: {inp}. Please try again')
                     else:
@@ -91,14 +92,17 @@ def main(host: Annotated[str, typer.Argument(help='Address of remote rtl_tcp ser
                             cmdr.setParam(numCmd, param)
                 except (UnrecognizedInputError, ValueError, KeyError) as ex:
                     print(f'ERROR: Input invalid: {ex}. Please try again')
-        except KeyboardInterrupt | EOFError:
+        except (KeyboardInterrupt | EOFError):
             pass
         except Exception as e:
             printException(e)
         finally:
-            stopProcessing()
-            st.join(1)
-            pt.join(1)
+            isDead.value = 1
+            receiver.disconnect()
+            server.shutdown()
+            server.server_close()
+            st.join(5)
+            pt.join(5)
             vprint('UI halted')
             return
 

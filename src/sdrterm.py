@@ -31,7 +31,7 @@ from click import BadParameter
 from typer import run, Option
 
 from misc.file_util import DataType
-from misc.general_util import eprint, setSignalHandlers, vprint, tprint
+from misc.general_util import eprint, setSignalHandlers, vprint, tprint, printException
 
 
 class DemodulationChoices(str, Enum):
@@ -187,6 +187,16 @@ def main(fs: Annotated[int, Option('--fs', '-r',
 
 
 if __name__ == '__main__':
+    if 'spawn' in get_all_start_methods():
+        try:
+            from multiprocessing import set_start_method, get_context
+
+            set_start_method('spawn')
+            vprint(f'{get_context()} selected')
+        except Exception as e:
+            printException(e)
+            raise AttributeError(f'Setting start method to spawn failed')
+
     tmpfile = None
     pid = getpid()
 
@@ -202,14 +212,6 @@ if __name__ == '__main__':
     with open(tmpfile, "w+") as pidfile:
         pidfile.write(str(pid) + '\n')
     eprint(f'PID file is created: {pidfile.name}')
-
-    if 'spawn' in get_all_start_methods():
-        try:
-            from multiprocessing import set_start_method
-
-            set_start_method('spawn', force=True)
-        except RuntimeError as e:
-            eprint(f'Warning: Setting start method failed\n{e}')
 
     def deletePidFile():
         unlink(tmpfile)

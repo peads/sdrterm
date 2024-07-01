@@ -329,16 +329,16 @@ def main(server_host: Annotated[str, typer.Option(help='Port of local distributi
             server, lt, ft, resetBuffers = output_server.initServer(receiver, isDead, server_host=server_host)
             app = SdrControl(receiver, server)
 
-            def stopProcessing(sig: int = None):
-                if sig is not None:
-                    from signal import Signals
-                    SdrControl.print(f'pid: {pid} stopping processing due to {Signals(sig).name}')
-                isDead.value = 1
-                server.shutdown()
-                server.server_close()
-                app.exit(return_code=0)
-
-            setSignalHandlers(pid, stopProcessing)
+            # def stopProcessing(sig: int = None):
+            #     if sig is not None:
+            #         from signal import Signals
+            #         SdrControl.print(f'pid: {pid} stopping processing due to {Signals(sig).name}')
+            #     isDead.value = 1
+            #     server.shutdown()
+            #     server.server_close()
+            #     app.exit(return_code=0)
+            #
+            # setSignalHandlers(pid, stopProcessing)
 
             def reset(fs: int):
                 resetBuffers()
@@ -353,7 +353,10 @@ def main(server_host: Annotated[str, typer.Option(help='Port of local distributi
         except Exception as e:
             printException(e)
         finally:
-            stopProcessing()
+            isDead.value = 1
+            app.exit(return_code=0)
+            server.shutdown()
+            server.server_close()
             lt.join(5)
             ft.join(5)
             SdrControl.print('UI halted')

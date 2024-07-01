@@ -18,29 +18,19 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
+
 OIFS=$IFS
-echo "LOG: $OIFS"
-END=10;
-set -u;
-port=0;
-outPath="/mnt/d";
+OUT_PATH="/mnt/d";
+
 params=""
 i="\0";
-
 set -u
-for i in ${@:2}; do
+for i in ${@:1}; do
     params+="${i} ";
 done
 unset i;
 
-cmd="socat TCP4:${1} -";
-set -u;
-echo "LOG: ${cmd}";
-coproc SOCAT { eval "$cmd"; }
-exec {SOCAT_IN}<&${SOCAT[0]}- {SOCAT_OUT}>&${SOCAT[1]}-
-unset cmd;
-
-cmd="python src/sdrterm.py ${params} --simo 2>&1 0<&${SOCAT_IN}";
+cmd="python src/sdrterm.py ${params} --simo 2>&1";
 set -u;
 echo "LOG: ${cmd}";
 coproc SDRTERM { eval "$cmd"; }
@@ -58,19 +48,15 @@ function generateRegex {
 while IFS= ; read -r line; do
   echo "LOG: ${line}"
   if [[ ! -z $(echo $line | grep "host" -) ]]; then
-#    host=$(sed -E "s/^\s*\"host\":\s+\"(([a-zA-Z0-9]+)+)\",*\s*$/\1/g" <<< $line);
     host=$(sed -E "`generateRegex "host" '\"(([a-zA-Z0-9]+)+)\"'`" <<< $line);
   fi
   if [[ ! -z $(echo $line | grep "vfos" -) ]]; then
-#    vfos=$(sed -E "s/^\s*\"vfos\":\s+\"((-*[0-9]+,*)+)\",*\s*$/\1/g" <<< $line);
     vfos=$(sed -E "`generateRegex "vfos" '\"((-*[0-9]+,*)+)\"'`" <<< $line);
   fi
   if [[ ! -z $(echo $line | grep "tunedFreq" -) ]]; then
-#    tuned=$(sed -E "s/^\s*\"tunedFreq\":\s+([0-9]+),*\s*$/\1/g" <<< $line);
     tuned=$(sed -E "`generateRegex "tunedFreq" "([0-9]+)"`" <<< $line);
   fi
   if [[ ! -z "$(echo $line | grep "decimatedFs" -)" ]]; then
-#    decimatedFs=$(echo $line | sed -E "s/^\s*\"decimatedFs\":\s*([0-9]+),*\s*$/\1/g");
     decimatedFs=$(sed -E "`generateRegex "decimatedFs" "([0-9]+)"`" <<< $line);
   fi
   if [[ $line == *"Accepting"* ]]; then
@@ -81,8 +67,7 @@ done <&"${SDR_IN}"
 
 declare -A pipes;
 declare -A pids;
-#logFiles=();
-declare -A logFiles;
+logFiles=();
 
 i="\0";
 set -u;
@@ -98,7 +83,7 @@ for i in "${vfos[@]}"; do
   set -u;
   fileName="/tmp/log-${freq}";
   set -u;
-  cmd="socat TCP4:${host}:${port} - | sox -q -D -B -traw -b64 -ef -r${decimatedFs} - -traw -b16 -es -r48k - 2>/dev/null | dsd -i - -o /dev/null -n -f1 -w ${outPath}/out-${freq}.wav 2>&1 > ${fileName}"
+  cmd="socat TCP4:${host}:${port} - | sox -q -D -B -traw -b64 -ef -r${decimatedFs} - -traw -b16 -es -r48k - 2>/dev/null | dsd -i - -o /dev/null -n -f1 -w ${OUT_PATH}/out-${freq}.wav 2>&1"  # | tee ${fileName}"
   set -u;
 
   echo "LOG: ${cmd}";
@@ -107,7 +92,6 @@ for i in "${vfos[@]}"; do
   eval "pids[\"${coprocName}\"]=\${${coprocName}_PID}";
   eval "pipes[\"${coprocName}\",1]=${tmp_in}; pipes[\"${coprocName}\",2]=${tmp_out}";
 #  logFiles=("${logFiles[@]}" "$fileName");
-  logFiles["${coprocName}"]=${fileName};
 
   unset fileName;
   unset cmd;
@@ -118,10 +102,9 @@ for i in "${vfos[@]}"; do
 done
 unset i;
 
-# TODO if DEBUG somehow
 echo "LOG: ${pids[@]}";
 echo "LOG: ${pipes[@]}";
-echo "LOG: ${logFiles[@]}";
+#echo "LOG: ${logFiles[@]}";
 
 while IFS= ; read -r line; do
   echo "LOG: ${line}"
@@ -138,14 +121,18 @@ set -u;
 for i in "${!pids[@]}"; do
   echo "LOG: Awaiting ${i}";
   wait ${pids["$i"]};
-  while IFS= ; read -r line; do
+  while read -r line; do
     echo "LOG: ${line}";
-  done < ${logFiles["$i"]}
+  done <&"${pipes[${i},1]}"
 done
 unset i;
 
+#i="\0";
+#set -u;
 #for i in "${logFiles[@]}"; do
+#  echo $i
 #  while IFS= ; read -r line; do
-#    echo "LOG: ${line}";
-#  done < $i
+#    echo $line;
+#  done < "$i"
 #done
+#unset i;

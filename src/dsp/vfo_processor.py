@@ -20,13 +20,12 @@
 import socketserver
 import struct
 from multiprocessing import Pipe, Value, Queue, Barrier
-from threading import BrokenBarrierError
+from threading import BrokenBarrierError, Thread
 
 import numpy as np
 
 from dsp.dsp_processor import DspProcessor
 from misc.general_util import eprint, printException, findPort, tprint, vprint
-from misc.keyboard_interruptable_thread import KeyboardInterruptableThread
 
 
 class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
@@ -56,7 +55,7 @@ class VfoProcessor(DspProcessor):
 
     def _generateShift(self, r: int, c: int) -> np.ndarray | None:
         if not self.centerFreq:
-            return None
+            return np.ones(shape=(3, r, c), dtype=np.complex128)
         else:
             ret = []
             shifts = np.exp([w * np.arange(c) for w in self.omega])
@@ -108,11 +107,9 @@ class VfoProcessor(DspProcessor):
                 pass
 
         class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler):
-            def setup(self):
+            def handle(self):
                 eprint(f'Connection request from {self.request.getsockname()}')
                 awaitBarrier()
-
-            def handle(self):
                 r, w = pipe = Pipe(False)
                 pipes.append(pipe)
                 while not isDead.value:
@@ -130,15 +127,8 @@ class VfoProcessor(DspProcessor):
                 return
 
         with ThreadedTCPServer((self.host, findPort()), ThreadedTCPRequestHandler) as server:
-            def handleShutdown():
-                isDead.value = 1
-                barrier.abort()
-                self.removePipes(pipes)
-                buffer.close()
-                buffer.cancel_join_thread()
-
             server.max_children = children
-            thread = KeyboardInterruptableThread(handleShutdown, target=server.serve_forever, daemon=True)
+            thread = Thread(target=server.serve_forever)
             thread.start()
 
             try:
@@ -146,6 +136,10 @@ class VfoProcessor(DspProcessor):
                 awaitBarrier()
                 eprint('Connection(s) established')
                 self.__processData(isDead, buffer, pipes)
+                buffer.close()
+                buffer.join_thread()
+                server.shutdown()
+                thread.join()
             except (KeyboardInterrupt, TypeError):
                 pass
             except Exception as e:
@@ -154,15 +148,14 @@ class VfoProcessor(DspProcessor):
                 serverName = server.__class__.__name__
                 threadName = thread.__class__.__name__
 
-                handleShutdown()
-                tprint(f'{serverName} shutting down')
-                server.shutdown()
-                server.server_close()
-                tprint(f'{serverName} shutdown')
                 tprint(f'{buffer} shutting down')
                 buffer.close()
                 buffer.join_thread()
                 tprint(f'{buffer} shut down')
+                tprint(f'{serverName} shutting down')
+                server.shutdown()
+                tprint(f'{serverName} shutdown')
+                self.removePipes(pipes)
                 tprint(f'Awaiting {threadName}')
                 thread.join(5)
                 tprint(f'{threadName} joined')
