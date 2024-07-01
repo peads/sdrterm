@@ -22,6 +22,7 @@ from importlib.resources import files
 from typing import Callable
 
 from dsp.dsp_processor import DspProcessor
+from misc.general_util import eprint, printException
 from plots.multi_spectrum_analyzer_plot import MultiSpectrumAnalyzerPlot
 from plots.spectrum_analyzer_plot import SpectrumAnalyzerPlot
 from plots.waterfall_plot import WaterfallPlot
@@ -30,7 +31,7 @@ from plots.waterfall_plot import WaterfallPlot
 def selectDemodulation(demodType: str, processor: DspProcessor) -> Callable:
     if demodType == 'fm' or demodType == 'nfm':
         return processor.selectOuputFm
-    elif demodType == 'wfm' or demodType == 'monofm':
+    elif demodType == 'wfm':
         return processor.selectOuputWfm
     elif demodType == 'am':
         raise processor.selectOuputAm
@@ -48,6 +49,7 @@ def selectPlotType(plotType: string):
         elif plotType == 'water' or plotType == 'waterfall':
             return WaterfallPlot
         else:
-            raise UserWarning(f'Invalid plot type {plotType}')
+            eprint(f'Invalid plot type {plotType}')
     except ModuleNotFoundError as e:
-        raise UserWarning(e)
+        printException(e, "No module named 'pyqtgraph'")
+        return None

@@ -19,11 +19,10 @@
 #
 import signal as s
 import socket
-import sys
-import traceback
 from contextlib import closing
-from multiprocessing import Condition
-from typing import Callable
+from sys import stderr
+from types import FrameType
+from typing import Callable, TextIO
 
 
 class __VerbosePrint:
@@ -36,8 +35,8 @@ class __VerbosePrint:
         pass
 
 
-def eprint(*args, **kwargs) -> None:
-    print(*args, file=sys.stderr, **kwargs)
+def eprint(*args, func: Callable[[any, TextIO, any], None] = lambda *a, **k: print(*a, file=stderr, **k), **kwargs) -> None:
+    func(*args, **kwargs)
 
 
 def vprint(*args, **kwargs) -> None:
@@ -48,9 +47,10 @@ def tprint(*args, **kwargs) -> None:
     __VerbosePrint.tprint(*args, **kwargs)
 
 
-def printException(e: Exception, *args) -> None:
-    eprint(*args, e)
-    traceback.print_exc(file=sys.stderr)
+def printException(e: Exception | BaseException, *args) -> None:
+    from traceback import print_exc
+    eprint(e, *args)
+    print_exc(file=stderr)
 
 
 def __applyIgnoreException(*func: Callable[[], any]) -> list:
@@ -72,13 +72,6 @@ def traceOn() -> None:
     setattr(__VerbosePrint, 'tprint', eprint)
 
 
-def initializer(isDead: Condition) -> None:
-    def handleSignal(_, __):
-        isDead.value = 1
-
-    s.signal(s.SIGINT, handleSignal)
-
-
 def shutdownSocket(*socks: socket.socket) -> None:
     for sock in socks:
         __applyIgnoreException(lambda: sock.send(b''), lambda: sock.shutdown(socket.SHUT_RDWR))
@@ -90,20 +83,45 @@ def findPort(host='localhost') -> int:
         s.bind((host, 0))
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         return s.getsockname()[1]
-# IP_MTU_DISCOVER = 10
-# IP_PMTUDISC_DO = 2
-# IP_MTU = 14
-# def estimateMtu(self):
-#     self.__mtu = 1024 if self.__host not in ['localhost', '127.0.0.1'] else self.__BUF_SIZE
-#     if 'posix' in os.name:
-#         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-#         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-#         sock.setsockopt(socket.IPPROTO_IP, self.IP_MTU_DISCOVER, self.IP_PMTUDISC_DO)
-#         sock.connect((self.__host, self.__port))
-#         try:
-#             sock.send(b'#' * self.__BUF_SIZE)
-#         except socket.error:
-#             self.__mtu = sock.getsockopt(socket.IPPROTO_IP, self.IP_MTU)
-#             eprint(f'Estimated MTU: {self.__mtu}')
-#         else:
-#             self.__mtu = 1024
+
+
+def __extendSignalHandlers(pid: int, handlers: dict, func: Callable[[int], None]) \
+        -> Callable[[int, FrameType | None], None]:
+
+    def handlePostSignal(sig: int):
+        from os import kill, name
+        func(sig)
+        tprint(f'Post handler got: {s.Signals(sig).name}')
+        if 'posix' in name:
+            from os import killpg, getpgid
+            pgid = getpgid(pid)
+            # sig = s.SIGINT if s.SIGTERM == sig else sig
+            tprint(f'Post handler throwing: {s.Signals(sig).name} to process group {pgid}')
+            killpg(pgid, sig)
+        tprint(f'Post handler rethrowing: {s.Signals(sig).name}')
+        kill(pid, sig)
+
+    def handleSignal(sig: int, frame: FrameType):
+        tprint(f'Frame: {frame}\nCaught signal: {s.Signals(sig).name}')
+        if sig in handlers.keys():
+            newHandler = handlers.pop(sig)
+            s.signal(sig, newHandler)
+            tprint(f'Reset signal handler from {handleSignal} back to {newHandler}')
+        tprint(f'Handlers after processing: {handlers}')
+        handlePostSignal(sig)
+
+    return handleSignal
+
+
+def setSignalHandlers(pid: int, func: Callable[[int], None]):
+    from os import name
+    signals = [s.SIGINT, s.SIGTERM, s.SIGABRT]
+    handlers = {}
+    if 'posix' in name:
+        signals.append(s.SIGQUIT)
+    elif 'nt' in name:
+        signals.append(s.SIGBREAK)
+
+    for sig in signals:
+        handlers[sig] = s.getsignal(sig)
+        s.signal(sig, __extendSignalHandlers(pid, handlers, func))

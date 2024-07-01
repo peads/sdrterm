@@ -17,7 +17,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-from multiprocessing import Queue
 
 import numpy as np
 
@@ -28,12 +27,10 @@ from plots.spectrum_analyzer import SpectrumAnalyzer
 
 class SpectrumAnalyzerPlot(SpectrumAnalyzer):
     def __init__(self,
-                 buffer: Queue,
                  correctIq: bool = False,
                  *args,
                  **kwargs):
         super().__init__(*args, **kwargs)
-        self.buffer = buffer
         self.iqCorrector = IQCorrection(self.fs) if correctIq else None
 
     def receiveData(self) -> tuple[int, np.ndarray]:
@@ -44,8 +41,3 @@ class SpectrumAnalyzerPlot(SpectrumAnalyzer):
         if self.iqCorrector is not None:
             data = self.iqCorrector.correctIq(data)
         return length, shiftFreq(data, self.offset, self.fs)
-
-    def quit(self):
-        self.buffer.close()
-        self.buffer.cancel_join_thread()
-        super().quit()

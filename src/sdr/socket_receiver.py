@@ -27,7 +27,7 @@ from sdr.receiver import Receiver
 
 
 class SocketReceiver(Receiver):
-    BUF_SIZE = 262144
+    BUF_SIZE = 65536  # 262144
 
     def __init__(self, isDead: Value, host: str = None, port: int = None):
         self.host = host
@@ -57,7 +57,7 @@ class SocketReceiver(Receiver):
     def connect(self):
         if not (self.host is None or self.port is None):
             self._receiver = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self._receiver.settimeout(1)
+            self._receiver.settimeout(2)
             self._receiver.connect((self.host, self.port))
             with self.__cond:
                 self.__cond.notify()
@@ -75,10 +75,10 @@ class SocketReceiver(Receiver):
         vprint(f'Resetting buffers: {size}')
         self.__isConnected = False
         with self.__cond:
-            self.__buffer = array.array('B', (size if size is not None and size != self.BUF_SIZE else self.BUF_SIZE) * b'0')
+            self.__buffer = array.array('B',
+                                        (size if size is not None and size != self.BUF_SIZE else self.BUF_SIZE) * b'0')
             self.__cond.notify()
         self.__isConnected = True
-
 
     def receive(self) -> Generator:
         if not self._barrier.broken:

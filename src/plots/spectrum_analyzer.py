@@ -31,6 +31,7 @@ from plots.abstract_plot import AbstractPlot
 class SpectrumAnalyzer(DataProcessor, AbstractPlot, ABC):
 
     def __init__(self,
+                 buffer: Queue,
                  nfft: int = 2048,
                  *args,
                  **kwargs):
@@ -40,6 +41,7 @@ class SpectrumAnalyzer(DataProcessor, AbstractPlot, ABC):
 
         self.nfft = nfft
 
+        self.buffer = buffer
         self.app = QtWidgets.QApplication([])
         self.window = QtWidgets.QMainWindow()
         self.centralWidget = QtWidgets.QWidget()
@@ -111,4 +113,6 @@ class SpectrumAnalyzer(DataProcessor, AbstractPlot, ABC):
 
     def quit(self):
         self.timer.stop()
+        self.buffer.close()
+        self.buffer.join_thread()
         super().quit()

@@ -25,7 +25,7 @@ from scipy.signal import ShortTimeFFT
 from dsp.data_processor import DataProcessor
 from dsp.iq_correction import IQCorrection
 from dsp.util import shiftFreq
-from misc.general_util import tprint, printException
+from misc.general_util import printException
 from plots.abstract_plot import AbstractPlot
 
 
@@ -79,7 +79,7 @@ class WaterfallPlot(DataProcessor, AbstractPlot):
     def quit(self):
         self.timer.stop()
         self.buffer.close()
-        self.buffer.cancel_join_thread()
+        self.buffer.join_thread()
         super().quit()
 
     def receiveData(self) -> tuple[int, np.ndarray]:
@@ -102,21 +102,14 @@ class WaterfallPlot(DataProcessor, AbstractPlot):
             if self.ticks is None:
                 xr, yr = self.surf.viewRange()
                 if xr[0] != -0.5 and xr[1] != 0.5:
-                    # ax = self.surf.getAxis('bottom')
-                    # self.ticks = [[(float(u), str(round((v + self.tuned) / 10E+5, 3)))
-                    #                for u, v in zip(np.linspace(xr[0], xr[1], 11),
-                    #                                np.linspace(-self.nyquistFs, self.nyquistFs, 11))]]
-                    # ax.setTicks(self.ticks)
                     self.ticks = self._setTicks(self.surf.getAxis('bottom'), xr,
                                                 (-self.nyquistFs, self.nyquistFs), 11,
                                                 lambda v: str(round((v + self.tuned) / 10E+5, 3)))
 
             self.item.setImage(data)
         except KeyboardInterrupt:
-            tprint(f'Quitting {type(self).__name__}...')
             self.quit()
         except Exception as e:
-            tprint(f'Quitting {type(self).__name__}...')
             printException(e)
             self.quit()
 

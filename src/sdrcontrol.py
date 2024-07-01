@@ -36,7 +36,7 @@ from textual.validation import Function
 from textual.widgets import Button, RichLog, Input, Select, Label, Switch
 from textual_slider import Slider
 
-from misc.general_util import shutdownSocket, eprint, printException, vprint
+from misc.general_util import shutdownSocket, eprint, printException
 from sdr import output_server
 from sdr.control_rtl_tcp import ControlRtlTcp
 from sdr.rtl_tcp_commands import RtlTcpSamplingRate, RtlTcpCommands
@@ -51,6 +51,7 @@ class SdrControl(App):
     freq = reactive(0)
     host = reactive('')
     port = reactive(-1)
+    ppm = reactive(0)
 
     def __init__(self,
                  rs: SocketReceiver,
@@ -74,7 +75,7 @@ class SdrControl(App):
         super().exit(*args, **kwargs)
         if self.i2cSckt is not None:
             self.i2cSckt.close()
-        if self.thread is not None:
+        if self.thread is not None and self.thread.is_alive():
             self.thread.join(5)
 
     def resetBuffers(self, _):
@@ -87,6 +88,7 @@ class SdrControl(App):
 
         if event.button.has_class('connect'):
             try:
+                event.button.watch_variant('success', 'warning')
                 self.host = self.query_one('#host', Input).value
                 self.host = self.host if self.host else 'localhost'
                 portBox = self.query_one('#port', Input)
@@ -94,20 +96,18 @@ class SdrControl(App):
                 self.port = int(port) if port else 1234
                 portBox.value = str(self.port)
 
+                if self.i2cSckt is not None:
+                    shutdownSocket(self.i2cSckt)
+                    self.i2cSckt.close()
                 self.i2cSckt = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
                 self.i2cSckt.settimeout(10)
                 self.i2cSckt.setsockopt(socket.SOL_SOCKET, socket.SO_KEEPALIVE, 1)
-
                 self.thread = Thread(target=self.getI2c, args=(), daemon=True)
-                self.thread.start()
 
                 self.receiver.host = self.host
                 self.receiver.port = self.port
                 self.receiver.connect()
-                button.remove_class('connect')
-                button.add_class('disconnect')
-                event.button.watch_variant('success', 'error')
-                event.button.label = 'Disconnect'
+                self.thread.start()
                 self.controller = ControlRtlTcp(self.receiver.receiver, self.resetBuffers)
                 inp.set(disabled=True)
 
@@ -126,8 +126,16 @@ class SdrControl(App):
 
                 fsList.value = fs
                 frequency.value = freq
+                button.remove_class('connect')
+                button.add_class('disconnect')
+                event.button.watch_variant('warning', 'error')
+                event.button.label = 'Disconnect'
                 result = f'Accepting connections on port {self.server.socket.getsockname()[1]}'
             except (OSError, ConnectionError, EOFError) as e:
+                button.remove_class('disconnect')
+                button.add_class('connect')
+                event.button.watch_variant('warning', 'success')
+                event.button.label = 'Connect'
                 result = str(e)
         elif event.button.has_class('disconnect'):
             shutdownSocket(self.i2cSckt)
@@ -136,6 +144,7 @@ class SdrControl(App):
             self.thread.join(0.1)
             self.controller = None
             self.thread = None
+            self.i2cSckt = None
             button.remove_class('disconnect')
             button.add_class('connect')
             event.button.watch_variant('error', 'success')
@@ -145,7 +154,7 @@ class SdrControl(App):
             label.update('')
             result = 'Disconnected'
         else:
-            raise RuntimeWarning(f'Unexpected input {event.button}')
+            result = f'Unexpected input {event.button}'
         self.print(result)
 
     @on(Select.Changed, '#fs_list')
@@ -228,7 +237,7 @@ class SdrControl(App):
         except KeyboardInterrupt:
             pass
         except Exception as e:
-            printException(e)
+            self.log(e)
         finally:
             shutdownSocket(self.i2cSckt)
             self.i2cSckt.close()
@@ -317,13 +326,27 @@ class SdrControl(App):
 
 
 def main(server_host: Annotated[str, typer.Option(help='Port of local distribution server')] = 'localhost') -> None:
+    from os import getpid
     isDead = Value('b', 0)
     isDead.value = 0
-    # socket.setdefaulttimeout(1)
+    pid = getpid()
+
     with SocketReceiver(isDead=isDead) as receiver:
         try:
+            from misc.general_util import setSignalHandlers
             server, lt, ft, resetBuffers = output_server.initServer(receiver, isDead, server_host=server_host)
             app = SdrControl(receiver, server)
+
+            # def stopProcessing(sig: int = None):
+            #     if sig is not None:
+            #         from signal import Signals
+            #         SdrControl.print(f'pid: {pid} stopping processing due to {Signals(sig).name}')
+            #     isDead.value = 1
+            #     server.shutdown()
+            #     server.server_close()
+            #     app.exit(return_code=0)
+            #
+            # setSignalHandlers(pid, stopProcessing)
 
             def reset(fs: int):
                 resetBuffers()
@@ -339,13 +362,12 @@ def main(server_host: Annotated[str, typer.Option(help='Port of local distributi
             printException(e)
         finally:
             isDead.value = 1
+            app.exit(return_code=0)
             server.shutdown()
             server.server_close()
-            app.exit(return_code=0)
             lt.join(5)
             ft.join(5)
-
-            vprint('UI halted')
+            SdrControl.print('UI halted')
             return
 
 

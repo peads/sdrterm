@@ -35,7 +35,6 @@ class IOArgs:
             traceOn()
         kwargs['fileInfo'] = checkWavHeader(kwargs['inFile'], kwargs['fs'], kwargs['enc'])
         kwargs['fs'] = kwargs['fileInfo']['sampRate']
-        kwargs['buffers'] = []
 
         IOArgs.__initializeOutputHandlers(**kwargs)
         kwargs['isDead'].value = 0
@@ -43,9 +42,11 @@ class IOArgs:
     @classmethod
     def __initializeProcess(cls, isDead: Value, processor: DataProcessor, *args,
                             name: str = 'Process', **kwargs) -> tuple[Queue, Process]:
+        if processor is None:
+            raise ValueError('Processor must be provided')
         buffer = Queue()
         proc = Process(target=processor.processData, args=(isDead, buffer, *args), kwargs=kwargs)
-        proc.name = name + type(processor).__name__
+        proc.name = name + str(processor)
         return buffer, proc
 
     @classmethod
@@ -75,18 +76,19 @@ class IOArgs:
             else:
                 for p in pl.split(','):
                     psplot = selectPlotType(p)
-                    kwargs['bandwidth'] = cls.strct['processor'].bandwidth
-                    buffer, proc = cls.__initializeProcess(isDead,
-                                                           psplot,
-                                                           fs, name="Plotter-" + type(psplot).__name__,
-                                                           **kwargs)
-                    processes.append(proc)
-                    buffers.append(buffer)
+                    if psplot is not None:
+                        kwargs['bandwidth'] = cls.strct['processor'].bandwidth
+                        buffer, proc = cls.__initializeProcess(isDead,
+                                                               psplot,
+                                                               fs, name="Plotter-",
+                                                               **kwargs)
+                        processes.append(proc)
+                        buffers.append(buffer)
 
         buffer, proc = cls.__initializeProcess(isDead,
                                                cls.strct['processor'],
                                                outFile,
-                                               name="File writer-" + type(cls.strct['processor']).__name__,
+                                               name="File writer-",
                                                **kwargs)
         processes.append(proc)
         buffers.append(buffer)

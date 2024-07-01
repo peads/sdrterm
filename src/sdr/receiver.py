@@ -79,7 +79,7 @@ class Receiver(ABC):
     @receiver.setter
     @prevent_out_of_context_execution
     def receiver(self, _):
-        raise UserWarning('Illegal operation')
+        raise NotImplemented('Setting receiver is not allowed')
 
     @receiver.deleter
     @prevent_out_of_context_execution
