@@ -57,7 +57,7 @@ class SocketReceiver(Receiver):
     def connect(self):
         if not (self.host is None or self.port is None):
             self._receiver = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self._receiver.settimeout(1)
+            self._receiver.settimeout(2)
             self._receiver.connect((self.host, self.port))
             with self.__cond:
                 self.__cond.notify()

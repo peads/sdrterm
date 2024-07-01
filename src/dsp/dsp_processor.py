@@ -65,7 +65,7 @@ class DspProcessor(DataProcessor):
             setattr(self, 'correctIq', IQCorrection(self.__decimatedFs).correctIq)
         self.smooth = smooth
         self._shift = None
-        self.Y = None
+        self._Y = None
         self._nCpus = os.cpu_count()
         self._ii = range(self._nCpus)
 
@@ -174,14 +174,14 @@ class DspProcessor(DataProcessor):
             if y is None or not len(y):
                 isDead.value = 1
                 break
-            if self.Y is None:
-                self.Y = np.ndarray(shape=(self._nCpus, y.size), dtype=np.complex128)
+            if self._Y is None:
+                self._Y = np.ndarray(shape=(self._nCpus, y.size), dtype=np.complex128)
             if self._shift is None:
                 self._generateShift(self._nCpus, y.size)
-            if len(y) < self.Y.shape[1]:
-                y = np.pad(y, (0, -len(y) + self.Y.shape[1]), mode='constant', constant_values=0)
-            self.Y[i] = y
-        return self._processChunk(self.Y)
+            if len(y) < self._Y.shape[1]:
+                y = np.pad(y, (0, -len(y) + self._Y.shape[1]), mode='constant', constant_values=0)
+            self._Y[i] = y
+        return self._processChunk(self._Y)
 
     def __processData(self, isDead: Value, buffer: Queue, file):
         while not isDead.value:

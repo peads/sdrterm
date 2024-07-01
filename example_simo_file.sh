@@ -112,12 +112,14 @@ done <&"${SDR_IN}"
 
 echo "LOG: Awaiting sdrterm"
 wait $SDRTERM_PID;
+echo "LOG: sdrterm returned: ${?}"
 
 i="\0";
 set -u;
 for i in "${!pids[@]}"; do
   echo "LOG: Awaiting ${i}";
   wait ${pids["$i"]};
+  echo "LOG: ${i} returned: ${?}"
   while read -r line; do
     echo "LOG: ${line}";
   done <&"${pipes[${i},1]}"
