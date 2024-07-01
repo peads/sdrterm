@@ -53,21 +53,17 @@ class VfoProcessor(DspProcessor):
             ret.append([self.demod(yyy) for yyy in yy])
         return np.array(ret)
 
-    def _generateShift(self, r: int, c: int) -> np.ndarray | None:
-        if not self.centerFreq:
-            return np.ones(shape=(3, r, c), dtype=np.complex128)
-        else:
-            ret = []
+    def _generateShift(self, r: int, c: int) -> None:
+        self._shift = np.ones(shape=(self._nFreq, r, c), dtype=np.complex128)
+        if self.centerFreq:
             shifts = np.exp([w * np.arange(c) for w in self.omega])
-            for shift in shifts:
-                ret.append(np.broadcast_to(shift, (r, c)))
-            return np.array(ret)
+            for i, shift in enumerate(shifts):
+                self._shift[i][:] = (np.broadcast_to(shift, (r, c)))
 
     def __processData(self, isDead: Value, buffer: Queue, pipes: list[Pipe]) -> None:
-        Y = None
-        shift = None
+
         while not isDead.value:
-            Y, shift, y = self._bufferChunk(isDead, buffer, Y, shift)
+            y = self._bufferChunk(isDead, buffer)
 
             for (pipe, data) in zip(pipes, y):
                 _, w = pipe
@@ -130,34 +126,37 @@ class VfoProcessor(DspProcessor):
             server.max_children = children
             thread = Thread(target=server.serve_forever)
             thread.start()
+            isShutdown = False
+            def shutdown():
+                if not isShutdown:
+                    serverName = server.__class__.__name__
+                    tprint(f'{buffer} shutting down')
+                    buffer.close()
+                    buffer.join_thread()
+                    tprint(f'{buffer} shut down')
+                    tprint(f'{serverName} shutting down')
+                    server.shutdown()
+                    tprint(f'{serverName} shutdown')
+                    return True
+                return isShutdown
 
             try:
                 eprint(f'\nAccepting connections on {server.socket.getsockname()}\n')
                 awaitBarrier()
                 eprint('Connection(s) established')
                 self.__processData(isDead, buffer, pipes)
-                buffer.close()
-                buffer.join_thread()
-                server.shutdown()
+                isShutdown = shutdown()
+                threadName = thread.__class__.__name__
+                tprint(f'Awaiting {threadName}')
                 thread.join()
+                tprint(f'{threadName} joined')
             except (KeyboardInterrupt, TypeError):
                 pass
             except Exception as e:
                 printException(e)
             finally:
-                serverName = server.__class__.__name__
-                threadName = thread.__class__.__name__
-
-                tprint(f'{buffer} shutting down')
-                buffer.close()
-                buffer.join_thread()
-                tprint(f'{buffer} shut down')
-                tprint(f'{serverName} shutting down')
-                server.shutdown()
-                tprint(f'{serverName} shutdown')
-                self.removePipes(pipes)
-                tprint(f'Awaiting {threadName}')
+                isShutdown = shutdown()
                 thread.join(5)
-                tprint(f'{threadName} joined')
+                self.removePipes(pipes)
                 vprint(f'Multi-VFO writer halted')
                 return

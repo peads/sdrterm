@@ -58,19 +58,15 @@ function generateRegex {
 while IFS= ; read -r line; do
   echo "LOG: ${line}"
   if [[ ! -z $(echo $line | grep "host" -) ]]; then
-#    host=$(sed -E "s/^\s*\"host\":\s+\"(([a-zA-Z0-9]+)+)\",*\s*$/\1/g" <<< $line);
     host=$(sed -E "`generateRegex "host" '\"(([a-zA-Z0-9]+)+)\"'`" <<< $line);
   fi
   if [[ ! -z $(echo $line | grep "vfos" -) ]]; then
-#    vfos=$(sed -E "s/^\s*\"vfos\":\s+\"((-*[0-9]+,*)+)\",*\s*$/\1/g" <<< $line);
     vfos=$(sed -E "`generateRegex "vfos" '\"((-*[0-9]+,*)+)\"'`" <<< $line);
   fi
   if [[ ! -z $(echo $line | grep "tunedFreq" -) ]]; then
-#    tuned=$(sed -E "s/^\s*\"tunedFreq\":\s+([0-9]+),*\s*$/\1/g" <<< $line);
     tuned=$(sed -E "`generateRegex "tunedFreq" "([0-9]+)"`" <<< $line);
   fi
   if [[ ! -z "$(echo $line | grep "decimatedFs" -)" ]]; then
-#    decimatedFs=$(echo $line | sed -E "s/^\s*\"decimatedFs\":\s*([0-9]+),*\s*$/\1/g");
     decimatedFs=$(sed -E "`generateRegex "decimatedFs" "([0-9]+)"`" <<< $line);
   fi
   if [[ $line == *"Accepting"* ]]; then
@@ -81,7 +77,6 @@ done <&"${SDR_IN}"
 
 declare -A pipes;
 declare -A pids;
-#logFiles=();
 declare -A logFiles;
 
 i="\0";
@@ -106,7 +101,6 @@ for i in "${vfos[@]}"; do
   eval "exec {tmp_in}<&\${${coprocName}[0]}- {tmp_out}>&\${${coprocName}[1]}-";
   eval "pids[\"${coprocName}\"]=\${${coprocName}_PID}";
   eval "pipes[\"${coprocName}\",1]=${tmp_in}; pipes[\"${coprocName}\",2]=${tmp_out}";
-#  logFiles=("${logFiles[@]}" "$fileName");
   logFiles["${coprocName}"]=${fileName};
 
   unset fileName;
@@ -118,7 +112,6 @@ for i in "${vfos[@]}"; do
 done
 unset i;
 
-# TODO if DEBUG somehow
 echo "LOG: ${pids[@]}";
 echo "LOG: ${pipes[@]}";
 echo "LOG: ${logFiles[@]}";
@@ -143,9 +136,3 @@ for i in "${!pids[@]}"; do
   done < ${logFiles["$i"]}
 done
 unset i;
-
-#for i in "${logFiles[@]}"; do
-#  while IFS= ; read -r line; do
-#    echo "LOG: ${line}";
-#  done < $i
-#done

@@ -64,7 +64,8 @@ class DspProcessor(DataProcessor):
         if correctIq:
             setattr(self, 'correctIq', IQCorrection(self.__decimatedFs).correctIq)
         self.smooth = smooth
-
+        self._shift = None
+        self.Y = None
         self._nCpus = os.cpu_count()
         self._ii = range(self._nCpus)
 
@@ -100,7 +101,7 @@ class DspProcessor(DataProcessor):
 
     @decimation.setter
     def decimation(self, decimation: int):
-        if not decimation or decimation < 2:
+        if decimation < 2:
             raise ValueError("Decimation must be at least 2.")
         self._decimationFactor = decimation
         self.fs = self.__fs
@@ -154,48 +155,46 @@ class DspProcessor(DataProcessor):
     def _demod(self, y: np.ndarray):
         return [self.demod(yy) for yy in y]
 
-    def _processChunk(self, y: np.ndarray, shift: np.ndarray) -> np.ndarray[any, np.dtype[np.real]]:
+    def _processChunk(self, y: np.ndarray) -> np.ndarray[any, np.dtype[np.real]]:
         y = self.correctIq(y)
-        if shift is not None:
-            y = y * shift
+        if self._shift is not None:
+            '''
+                NOTE: apparently, numpy doesn't override the unary multiplication arithemetic assignment operator the
+                same way as the binary multiplication operator for ndarrays. So, this has to remain this way. 
+            '''
+            y = y * self._shift
         if self._decimationFactor > 1:
             y = signal.decimate(y, self._decimationFactor, ftype=self._aaFilter)
         y = self._demod(y)
         return applyFilters(y, self._outputFilters)
 
-    def _bufferChunk(self, isDead: Value, buffer: Queue, Y: np.ndarray, shift: np.ndarray):
+    def _bufferChunk(self, isDead: Value, buffer: Queue) -> np.ndarray[any, np.dtype[np.real]]:
         for i in self._ii:
             y = buffer.get()
             if y is None or not len(y):
                 isDead.value = 1
                 break
-            if Y is None:
-                Y = np.ndarray(shape=(self._nCpus, y.size), dtype=np.complex128)
-            if shift is None:
-                shift = self._generateShift(self._nCpus, y.size)
-            if len(y) < Y.shape[1]:
-                y = np.pad(y, (0, -len(y) + Y.shape[1]), mode='constant', constant_values=0)
-            Y[i] = y
-        return Y, shift, self._processChunk(Y, shift)
+            if self.Y is None:
+                self.Y = np.ndarray(shape=(self._nCpus, y.size), dtype=np.complex128)
+            if self._shift is None:
+                self._generateShift(self._nCpus, y.size)
+            if len(y) < self.Y.shape[1]:
+                y = np.pad(y, (0, -len(y) + self.Y.shape[1]), mode='constant', constant_values=0)
+            self.Y[i] = y
+        return self._processChunk(self.Y)
 
     def __processData(self, isDead: Value, buffer: Queue, file):
-        Y = None
-        shift = None
-
         while not isDead.value:
-            Y, shift, y = self._bufferChunk(isDead, buffer, Y, shift)
+            y = self._bufferChunk(isDead, buffer)
             size = y.size
             y = y.flat
             if self.smooth:
                 y = signal.savgol_filter(y, self.smooth, self._FILTER_DEGREE)
             file.write(struct.pack('@' + (size * 'd'), *y))
 
-    def _generateShift(self, r: int, c: int) -> np.ndarray | None:
+    def _generateShift(self, r: int, c: int)-> None:
         if self.centerFreq:
-            return np.broadcast_to(np.exp(-2j * np.pi * (self.centerFreq / self.__fs) * np.arange(c)), (r, c))
-        else:
-            return None
-
+            self._shift = np.broadcast_to(np.exp(-2j * np.pi * (self.centerFreq / self.__fs) * np.arange(c)), (r, c))
     def processData(self, isDead: Value, buffer: Queue, f: str, *args, **kwargs) -> None:
         with open(f, 'wb') if f is not None else open(sys.stdout.fileno(), 'wb', closefd=False) as file:
             try:

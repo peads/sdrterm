@@ -18,7 +18,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-
 OIFS=$IFS
 OUT_PATH="/mnt/d";
 
@@ -91,7 +90,6 @@ for i in "${vfos[@]}"; do
   eval "exec {tmp_in}<&\${${coprocName}[0]}- {tmp_out}>&\${${coprocName}[1]}-";
   eval "pids[\"${coprocName}\"]=\${${coprocName}_PID}";
   eval "pipes[\"${coprocName}\",1]=${tmp_in}; pipes[\"${coprocName}\",2]=${tmp_out}";
-#  logFiles=("${logFiles[@]}" "$fileName");
 
   unset fileName;
   unset cmd;
@@ -104,7 +102,6 @@ unset i;
 
 echo "LOG: ${pids[@]}";
 echo "LOG: ${pipes[@]}";
-#echo "LOG: ${logFiles[@]}";
 
 while IFS= ; read -r line; do
   echo "LOG: ${line}"
@@ -126,13 +123,3 @@ for i in "${!pids[@]}"; do
   done <&"${pipes[${i},1]}"
 done
 unset i;
-
-#i="\0";
-#set -u;
-#for i in "${logFiles[@]}"; do
-#  echo $i
-#  while IFS= ; read -r line; do
-#    echo $line;
-#  done < "$i"
-#done
-#unset i;
