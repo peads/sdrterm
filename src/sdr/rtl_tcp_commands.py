@@ -66,3 +66,8 @@ class RtlTcpCommands(MappableEnum):
     GPIO_GET_BYTE = 0x54
     IS_TUNER_PLL_LOCKED = 0x55
     SET_FREQ_HI32 = 0x56
+
+    def __str__(self):
+        return self.name
+    def __repr__(self):
+        return self.__str__()

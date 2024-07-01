@@ -18,8 +18,9 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
 
-import numpy as np
-from scipy import fft, signal
+from numpy import angle, ndarray, conj, abs, real, imag, dtype, complex64, complex128, insert
+from scipy import signal
+from scipy.fft import fft
 
 
 class __FMDemodulator:
@@ -27,16 +28,15 @@ class __FMDemodulator:
     prevIm = None
 
     @classmethod
-    def fmDemod(cls, data: np.ndarray[any, np.dtype[np.complex64 | np.complex128]]) \
-            -> np.ndarray[any, np.dtype[np.real]]:
+    def fmDemod(cls, data: ndarray[any, dtype[complex64 | complex128]]) -> ndarray[any, dtype[real]]:
         re = data[0::2]
         im = data[1::2]
 
         if cls.prevRe is not None:
-            np.insert(re, 0, cls.prevRe)
+            insert(re, 0, cls.prevRe)
             cls.prevRe = None
         if cls.prevIm is not None:
-            np.insert(im, 0, cls.prevIm)
+            insert(im, 0, cls.prevIm)
             cls.prevIm = None
 
         if len(re) > len(im):
@@ -45,26 +45,25 @@ class __FMDemodulator:
         elif len(im) > len(re):
             cls.prevIm = im[-1]
             im = im[:-1]
-        re = re * np.conj(im)
-        return signal.resample(np.angle(re), len(data))
+        re = re * conj(im)
+        return signal.resample(angle(re), len(data))
 
 
-def fmDemod(data: np.ndarray[any,  np.dtype[np.complex64 | np.complex128]]) -> np.ndarray[any, np.dtype[np.real]]:
+def fmDemod(data: ndarray[any,  dtype[complex64 | complex128]]) -> ndarray[any, dtype[real]]:
     return __FMDemodulator.fmDemod(data)
 
 
-def amDemod(data: np.ndarray[any,  np.dtype[np.complex64 | np.complex128]]) -> np.ndarray[any, np.dtype[np.real]]:
-    return np.abs(data)
+def amDemod(data: ndarray[any,  dtype[complex64 | complex128]]) -> ndarray[any, dtype[real]]:
+    return abs(data)
 
 
-def realOutput(data: np.ndarray[any,  np.dtype[np.complex64 | np.complex128]]) -> np.ndarray[any, np.dtype[np.real]]:
-    return np.real(data)
+def realOutput(data: ndarray[any,  dtype[complex64 | complex128]]) -> ndarray[any, dtype[real]]:
+    return real(data)
 
 
-def imagOutput(data: np.ndarray[any,  np.dtype[np.complex64 | np.complex128]]) -> np.ndarray[any, np.dtype[np.real]]:
-    return np.imag(data)
+def imagOutput(data: ndarray[any,  dtype[complex64 | complex128]]) -> ndarray[any, dtype[real]]:
+    return imag(data)
 
 
-def spectrumOutput(data: np.ndarray[any,  np.dtype[np.complex64 | np.complex128]]) \
-        -> np.ndarray[any, np.dtype[np.number]]:
-    return np.abs(fft.fft(data))
+def spectrumOutput(data: ndarray[any,  dtype[complex64 | complex128]]) -> ndarray[any, dtype[real]]:
+    return abs(fft(data))

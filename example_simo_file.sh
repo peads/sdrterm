@@ -82,7 +82,7 @@ for i in "${vfos[@]}"; do
   set -u;
   fileName="/tmp/log-${freq}";
   set -u;
-  cmd="socat TCP4:${host}:${port} - | sox -q -D -B -traw -b64 -ef -r${decimatedFs} - -traw -b16 -es -r48k - 2>/dev/null | dsd -i - -o /dev/null -n -f1 -w ${OUT_PATH}/out-${freq}.wav 2>&1"  # | tee ${fileName}"
+  cmd="socat TCP4:${host}:${port} - | sox -q -D -B -traw -b64 -ef -r${decimatedFs} - -traw -b16 -es -r48k - 2>/dev/null | dsd -q -i - -o /dev/null -n -f1 -w ${OUT_PATH}/out-${freq}.wav 2>&1"  # | tee ${fileName}"
   set -u;
 
   echo "LOG: ${cmd}";

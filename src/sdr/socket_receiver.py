@@ -16,13 +16,13 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-import array
-import socket
+from array import array
 from multiprocessing import Value
-from threading import Condition
+from socket import socket, AF_INET, SOCK_STREAM
+from threading import Lock
 from typing import Generator
 
-from misc.general_util import shutdownSocket, eprint, vprint
+from misc.general_util import shutdownSocket, tprint
 from sdr.receiver import Receiver
 
 
@@ -32,53 +32,37 @@ class SocketReceiver(Receiver):
     def __init__(self, isDead: Value, host: str = None, port: int = None):
         self.host = host
         self.port = port
-        self.__cond = Condition()
-        self.__isConnected = False
+        self.__cond = Lock()
         super().__init__()
         self.isDead = isDead
-        self.__buffer = array.array('B', self.BUF_SIZE * b'0')
+        self.__buffer = array('B', self.BUF_SIZE * b'0')
 
     def __exit__(self, *ex):
+        self.__cond = None
         self.disconnect()
 
     def disconnect(self):
         if self._receiver is not None:
             shutdownSocket(self._receiver)
             self._receiver.close()
-
-        if not self.barrier.broken:
-            self.barrier.abort()
-
-        if self.__cond is not None:
-            with self.__cond:
-                self.__cond.notify_all()
-        self.__isConnected = False
+        self.barrier.abort()
 
     def connect(self):
-        if not (self.host is None or self.port is None):
-            self._receiver = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self._receiver.settimeout(2)
-            self._receiver.connect((self.host, self.port))
+        if self.host is None or self.port is None:
+            tprint('Warning: Socket cannot be connected without both  host and port specified')
+        else:
             with self.__cond:
-                self.__cond.notify()
-            self.__isConnected = True
+                self._receiver = socket(AF_INET, SOCK_STREAM)
+                self._receiver.settimeout(2)
+                self._receiver.connect((self.host, self.port))
 
-    def awaitConnection(self):
-        if not self.__isConnected:
-            with self.__cond:
-                eprint('Awaiting connection')
-                self.__cond.wait()
-                eprint('Connection established')
-        return self.__isConnected
-
-    def reset(self, size: int = None):
-        vprint(f'Resetting buffers: {size}')
-        self.__isConnected = False
+    def reset(self, fs: int) -> None:
         with self.__cond:
-            self.__buffer = array.array('B',
-                                        (size if size is not None and size != self.BUF_SIZE else self.BUF_SIZE) * b'0')
-            self.__cond.notify()
-        self.__isConnected = True
+            from numpy import log2 as nplog2
+            size = self.BUF_SIZE if fs > self.BUF_SIZE else (1 << int(nplog2(fs)))
+            tprint(f'Resetting buffers: {size}')
+            self.__buffer = array('B', size * b'0')
+            tprint('Buffers reset')
 
     def receive(self) -> Generator:
         if not self._barrier.broken:
@@ -88,10 +72,11 @@ class SocketReceiver(Receiver):
         if self._receiver is not None:
             file = self._receiver.makefile('rb')
             try:
-                while not self.isDead.value and self.awaitConnection():
-                    if not file.readinto(self.__buffer):
-                        break
-                    yield self.__buffer[:]
+                while not self.isDead.value:
+                    with self.__cond:
+                        if not file.readinto(self.__buffer):
+                            break
+                        yield self.__buffer[:]
             finally:
                 file.close()
                 return None

@@ -102,8 +102,7 @@ class AbstractPlot(ABC):
     def update(self) -> None:
         pass
 
-    @staticmethod
-    def _setTicks(ax,
+    def _setTicks(self, ax,
                   oldRange: tuple[any, any],
                   newRange: tuple[any, any],
                   num: int,
@@ -111,8 +110,7 @@ class AbstractPlot(ABC):
         import numpy as np
         ticks = [[(float(u), toString(v))
                        for u, v in zip(np.linspace(oldRange[0], oldRange[1], num),
-                                       np.linspace(newRange[0], newRange[1], num))]]
-                                       # np.linspace(-self.nyquistFs, self.nyquistFs, num))]]
+                                       np.linspace(newRange[0], newRange[1], num) % newRange[1])]]
         ax.setTicks(ticks)
         return ticks
 

@@ -19,14 +19,11 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
 OIFS=$IFS
-echo "LOG: $OIFS"
-END=10;
-set -u;
 port=0;
 outPath="/mnt/d";
 params=""
-i="\0";
 
+i="\0";
 set -u
 for i in ${@:2}; do
     params+="${i} ";

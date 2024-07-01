@@ -18,8 +18,7 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
 # from dsp.util import quadwise
-
-import numpy as np
+from numpy import ndarray, dtype, complex64, complex128
 
 
 class IQCorrection:
@@ -37,7 +36,7 @@ class IQCorrection:
         self.__inductance = self.__inductance * self.__sampRate
         self.__sampRate = sampRate
         self.__inductance /= self.__sampRate
-        self.__off = 0 + 0j
+        self.__off = 0j
 
     @sampleRate.deleter
     def sampleRate(self):
@@ -50,14 +49,14 @@ class IQCorrection:
     @inductance.setter
     def inductance(self, impedance: int):
         self.__inductance = impedance / self.__sampRate
-        self.__off = 0 + 0j
+        self.__off = 0j
 
     @inductance.deleter
     def inductance(self):
         del self.__inductance
 
-    def correctIq(self, data: np.ndarray[any, np.dtype[np.complex64 | np.complex128]]) \
-        -> np.ndarray[any,  np.dtype[np.complex64 | np.complex128]]:
+    def correctIq(self, data: ndarray[any, dtype[complex64 | complex128]]) \
+            -> ndarray[any,  dtype[complex64 | complex128]]:
         for i in range(len(data)):
             data[i] -= self.__off
             self.__off += data[i] * self.__inductance

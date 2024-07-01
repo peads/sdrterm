@@ -17,9 +17,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-import socketserver
 from multiprocessing import Value
-from queue import Queue, Empty
+from queue import Queue
+from socketserver import BaseRequestHandler, ThreadingMixIn, TCPServer
 from threading import BrokenBarrierError
 from typing import Callable
 
@@ -32,12 +32,13 @@ def log(*args, **kwargs) -> None:
     eprint(*args, **kwargs)
 
 
-def initServer(receiver: SocketReceiver, isDead: Value, server_host: str) \
-        -> tuple[socketserver.TCPServer, KeyboardInterruptableThread, KeyboardInterruptableThread, Callable[[], None]]:
-    clients: list[Queue] = []
+class ThreadedTCPServer(ThreadingMixIn, TCPServer):
+    pass
 
-    class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
-        pass
+
+def initServer(receiver: SocketReceiver, isDead: Value, server_host: str) \
+        -> tuple[ThreadedTCPServer, KeyboardInterruptableThread, KeyboardInterruptableThread, Callable[[int], None]]:
+    clients: list[Queue] = []
 
     def awaitBarrier():
         if not receiver.barrier.broken:
@@ -47,7 +48,7 @@ def initServer(receiver: SocketReceiver, isDead: Value, server_host: str) \
                 return False
         return True
 
-    class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler):
+    class ThreadedTCPRequestHandler(BaseRequestHandler):
 
         def handle(self):
             log(f'Connection request from {self.request.getsockname()}')
@@ -83,14 +84,6 @@ def initServer(receiver: SocketReceiver, isDead: Value, server_host: str) \
                     client.put(y)
         return
 
-    def reset():
-        for client in list(clients):
-            try:
-                while 1:
-                    client.get()
-            except (KeyboardInterrupt | Empty):
-                pass
-
     server = ThreadedTCPServer((server_host, findPort()), ThreadedTCPRequestHandler)
 
     def shutdownThread():
@@ -104,4 +97,4 @@ def initServer(receiver: SocketReceiver, isDead: Value, server_host: str) \
 
     st = KeyboardInterruptableThread(shutdownThread, target=server.serve_forever)
     rt = KeyboardInterruptableThread(shutdownThread, target=receive)
-    return server, st, rt, reset
+    return server, st, rt, receiver.reset

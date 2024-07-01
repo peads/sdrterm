@@ -24,11 +24,10 @@ from misc.general_util import printException
 
 
 class KeyboardInterruptableThread(Thread):
-    def __init__(self, func: Callable[[], None], *args,
-                 **kwargs):  # group=None, target=None, name=None, args=(), daemon=None):
+    def __init__(self, func: Callable[[], None], target: Callable, group=None, name=None, args=(), daemon=None):
         if func is None:
             raise ValueError("func cannot be None")
-        super().__init__(*args, **kwargs)
+        super().__init__(group=group, target=target, name=name, args=args, daemon=daemon)
         setattr(self, '__handleException', func)
         import threading
         threading.excepthook = self.handleException
