@@ -63,11 +63,6 @@ def initServer(receiver: SocketReceiver, isDead: Value, server_host: str) \
                 except (ConnectionError, EOFError, ValueError) as e:
                     log(f'Client disconnected: {self.request.getsockname()}: {e}')
                     break
-                    # clients.remove(buffer)
-                    # shutdownSocket(self.request)
-                    # del buffer
-                    # self.request.close()
-                    # return
             clients.remove(buffer)
             shutdownSocket(self.request)
             del buffer

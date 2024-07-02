@@ -196,8 +196,6 @@ if __name__ == '__main__':
         except Exception as e:
             printException(e)
             raise AttributeError(f'Setting start method to spawn failed')
-
-    tmpfile = None
     pid = getpid()
 
     try:
@@ -214,7 +212,10 @@ if __name__ == '__main__':
     eprint(f'PID file is created: {pidfile.name}')
 
     def deletePidFile():
-        unlink(tmpfile)
-        tprint(f'PID file: {tmpfile} deleted')
+        try:
+            unlink(tmpfile)
+            tprint(f'PID file: {tmpfile} deleted')
+        except OSError:
+            pass
 
     run(main)

@@ -16,9 +16,10 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
+from os import name as osName
 from array import array
 from multiprocessing import Value
-from socket import socket, AF_INET, SOCK_STREAM
+from socket import socket, AF_INET, SOCK_STREAM, SO_KEEPALIVE, SO_REUSEPORT, SO_REUSEADDR, SOL_SOCKET
 from threading import Lock
 from typing import Generator
 
@@ -53,7 +54,9 @@ class SocketReceiver(Receiver):
         else:
             with self.__cond:
                 self._receiver = socket(AF_INET, SOCK_STREAM)
-                self._receiver.settimeout(2)
+                self._receiver.setsockopt(SOL_SOCKET, SO_KEEPALIVE, 1)
+                self._receiver.setsockopt(SOL_SOCKET, SO_REUSEPORT if 'posix' in osName else SO_REUSEADDR, 1)
+                self._receiver.settimeout(5)
                 self._receiver.connect((self.host, self.port))
 
     def reset(self, fs: int) -> None:

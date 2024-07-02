@@ -24,13 +24,12 @@ from socketserver import TCPServer
 from threading import Thread
 from typing import Annotated
 
-from numpy import base_repr
 from rich.console import RenderableType
 from textual import on
 from textual.app import App, ComposeResult
 from textual.containers import Horizontal, Vertical, Center
 from textual.reactive import reactive
-from textual.validation import Function, Number
+from textual.validation import Function
 from textual.widgets import Button, RichLog, Input, Select, Label, Switch
 from textual_slider import Slider
 from typer import Option, run as typerRun
@@ -66,6 +65,8 @@ class SdrControl(App):
         self.i2cSckt = None
         self.prevGain = None
         self.thread = None
+        self.isConnected = Value('B', 0)
+        self.isConnected.value = 0
 
     def exit(self, *args, **kwargs) -> None:
         if self.receiver is not None:
@@ -74,7 +75,6 @@ class SdrControl(App):
         if self.i2cSckt is not None:
             shutdownSocket(self.i2cSckt)
             self.i2cSckt.close()
-            self.i2cSckt = None
         if self.receiver is not None:
             self.receiver.disconnect()
             self.receiver = None
@@ -94,18 +94,9 @@ class SdrControl(App):
         isValid = reduce(lambda x, y: x and y and x.is_valid and y.is_valid, inp.nodes)
 
         if isValid and event.button.has_class('connect'):
-            from socket import socket, AF_INET, SOCK_STREAM, SOL_SOCKET, SO_KEEPALIVE
             try:
                 inp.set(disabled=True)
-
-                if self.i2cSckt is not None:
-                    shutdownSocket(self.i2cSckt)
-                    self.i2cSckt.close()
-                self.i2cSckt = socket(AF_INET, SOCK_STREAM)
-                self.i2cSckt.settimeout(10)
-                self.i2cSckt.setsockopt(SOL_SOCKET, SO_KEEPALIVE, 1)
                 self.thread = Thread(target=self.getI2c, args=(), daemon=True)
-
                 self.receiver.host = self.host
                 self.receiver.port = self.port
                 self.receiver.connect()
@@ -125,6 +116,7 @@ class SdrControl(App):
                 # event.button.watch_variant('warning', 'error')
                 event.button.label = 'Disconnect'
                 result = f'Accepting connections on port {self.server.socket.getsockname()[1]}'
+                self.isConnected.value = 1
             except (OSError, ConnectionError, EOFError) as e:
                 button.remove_class('disconnect')
                 button.add_class('connect')
@@ -133,13 +125,11 @@ class SdrControl(App):
                 inp.set(disabled=False)
                 result = str(e)
         elif event.button.has_class('disconnect'):
-            shutdownSocket(self.i2cSckt)
-            self.i2cSckt.close()
+            self.isConnected.value = 0
             self.receiver.disconnect()
             self.thread.join(0.1)
             self.controller.connection = None
             self.thread = None
-            self.i2cSckt = None
             button.remove_class('disconnect')
             button.add_class('connect')
             event.button.variant = 'success'
@@ -174,15 +164,19 @@ class SdrControl(App):
         value = event.value
         self.port = int(event.value) if value else None
 
-    # @on(Input.Submitted, '.source')
-    # def onSourceSubmitted(self, event: Input.Submitted) -> None:
-    #     self.print(event.value)
+    @on(Input.Submitted, '.source')
+    def onSourceSubmitted(self, _: Input.Submitted) -> None:
+        self.post_message(Button.Pressed(self.query_one('#connector', Button)))
 
     @on(Button.Pressed, '#set_freq')
     def onConnectPressed(self, _: Button.Pressed) -> None:
         value = self.query_one('#frequency', Input).value
         self.freq = int(value) if value else 0
         self.controller.setFrequency(self.freq + self.offset)
+
+    @on(Input.Submitted, '#frequency')
+    def onFreqSubmitted(self, _: Input.Submitted) -> None:
+        self.post_message(Button.Pressed(self.query_one('#set_freq', Button)))
 
     @on(Input.Changed, '#frequency')
     def onFreqChanged(self, event: Input.Changed) -> None:
@@ -198,8 +192,6 @@ class SdrControl(App):
     @on(Slider.Changed, '#gains_slider')
     def onGainsChanged(self, event: Slider.Changed) -> None:
         if self.i2cSckt is not None:
-            label = self.query_one('#gains_label', Label)
-            label.styles.color = 'red'
             self.controller.setParam(RtlTcpCommands.SET_TUNER_GAIN_BY_INDEX, event.value)
 
     @on(Switch.Changed, '#agc_switch')
@@ -217,58 +209,64 @@ class SdrControl(App):
         eprint(content)
 
     def getI2c(self) -> None:
-        try:
-            from struct import unpack
-            self.call_from_thread(self.print, 'Waiting for I2C connection')
-            self.i2cSckt.connect((self.host, self.port + 1))
-            d = self.i2cSckt.recv(38)[5:]
-            self.call_from_thread(self.print, 'Got I2C connection')
+        from array import array
+        from socket import socket, AF_INET, SOCK_STREAM, SOL_SOCKET, SO_REUSEPORT, SO_KEEPALIVE, SO_REUSEADDR
+        from os import name as osName
+        d = array('B', 38 * b'\0')
+        prevData = None
+        debounceCnt = None
+        self.call_from_thread(self.print, 'Waiting for I2C connection')
+        with socket(AF_INET, SOCK_STREAM) as self.i2cSckt:
+            try:
+                self.i2cSckt.settimeout(10)
+                self.i2cSckt.setsockopt(SOL_SOCKET, SO_KEEPALIVE, 1)
+                self.i2cSckt.setsockopt(SOL_SOCKET, SO_REUSEPORT if 'posix' in osName else SO_REUSEADDR, 1)
+                self.i2cSckt.connect((self.host, self.port + 1))
+                self.i2cSckt.recv_into(d)
+                self.call_from_thread(self.print, 'Got I2C connection')
+                while self.isConnected.value:
+                    lna = d[0xA] & 0x1F
+                    mix = d[0xC] & 0x1F
+                    lnaStatus = (lna & 0x10) >> 4
+                    self.gain = (lna & 0xF) + (mix & 0xF)
 
-            debounceCnt = 0
-            prevData = None
-            while 1:
-                data = unpack('!' + str(len(d)) + 'B', d)
-                lna = data[5] & 0x1F
-                mix = data[7] & 0x1F
-                gain = (lna & 0xF) + (mix & 0xF)
-                if prevData is None or prevData[5:7] != d[5:7]:
-                    label = self.query_one('#gains_label', Label)
-                    label.styles.color = 'yellow'
-                    self.call_from_thread(self.updateGain, gain, color='yellow')
-                prevData = d
-                lnaStatus = (lna & 0x10) >> 4
-                # mixerStatus = (lna & 0x10) >> 4
-                if debounceCnt < 5:
-                    debounceCnt += 1
-                else:
-                    self.call_from_thread(self.updateGain, gain, lnaStatus)
-                    self.query_one("#connector").variant = 'error'
-                    debounceCnt = 0
-                d = self.i2cSckt.recv(38)[5:]
+                    if prevData is None or prevData[:] != d[0xA:0xC]:
+                        prevData = array('B', 2 * b'\0')
+                        self.call_from_thread(self.updateGain, color='red')
+                        debounceCnt = 0
 
-                # self.call_from_thread(self.print, hex(int.from_bytes(d[0x14:0x1C], signed=False, byteorder='big')))
+                    if debounceCnt is not None:
+                        debounceCnt += 1
+                        self.query_one('#gains_label', Label).styles.color = 'yellow'
+                        if debounceCnt > 4:
+                            self.call_from_thread(self.updateGain, lnaStatus=lnaStatus)
+                            self.query_one("#connector").variant = 'error'
+                            debounceCnt = None
 
-                tmp = d[0x14] & 0x3F
-                si2c = ((d[0x14] ) >> 6) & 3
-                ni2c = (d[0x14] << 2) >> 2
-                nfra = int.from_bytes(d[0x15:0x17], signed=False, byteorder="little")
-                nint = (ni2c << 2) + si2c + 13
-                nint2 = (tmp << 2) + si2c + 13
-                ndiv = (nint + nfra) << 1
-                ndiv2 = (nint2 + nfra) << 1
-                self.call_from_thread(self.print, f'{si2c} : {ni2c} : {tmp} : {nint} : {nint2} : {d[0x15]} : {d[0x16]}  : {nfra} : {ndiv} : {ndiv2}')
+                    # vga = d[0xF:0x11]
+                    si2c = (d[0x19] & 0xC0) >> 6
+                    ni2c = d[0x19] & 0x3F
+                    nint = (ni2c << 2) + si2c + 13
+                    nfra = (d[0x1F] << 8) | d[0x1A]
+                    ndiv = (nint + nfra) << 1
+                    # self.print(
+                    #     f'{self.gain} - {d[0xF]} : {d[0x10]} : {d[0x11]} - {bin(d[0x19])} : {nint} : {d[0x1A]} '
+                    #     f': {d[0x1B]} : {nfra} : {ndiv} - {bin(d[0x1F])}')
 
-        except KeyboardInterrupt:
-            pass
-        except Exception as e:
-            self.log(e)
-        finally:
-            return
+                    prevData[:] = d[0xA:0xC]
+                    self.i2cSckt.recv_into(d)
+            except (KeyboardInterrupt | ConnectionError):
+                pass
+            except Exception as e:
+                self.print(e)
+            finally:
+                self.i2cSckt.send(b'')
+                shutdownSocket(self.i2cSckt)
+                return
 
-    def updateGain(self, gain: int, lnaStatus: int = None, color: str = 'green') -> None:
-        if gain > 28:
-            gain = 28
-        self.gain = gain
+    def updateGain(self, lnaStatus: int = None, color: str = 'green') -> None:
+        if self.gain > 28:
+            self.gain = 28
         label = self.query_one('#gains_label', Label)
         ogLabelValue = label.renderable
         label.update(str(self.gain))

@@ -110,7 +110,7 @@ class AbstractPlot(ABC):
         import numpy as np
         ticks = [[(float(u), toString(v))
                        for u, v in zip(np.linspace(oldRange[0], oldRange[1], num),
-                                       np.linspace(newRange[0], newRange[1], num) % newRange[1])]]
+                                       np.linspace(newRange[0], newRange[1], num))]]
         ax.setTicks(ticks)
         return ticks
 
