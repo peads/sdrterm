@@ -113,14 +113,12 @@ class SdrControl(App):
 
                 button.remove_class('connect')
                 button.add_class('disconnect')
-                # event.button.watch_variant('warning', 'error')
                 event.button.label = 'Disconnect'
                 result = f'Accepting connections on port {self.server.socket.getsockname()[1]}'
                 self.isConnected.value = 1
             except (OSError, ConnectionError, EOFError) as e:
                 button.remove_class('disconnect')
                 button.add_class('connect')
-                # event.button.watch_variant('warning', 'success')
                 event.button.label = 'Connect'
                 inp.set(disabled=False)
                 result = str(e)
@@ -133,7 +131,6 @@ class SdrControl(App):
             button.remove_class('disconnect')
             button.add_class('connect')
             event.button.variant = 'success'
-            # event.button.watch_variant('error', 'success')
             event.button.label = 'Connect'
             label = self.query_one('#gains_label', Label)
             label.update('')
@@ -210,7 +207,7 @@ class SdrControl(App):
 
     def getI2c(self) -> None:
         from array import array
-        from socket import socket, AF_INET, SOCK_STREAM, SOL_SOCKET, SO_REUSEPORT, SO_KEEPALIVE, SO_REUSEADDR
+        from socket import socket, AF_INET, SOCK_STREAM, SOL_SOCKET, SO_KEEPALIVE, SO_REUSEADDR
         from os import name as osName
         d = array('B', 38 * b'\0')
         prevData = None
@@ -220,7 +217,11 @@ class SdrControl(App):
             try:
                 self.i2cSckt.settimeout(10)
                 self.i2cSckt.setsockopt(SOL_SOCKET, SO_KEEPALIVE, 1)
-                self.i2cSckt.setsockopt(SOL_SOCKET, SO_REUSEPORT if 'posix' in osName else SO_REUSEADDR, 1)
+                if 'posix' not in osName:
+                    self.i2cSckt.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
+                else:
+                    from socket import SO_REUSEPORT
+                    self.i2cSckt.setsockopt(SOL_SOCKET, SO_REUSEPORT, 1)
                 self.i2cSckt.connect((self.host, self.port + 1))
                 self.i2cSckt.recv_into(d)
                 self.call_from_thread(self.print, 'Got I2C connection')
@@ -233,6 +234,17 @@ class SdrControl(App):
                     if prevData is None or prevData[:] != d[0xA:0xC]:
                         prevData = array('B', 2 * b'\0')
                         self.call_from_thread(self.updateGain, color='red')
+
+                        # vga = d[0xF:0x11]
+                        si2c = (d[0x19] & 0xC0) >> 6
+                        ni2c = d[0x19] & 0x3F
+                        nint = (ni2c << 2) + si2c + 13
+                        nfra = (d[0x1F] << 8) | d[0x1A]
+                        ndiv = (nint + nfra) << 1
+                        self.print(
+                            f'{self.gain} - {d[0xF]} : {d[0x10]} : {d[0x11]} - {bin(d[0x19])} : {nint} : {d[0x1A]} '
+                            f': {d[0x1B]} : {nfra} : {ndiv} - {bin(d[0x1F])}')
+
                         debounceCnt = 0
 
                     if debounceCnt is not None:
@@ -243,16 +255,6 @@ class SdrControl(App):
                             self.query_one("#connector").variant = 'error'
                             debounceCnt = None
 
-                    # vga = d[0xF:0x11]
-                    si2c = (d[0x19] & 0xC0) >> 6
-                    ni2c = d[0x19] & 0x3F
-                    nint = (ni2c << 2) + si2c + 13
-                    nfra = (d[0x1F] << 8) | d[0x1A]
-                    ndiv = (nint + nfra) << 1
-                    # self.print(
-                    #     f'{self.gain} - {d[0xF]} : {d[0x10]} : {d[0x11]} - {bin(d[0x19])} : {nint} : {d[0x1A]} '
-                    #     f': {d[0x1B]} : {nfra} : {ndiv} - {bin(d[0x1F])}')
-
                     prevData[:] = d[0xA:0xC]
                     self.i2cSckt.recv_into(d)
             except (KeyboardInterrupt | ConnectionError):
@@ -260,7 +262,7 @@ class SdrControl(App):
             except Exception as e:
                 self.print(e)
             finally:
-                self.i2cSckt.send(b'')
+                self.isConnected.value = 0
                 shutdownSocket(self.i2cSckt)
                 return
 
@@ -325,7 +327,7 @@ class SdrControl(App):
                     yield Center(Label('VGA'))
                     yield Center(Switch(id='dagc_switch'))
 
-        log = RichLog(highlight=True, max_lines=10)
+        log = RichLog(highlight=True, max_lines=50)
         yield log
         setattr(SdrControl, 'print', log.write)
         setattr(output_server, 'log', log.write)
@@ -370,7 +372,6 @@ def main(server_host: Annotated[str, Option(help='Port of local distribution ser
             isDead.value = 1
             server.shutdown()
             app.exit(return_code=0)
-            # server.server_close()
             lt.join(5)
             ft.join(5)
             SdrControl.print('UI halted')

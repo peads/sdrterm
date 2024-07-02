@@ -28,7 +28,7 @@ from typing import Annotated
 from uuid import uuid4
 
 from click import BadParameter
-from typer import run, Option
+from typer import run as typerRun, Option
 
 from misc.file_util import DataType
 from misc.general_util import eprint, setSignalHandlers, vprint, tprint, printException
@@ -122,15 +122,6 @@ def main(fs: Annotated[int, Option('--fs', '-r',
     from misc.read_file import readFile
     processes: list[Process] = []
     buffers: list[Queue] = []
-    isDead = Value('b', 0)
-
-    def stopProcessing(sig: int = None):
-        isDead.value = 1
-        deletePidFile()
-        if sig is not None:
-            from signal import Signals
-            vprint(f'{pid} stopping processing due to {Signals(sig).name}')
-    setSignalHandlers(pid, stopProcessing)
 
     try:
         ioArgs = IOArgs(fs=fs,
@@ -155,6 +146,7 @@ def main(fs: Annotated[int, Option('--fs', '-r',
 
         for proc in processes:
             proc.start()
+            tprint(f'Started proc {proc.name}: {proc.pid}')
 
         eprint(repr(IOArgs.strct['processor']))
         readFile(offset=ioArgs.strct['fileInfo']['dataOffset'],
@@ -170,36 +162,37 @@ def main(fs: Annotated[int, Option('--fs', '-r',
         if 'is closed' not in str(ex):
             printException(ex)
     finally:
-        stopProcessing()
+        __stopProcessing()
         for buffer, proc in zip(buffers, processes):
             tprint(f'Closing buffer {buffer}')
             buffer.close()
             buffer.cancel_join_thread()
             tprint(f'Closed buffer {buffer}')
-            proc.join(5)
+            proc.join(2)
             if proc.exitcode is None:
                 tprint(f'Killing process {proc}')
                 proc.kill()
-                eprint(f'Killing process {proc}')
+                proc.join()
                 vprint(f'{proc.name} returned: {proc.exitcode}')
             proc.close()
         vprint('Main halted')
 
 
-if __name__ == '__main__':
+def __setStartMethod():
     if 'spawn' in get_all_start_methods():
         try:
             from multiprocessing import set_start_method, get_context
 
             set_start_method('spawn')
-            vprint(f'{get_context()} selected')
         except Exception as e:
             printException(e)
             raise AttributeError(f'Setting start method to spawn failed')
-    pid = getpid()
 
+
+def __generatePidFile(pid):
     try:
         from datetime import UTC
+
         iso = datetime.now(UTC)
     except ImportError:
         iso = datetime.utcnow()
@@ -218,4 +211,18 @@ if __name__ == '__main__':
         except OSError:
             pass
 
-    run(main)
+        setSignalHandlers(pid, __stopProcessing)
+
+    return deletePidFile
+
+
+def __stopProcessing():
+    isDead.value = 1
+    __deletePidFile()
+
+
+if __name__ == '__main__':
+    __setStartMethod()
+    __deletePidFile = __generatePidFile(getpid())
+    isDead = Value('b', 0)
+    typerRun(main)

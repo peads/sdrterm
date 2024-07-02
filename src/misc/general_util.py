@@ -17,25 +17,30 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-import signal as s
-import socket
 from contextlib import closing
+from os import name as osName
+from signal import SIGTERM, SIGABRT, Signals, signal, getsignal, SIGINT
+from socket import socket, AF_INET, SOCK_STREAM, SOL_SOCKET, SO_REUSEADDR, SHUT_RDWR
 from sys import stderr
 from types import FrameType
 from typing import Callable, TextIO
 
 
 class __VerbosePrint:
-    @staticmethod
-    def vprint(*args, **kwargs) -> None:
-        pass
+    vlog = lambda *_, **__: None
+    tlog = lambda *_, **__: None
 
-    @staticmethod
-    def tprint(*args, **kwargs) -> None:
-        pass
+    @classmethod
+    def vprint(cls, *args, **kwargs) -> None:
+        cls.vlog(*args, **kwargs)
+
+    @classmethod
+    def tprint(cls, *args, **kwargs) -> None:
+        cls.tlog(*args, **kwargs)
 
 
-def eprint(*args, func: Callable[[any, TextIO, any], None] = lambda *a, **k: print(*a, file=stderr, **k), **kwargs) -> None:
+def eprint(*args, func: Callable[[any, TextIO, any], None] = lambda *a, **k: print(*a, file=stderr, **k),
+           **kwargs) -> None:
     func(*args, **kwargs)
 
 
@@ -64,64 +69,78 @@ def __applyIgnoreException(*func: Callable[[], any]) -> list:
 
 
 def verboseOn() -> None:
-    setattr(__VerbosePrint, 'vprint', eprint)
+    __VerbosePrint.vlog = eprint
 
 
 def traceOn() -> None:
     verboseOn()
-    setattr(__VerbosePrint, 'tprint', eprint)
+    __VerbosePrint.tlog = eprint
 
 
-def shutdownSocket(*socks: socket.socket) -> None:
+def shutdownSocket(*socks: socket) -> None:
     for sock in socks:
-        __applyIgnoreException(lambda: sock.send(b''), lambda: sock.shutdown(socket.SHUT_RDWR))
+        __applyIgnoreException(lambda: sock.send(b''), lambda: sock.shutdown(SHUT_RDWR))
 
 
 # taken from https://stackoverflow.com/a/45690594
 def findPort(host='localhost') -> int:
-    with closing(socket.socket(socket.AF_INET, socket.SOCK_STREAM)) as s:
+    with closing(socket(AF_INET, SOCK_STREAM)) as s:
         s.bind((host, 0))
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        s.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
         return s.getsockname()[1]
 
 
-def __extendSignalHandlers(pid: int, handlers: dict, func: Callable[[int], None]) \
+def killChildren(pid, sig):
+    from psutil import Process, NoSuchProcess
+    parent = Process(pid)
+    children = parent.children(recursive=True)
+    for child in children:
+        tprint(f'Child status: {child.status()}')
+        try:
+            child.send_signal(sig)
+        except NoSuchProcess:
+            pass
+
+
+def __extendSignalHandlers(pid: int, handlers: dict, handlePostSignal: Callable[[], None]) \
         -> Callable[[int, FrameType | None], None]:
-
-    def handlePostSignal(sig: int):
-        from os import kill, name
-        func(sig)
-        tprint(f'Post handler got: {s.Signals(sig).name}')
-        if 'posix' in name:
-            from os import killpg, getpgid
-            pgid = getpgid(pid)
-            # sig = s.SIGINT if s.SIGTERM == sig else sig
-            tprint(f'Post handler throwing: {s.Signals(sig).name} to process group {pgid}')
-            killpg(pgid, sig)
-        tprint(f'Post handler rethrowing: {s.Signals(sig).name}')
-        kill(pid, sig)
-
     def handleSignal(sig: int, frame: FrameType):
-        tprint(f'Frame: {frame}\nCaught signal: {s.Signals(sig).name}')
+        tprint(f'Frame: {frame}\npid {pid} caught: {Signals(sig).name}')
         if sig in handlers.keys():
             newHandler = handlers.pop(sig)
-            s.signal(sig, newHandler)
+            signal(sig, newHandler)
             tprint(f'Reset signal handler from {handleSignal} back to {newHandler}')
-        tprint(f'Handlers after processing: {handlers}')
-        handlePostSignal(sig)
+        tprint(f'Handlers after processing: {handlers.values()}')
+        handlePostSignal()
+        if 'posix' not in osName:
+            killChildren(pid, sig if sig != SIGINT else SIGTERM)
+        else:
+            from os import killpg, getpgid
+            pgid = getpgid(pid)
+            tprint(f'Re-throwing to process group: {pgid}')
+            killpg(pgid, sig)
 
     return handleSignal
 
 
-def setSignalHandlers(pid: int, func: Callable[[int], None]):
-    from os import name
-    signals = [s.SIGINT, s.SIGTERM, s.SIGABRT]
+def setSignalHandlers(pid: int, func: Callable[[], None]):
+    signals = [SIGTERM, SIGABRT, SIGINT]
     handlers = {}
-    if 'posix' in name:
-        signals.append(s.SIGQUIT)
-    elif 'nt' in name:
-        signals.append(s.SIGBREAK)
+    if 'nt' in osName:
+        from signal import SIGBREAK
+        signals.append(SIGBREAK)
+    elif 'posix' in osName:
+        from signal import SIGQUIT, SIGTSTP, SIGHUP, SIGTTIN, SIGTTOU, SIGXCPU
+        signals.append(SIGQUIT)
+        signals.append(SIGHUP)
+        signals.append(SIGXCPU)
+
+        # disallow backgrounding from keyboard, except--obviously--if the terminal implements it as SIGSTOP
+        def ignore(s: int, _):
+            tprint(f'Ignored signal {Signals(s).name}')
+
+        [signal(x, ignore) for x in [SIGTSTP, SIGTTIN, SIGTTOU]]
 
     for sig in signals:
-        handlers[sig] = s.getsignal(sig)
-        s.signal(sig, __extendSignalHandlers(pid, handlers, func))
+        handlers[sig] = getsignal(sig)
+        signal(sig, __extendSignalHandlers(pid, handlers, func))

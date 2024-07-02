@@ -44,7 +44,7 @@ def main(host: Annotated[str, Argument(help='Address of remote rtl_tcp server')]
         server, st, pt, resetBuffers = output_server.initServer(receiver, isDead, server_host)
         receiver.connect()
 
-        cmdr = ControlRtlTcp(receiver.receiver, resetBuffers)
+        cmdr = ControlRtlTcp(receiver, resetBuffers)
         pt.start()
         st.start()
 

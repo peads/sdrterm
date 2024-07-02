@@ -107,9 +107,12 @@ class SpectrumAnalyzer(DataProcessor, AbstractPlot, ABC):
 
     @classmethod
     def processData(cls, isDead: Value, buffer: Queue, fs: int, *args, **kwargs) -> None:
-        from pyqtgraph.Qt import QtWidgets
-        cls.spec = cls(fs=fs, buffer=buffer, isDead=isDead, *args, **kwargs)
-        QtWidgets.QApplication.instance().exec()
+        try:
+            from pyqtgraph.Qt import QtWidgets
+            cls.spec = cls(fs=fs, buffer=buffer, isDead=isDead, *args, **kwargs)
+            QtWidgets.QApplication.instance().exec()
+        except KeyboardInterrupt:
+            pass
 
     def quit(self):
         self.timer.stop()

@@ -17,17 +17,17 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-from socket import socket
 from struct import error as StructError, pack
 from typing import Callable
 
 from sdr.controller import Controller
 from sdr.controller import UnrecognizedInputError
+from sdr.receiver import Receiver
 from sdr.rtl_tcp_commands import RtlTcpCommands
 
 
 class ControlRtlTcp(Controller):
-    def __init__(self, connection: socket, resetBuffers: Callable[[int], None] = lambda: None):
+    def __init__(self, connection: Receiver, resetBuffers: Callable):
         super().__init__(connection)
         self._resetBuffers = resetBuffers
         # if resetBuffers is not None:
@@ -39,11 +39,11 @@ class ControlRtlTcp(Controller):
         # connection.sendall(pack('>BI', RtlTcpCommands.SET_BIAS_TEE.value, 0))
 
     @property
-    def resetBuffers(self) -> Callable[[int], None]:
+    def resetBuffers(self) -> Callable:
         return self._resetBuffers
 
     @resetBuffers.setter
-    def resetBuffers(self, resetBuffers: Callable[[int], None]) -> None:
+    def resetBuffers(self, resetBuffers: Callable) -> None:
         self._resetBuffers = resetBuffers
 
     @resetBuffers.deleter
@@ -57,16 +57,17 @@ class ControlRtlTcp(Controller):
         self.setParam(RtlTcpCommands.SET_SAMPLE_RATE, fs)
 
     def setParam(self, command: RtlTcpCommands, param: int) -> None:
-        if self.connection is not None:
+        sock = self.connection.receiver
+        if sock is not None:
             print(f'{RtlTcpCommands(command)}: {param}')
             try:
                 if '-' in hex(param):
-                    self.connection.sendall(pack('!Bi', command.value, param))
+                    sock.sendall(pack('!Bi', command.value, param))
                 else:
-                    self.connection.sendall(pack('!BI', command.value, param))
+                    sock.sendall(pack('!BI', command.value, param))
 
                 if RtlTcpCommands.SET_SAMPLE_RATE == command:
-                    self.resetBuffers(param)
-                    self.connection.sendall(pack('!BI', RtlTcpCommands.SET_TUNER_BANDWIDTH.value, param))
+                    sock.sendall(pack('!BI', RtlTcpCommands.SET_TUNER_BANDWIDTH.value, param))
+                    self.resetBuffers()
             except StructError as e:
                 raise UnrecognizedInputError(f'{command}: {param}', e)
