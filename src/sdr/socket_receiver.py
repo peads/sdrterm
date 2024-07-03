@@ -28,7 +28,7 @@ from sdr.receiver import Receiver
 
 
 class SocketReceiver(Receiver):
-    BUF_SIZE = 16384
+    BUF_SIZE = 8192
 
     def __init__(self, isDead: Value, host: str = None, port: int = None):
         self.isDisconnected = False
@@ -37,7 +37,7 @@ class SocketReceiver(Receiver):
         self.__cond = Lock()
         super().__init__()
         self.isDead = isDead
-        self.__buffer: array = None
+        self.__buffer: array | None = None
 
     def __exit__(self, *ex):
         self.disconnect()
