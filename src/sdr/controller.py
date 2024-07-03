@@ -21,7 +21,7 @@ from abc import ABC, abstractmethod
 
 
 class UnrecognizedInputError(Exception):
-    def __init__(self, msg: str, e: Exception = None):
+    def __init__(self, msg: str, e: Exception):
         super().__init__(f'{msg}, {e}')
 
 class Controller(ABC):

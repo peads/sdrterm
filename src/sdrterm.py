@@ -18,13 +18,20 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
+from datetime import datetime
 from enum import Enum
+from multiprocessing import get_all_start_methods, Process, Queue, Value
+from os import path, getpid, unlink
+from re import sub
+from tempfile import gettempdir
 from typing import Annotated
+from uuid import uuid4
 
 from click import BadParameter
-from typer import run, Option
+from typer import run as typerRun, Option
 
 from misc.file_util import DataType
+from misc.general_util import eprint, setSignalHandlers, vprint, tprint, printException
 
 
 class DemodulationChoices(str, Enum):
@@ -57,7 +64,6 @@ def parseIntString(value: str) -> int:
         return int(float(value))
     except Exception as ex:
         raise BadParameter(str(ex))
-
 
 
 def main(fs: Annotated[int, Option('--fs', '-r',
@@ -111,21 +117,11 @@ def main(fs: Annotated[int, Option('--fs', '-r',
          swap_input_endianness: Annotated[bool, Option('--swap-input-endianness', '-X',
                                                        help='Swap input endianness',
                                                        show_default='False => network-default, big-endian')] = False):
-    import os
-    import tempfile
-    from multiprocessing import Value, Process
-
-    from misc.general_util import printException, vprint, eprint, tprint
+    from misc.general_util import printException, eprint, tprint
     from misc.io_args import IOArgs
     from misc.read_file import readFile
-
-    from uuid import uuid4
-
     processes: list[Process] = []
-    isDead = Value('b', 0)
-    tmpfile = os.path.join(tempfile.gettempdir(), f'sdrterm-{uuid4()}.pid')
-    with open(tmpfile, "w+") as pidfile:
-        pidfile.write(str(os.getpid()))
+    buffers: list[Queue] = []
 
     try:
         ioArgs = IOArgs(fs=fs,
@@ -137,6 +133,7 @@ def main(fs: Annotated[int, Option('--fs', '-r',
                         vfos=vfos,
                         dm=demod,
                         processes=processes,
+                        buffers=buffers,
                         pl=plot,
                         isDead=isDead,
                         omegaOut=omegaOut,
@@ -147,43 +144,85 @@ def main(fs: Annotated[int, Option('--fs', '-r',
                         smooth=smooth_output,
                         vfoHost=vfo_host)
 
-        vprint(f'PID file is created: {pidfile}')
         for proc in processes:
             proc.start()
+            tprint(f'Started proc {proc.name}: {proc.pid}')
 
-        eprint(IOArgs.strct['processor'])
+        eprint(repr(IOArgs.strct['processor']))
         readFile(offset=ioArgs.strct['fileInfo']['dataOffset'],
                  wordtype=ioArgs.strct['fileInfo']['bitsPerSample'],
                  swapEndianness=swap_input_endianness, **ioArgs.strct)
+
+        for proc in processes:
+            proc.join()
+            vprint(f'{proc.name} returned: {proc.exitcode}')
     except KeyboardInterrupt:
         pass
-    except Exception as ex:
-        printException(ex)
+    except ValueError as ex:
+        if 'is closed' not in str(ex):
+            printException(ex)
     finally:
-        for buffer, proc in zip(IOArgs.strct['buffers'], processes):
+        __stopProcessing()
+        for buffer, proc in zip(buffers, processes):
             tprint(f'Closing buffer {buffer}')
-            buffer.cancel_join_thread()
             buffer.close()
+            buffer.cancel_join_thread()
             tprint(f'Closed buffer {buffer}')
-            tprint(f'Awaiting {proc}')
-            proc.join()
-            tprint(f'{proc} completed')
+            proc.join(2)
             if proc.exitcode is None:
-                vprint('Killing process {proc}')
+                tprint(f'Killing process {proc}')
                 proc.kill()
-                eprint('Killing process {proc}')
-        isDead.value = 1
-        os.unlink(tmpfile)
+                proc.join()
+                vprint(f'{proc.name} returned: {proc.exitcode}')
+            proc.close()
         vprint('Main halted')
-        return
+
+
+def __setStartMethod():
+    if 'spawn' in get_all_start_methods():
+        try:
+            from multiprocessing import set_start_method, get_context
+
+            set_start_method('spawn')
+        except Exception as e:
+            printException(e)
+            raise AttributeError(f'Setting start method to spawn failed')
+
+
+def __generatePidFile(pid):
+    try:
+        from datetime import UTC
+
+        iso = datetime.now(UTC)
+    except ImportError:
+        iso = datetime.utcnow()
+
+    iso = sub(r'[:\-+T]', '', iso.isoformat(timespec='seconds'))
+    tmpfile = path.join(gettempdir(), f'{iso}-sdrterm-{uuid4()}.pid')
+
+    with open(tmpfile, "w+") as pidfile:
+        pidfile.write(str(pid) + '\n')
+    eprint(f'PID file is created: {pidfile.name}')
+
+    def deletePidFile():
+        try:
+            unlink(tmpfile)
+            tprint(f'PID file: {tmpfile} deleted')
+        except OSError:
+            pass
+
+        setSignalHandlers(pid, __stopProcessing)
+
+    return deletePidFile
+
+
+def __stopProcessing():
+    isDead.value = 1
+    __deletePidFile()
 
 
 if __name__ == '__main__':
-    from multiprocessing import get_all_start_methods, set_start_method
-
-    if 'spawn' in get_all_start_methods():
-        try:
-            set_start_method('spawn', force=True)
-        except RuntimeError as e:
-            raise RuntimeWarning(f'Warning: Setting start method failed\n{e}')
-    run(main)
+    __setStartMethod()
+    __deletePidFile = __generatePidFile(getpid())
+    isDead = Value('b', 0)
+    typerRun(main)

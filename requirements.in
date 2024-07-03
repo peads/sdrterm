@@ -3,5 +3,7 @@ numpy
 typer-slim
 textual
 textual-slider
+psutil
 # Optional:
 #pyqtgraph
+## Choose one of PyQt5, PyQt6, or PySide6 as well

@@ -16,82 +16,72 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-import array
-import socket
+from array import array
 from multiprocessing import Value
-from threading import Condition
+from os import name as osName
+from socket import socket, AF_INET, SOCK_STREAM, SO_KEEPALIVE, SO_REUSEADDR, SOL_SOCKET
+from threading import Lock
 from typing import Generator
 
-from misc.general_util import shutdownSocket, eprint, vprint
+from misc.general_util import shutdownSocket
 from sdr.receiver import Receiver
 
 
 class SocketReceiver(Receiver):
-    BUF_SIZE = 262144
+    BUF_SIZE = 8192
 
     def __init__(self, isDead: Value, host: str = None, port: int = None):
+        self.isDisconnected = False
         self.host = host
         self.port = port
-        self.__cond = Condition()
-        self.__isConnected = False
+        self.__cond = Lock()
         super().__init__()
         self.isDead = isDead
-        self.__buffer = array.array('B', self.BUF_SIZE * b'0')
+        self.__buffer: array | None = None
 
     def __exit__(self, *ex):
         self.disconnect()
 
     def disconnect(self):
+        self.isDisconnected = True
         if self._receiver is not None:
             shutdownSocket(self._receiver)
             self._receiver.close()
-
-        if not self.barrier.broken:
-            self.barrier.abort()
-
-        if self.__cond is not None:
-            with self.__cond:
-                self.__cond.notify_all()
-        self.__isConnected = False
+        self.barrier.abort()
+        self.__cond = None
 
     def connect(self):
-        if not (self.host is None or self.port is None):
-            self._receiver = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            self._receiver.settimeout(1)
-            self._receiver.connect((self.host, self.port))
-            with self.__cond:
-                self.__cond.notify()
-            self.__isConnected = True
+        self.reset()
+        self.isDisconnected = not (self.host is None or self.port is None)
 
-    def awaitConnection(self):
-        if not self.__isConnected:
-            with self.__cond:
-                eprint('Awaiting connection')
-                self.__cond.wait()
-                eprint('Connection established')
-        return self.__isConnected
-
-    def reset(self, size: int = None):
-        vprint(f'Resetting buffers: {size}')
-        self.__isConnected = False
+    def reset(self, size: int = BUF_SIZE) -> None:
         with self.__cond:
-            self.__buffer = array.array('B', (size if size is not None and size != self.BUF_SIZE else self.BUF_SIZE) * b'0')
-            self.__cond.notify()
-        self.__isConnected = True
-
+            self.__buffer: array = array('B', size * b'\0')
 
     def receive(self) -> Generator:
         if not self._barrier.broken:
             self._barrier.wait()
             self._barrier.abort()
 
-        if self._receiver is not None:
-            file = self._receiver.makefile('rb')
-            try:
-                while not self.isDead.value and self.awaitConnection():
-                    if not file.readinto(self.__buffer):
-                        break
-                    yield self.__buffer[:]
-            finally:
-                file.close()
-                return None
+        while not self.isDead.value:
+            with socket(AF_INET, SOCK_STREAM) as self._receiver:
+                try:
+                    self._receiver.setsockopt(SOL_SOCKET, SO_KEEPALIVE, 1)
+                    if 'posix' not in osName:
+                        self._receiver.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
+                    else:
+                        from socket import SO_REUSEPORT
+                        self._receiver.setsockopt(SOL_SOCKET, SO_REUSEPORT, 1)
+                    self._receiver.settimeout(5)
+                    self._receiver.connect((self.host, self.port))
+                    self.isDisconnected = False
+
+                    file = self._receiver.makefile('rb')
+                    while not self.isDead.value and not self.isDisconnected:
+                        with self.__cond:
+                            if not file.readinto(self.__buffer):
+                                break
+                            yield self.__buffer[:]
+                finally:
+                    file.close()
+                    return None

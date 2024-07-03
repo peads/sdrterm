@@ -19,25 +19,17 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
 OIFS=$IFS
-port=0;
-outPath="/mnt/d";
-params=""
+OUT_PATH="/mnt/d";
 
+params=""
 i="\0";
 set -u
-for i in ${@:2}; do
+for i in ${@:1}; do
     params+="${i} ";
 done
 unset i;
 
-cmd="socat TCP4:${1} -";
-set -u;
-echo "LOG: ${cmd}";
-coproc SOCAT { eval "$cmd"; }
-exec {SOCAT_IN}<&${SOCAT[0]}- {SOCAT_OUT}>&${SOCAT[1]}-
-unset cmd;
-
-cmd="python src/sdrterm.py ${params} --simo 2>&1 0<&${SOCAT_IN}";
+cmd="python src/sdrterm.py ${params} --simo 2>&1";
 set -u;
 echo "LOG: ${cmd}";
 coproc SDRTERM { eval "$cmd"; }
@@ -74,7 +66,7 @@ done <&"${SDR_IN}"
 
 declare -A pipes;
 declare -A pids;
-declare -A logFiles;
+logFiles=();
 
 i="\0";
 set -u;
@@ -90,7 +82,7 @@ for i in "${vfos[@]}"; do
   set -u;
   fileName="/tmp/log-${freq}";
   set -u;
-  cmd="socat TCP4:${host}:${port} - | sox -q -D -B -traw -b64 -ef -r${decimatedFs} - -traw -b16 -es -r48k - 2>/dev/null | dsd -i - -o /dev/null -n -f1 -w ${outPath}/out-${freq}.wav 2>&1 > ${fileName}"
+  cmd="socat TCP4:${host}:${port} - | sox -q -D -B -traw -b64 -ef -r${decimatedFs} - -traw -b16 -es -r48k - 2>/dev/null | dsd -q -i - -o /dev/null -n -f1 -w ${OUT_PATH}/out-${freq}.wav 2>&1"  # | tee ${fileName}"
   set -u;
 
   echo "LOG: ${cmd}";
@@ -98,7 +90,6 @@ for i in "${vfos[@]}"; do
   eval "exec {tmp_in}<&\${${coprocName}[0]}- {tmp_out}>&\${${coprocName}[1]}-";
   eval "pids[\"${coprocName}\"]=\${${coprocName}_PID}";
   eval "pipes[\"${coprocName}\",1]=${tmp_in}; pipes[\"${coprocName}\",2]=${tmp_out}";
-  logFiles["${coprocName}"]=${fileName};
 
   unset fileName;
   unset cmd;
@@ -111,7 +102,6 @@ unset i;
 
 echo "LOG: ${pids[@]}";
 echo "LOG: ${pipes[@]}";
-echo "LOG: ${logFiles[@]}";
 
 while IFS= ; read -r line; do
   echo "LOG: ${line}"
@@ -130,9 +120,8 @@ for i in "${!pids[@]}"; do
   echo "LOG: Awaiting ${i}";
   wait ${pids["$i"]};
   echo "LOG: ${i} returned: ${?}"
-  while IFS= ; read -r line; do
+  while read -r line; do
     echo "LOG: ${line}";
-  done < ${logFiles["$i"]}
-  rm "${logFiles[$i]}";
+  done <&"${pipes[${i},1]}"
 done
 unset i;

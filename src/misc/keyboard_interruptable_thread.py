@@ -17,34 +17,34 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-import sys
-import threading
+from threading import Thread
 from typing import Callable
 
 from misc.general_util import printException
-from misc.hooked_thread import HookedThread
 
 
-class KeyboardInterruptableThread(HookedThread):
-    def __init__(self, func: Callable[[], None], *args, **kwargs):
+class KeyboardInterruptableThread(Thread):
+    def __init__(self, func: Callable[[], None], target: Callable, group=None, name=None, args=(), daemon=None):
         if func is None:
             raise ValueError("func cannot be None")
-        super().__init__(*args, **kwargs)
-        setattr(self, 'handleExceptionHook', func)
+        super().__init__(group=group, target=target, name=name, args=args, daemon=daemon)
+        setattr(self, '__handleException', func)
+        import threading
+        threading.excepthook = self.handleException
 
-        def handleException(e, *argv):
-            try:
-                self.handleExceptionHook()
-            except Exception as ex:
-                printException(ex, f'{self.name} caught {ex} while handling {e}')
-
-            if not issubclass(type(e), KeyboardInterrupt):
-                printException(e, f'{self.name} caught {e}')
-            else:
-                sys.__excepthook__(e, *argv)
-            return
-
-        threading.excepthook = handleException
-
-    def handleExceptionHook(self):
+    def __handleException(self):
         pass
+
+    def handleException(self, e, *args):
+        from sys import __excepthook__
+
+        try:
+            self.__handleException()
+        except Exception as ex:
+            printException(ex)
+
+        if not issubclass(type(e), KeyboardInterrupt):
+            printException(e)
+        else:
+            __excepthook__(e, *args)
+        return
