@@ -19,7 +19,7 @@
 #
 from multiprocessing import Queue, Value
 
-import numpy as np
+from numpy import log10, abs, zeros, float64
 from scipy.signal import ShortTimeFFT
 
 from dsp.data_processor import DataProcessor
@@ -40,8 +40,10 @@ class WaterfallPlot(DataProcessor, AbstractPlot):
                  *args,
                  **kwargs):
         super().__init__(*args, **kwargs)
-        import pyqtgraph as pg
-        from pyqtgraph.Qt import QtWidgets, QtCore
+        from pyqtgraph import ImageItem, PlotWidget, colormap
+        from pyqtgraph.Qt.QtCore import QTimer
+        from pyqtgraph.Qt.QtWidgets import QMainWindow, QApplication
+        from pyqtgraph.Qt.QtGui import QTransform
         self.buffer = buffer
         self.iqCorrector = IQCorrection(self.fs) if correctIq else None
         self._SFT = ShortTimeFFT.from_window(('kaiser', 5),
@@ -54,27 +56,45 @@ class WaterfallPlot(DataProcessor, AbstractPlot):
                                              phase_shift=None)
         self.pad_extent = (self.NFFT - self.NOOVERLAP) / (self.fs << 1)
 
-        self.app = QtWidgets.QApplication([])
-        self.window = QtWidgets.QMainWindow()
-        self.centralWidget = QtWidgets.QWidget()
-        self.widget = pg.GraphicsLayoutWidget(show=True)
-        self.layout = QtWidgets.QVBoxLayout()
-        self.centralWidget.setLayout(self.layout)
+        self.app = QApplication([])
+        self.window = QMainWindow()
+        self.item = ImageItem()
+        self.widget = PlotWidget()
+        self.plot = self.widget.plotItem
+        self.axis = self.plot.getAxis("bottom")
+        self.xscale = self.NFFT / self.fs
+        self.image = zeros((self.NFFT, self.NPERSEG + 1), dtype=float64)
 
+        self.window.setCentralWidget(self.widget)
+        self.plot.addItem(self.item)
         self.window.setWindowTitle("Waterfall")
-        self.surf = self.widget.addPlot()
-        self.item = pg.ImageItem(colorMap='CET-CBL2')
-        self.axis = self.surf.getAxis("bottom")
-        self.axis.setLabel("Frequency [MHz]")
-        self.surf.addItem(self.item)
-        self.surf.setMouseEnabled(x=False, y=False)
-        self.surf.setMenuEnabled(False)
-        self.surf.hideButtons()
-        self.surf.showAxes(True, showValues=(False, False, False, True))
-        self.timer = QtCore.QTimer()
+        self.plot.setMouseEnabled(x=False, y=False)
+        self.plot.setMenuEnabled(False)
+        self.plot.hideButtons()
+        self.plot.showAxes(True, showValues=(False, False, False, True))#, size=(self.NFFT, self.NOOVERLAP >> 1))
+        self.item.setLevels(None)
+        self.axis.setLabel("Frequency", units="Hz", unitPrefix="M")
+
+        transform = QTransform.fromScale(self.fs * self.xscale, 1)
+        transform = transform.translate(-self.nyquistFs * self.xscale, 0)
+        self.item.setTransform(transform)
+
+        colorMap = colormap.get('CET-CBL2')
+        lut = colorMap.getLookupTable(nPts=256)
+        bwLevels = [-16, 16]
+        self.item.setLookupTable(lut)
+        self.item.setLevels(bwLevels)
+        self.item.setImage(self.image, autoLevels=False)
+
+        self.timer = QTimer()
         self.timer.timeout.connect(self.update)
         self.timer.start(self.frameRate)
-        self.ticks = None
+        self.receiveData = self.buffer.get
+        if self.iqCorrector is not None:
+            self.correctIq = self.iqCorrector.correctIq
+
+    def correctIq(self, y):
+        return y
 
     def quit(self):
         self.timer.stop()
@@ -82,42 +102,26 @@ class WaterfallPlot(DataProcessor, AbstractPlot):
         self.buffer.join_thread()
         super().quit()
 
-    def receiveData(self) -> tuple[int, np.ndarray]:
-        data = self.buffer.get()
-        if self.iqCorrector is not None:
-            data = self.iqCorrector.correctIq(data)
-        return len(data), shiftFreq(data, self.offset, self.fs)
+    def receiveData(self):
+        return None
 
     def update(self):
         try:
-            _, y = self.receiveData()
-            if y is None or not len(y):
-                raise KeyboardInterrupt
-            Zxx = self._SFT.stft(y)
-            # extent = tmin, tmax, fmin, fmax = self._SFT.extent(len(y), center_bins=True)
-            # tmin -= self.pad_extent
-            # tmax += self.pad_extent
-
-            data = 10. * np.log10(np.abs(Zxx))
-            if self.ticks is None:
-                xr, yr = self.surf.viewRange()
-                if xr[0] != -0.5 and xr[1] != 0.5:
-                    self.ticks = self._setTicks(self.surf.getAxis('bottom'), xr,
-                                                (-self.nyquistFs, self.nyquistFs), 11,
-                                                lambda v: str(round((v + self.tuned) / 10E+5, 3)))
-
-            self.item.setImage(data)
+            self.image[:] = 10. * log10(abs(self._SFT.stft(shiftFreq(self.correctIq(self.receiveData()), self.offset, self.fs))))
+            self.item.setImage(autoLevels=False)
         except KeyboardInterrupt:
             self.quit()
         except Exception as e:
-            printException(e)
+            if "object has no attribute 'shape'" not in str(e):
+                printException(e)
             self.quit()
 
     @classmethod
     def processData(cls, isDead: Value, buffer: Queue, fs: int, *args, **kwargs) -> None:
         try:
             from pyqtgraph.Qt import QtWidgets
-            cls.spec = cls(fs=fs, buffer=buffer, isDead=isDead, *args, **kwargs)
+            spec = cls(fs=fs, buffer=buffer, isDead=isDead, *args, **kwargs)
+            spec.window.show()
             QtWidgets.QApplication.instance().exec()
         except KeyboardInterrupt:
             pass

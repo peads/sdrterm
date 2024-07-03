@@ -20,8 +20,8 @@
 from abc import abstractmethod, ABC
 from multiprocessing import Value, Queue
 
-import numpy as np
-from scipy import fft
+from numpy import log10, abs
+from scipy.fft import fftshift, fftn, fftfreq
 
 from dsp.data_processor import DataProcessor
 from misc.general_util import printException
@@ -40,12 +40,11 @@ class SpectrumAnalyzer(DataProcessor, AbstractPlot, ABC):
         from pyqtgraph.Qt import QtCore, QtWidgets
 
         self.nfft = nfft
-
         self.buffer = buffer
         self.app = QtWidgets.QApplication([])
         self.window = QtWidgets.QMainWindow()
         self.centralWidget = QtWidgets.QWidget()
-        self.widget = pg.PlotWidget(show=True)
+        self.widget = pg.PlotWidget()
         self.widgets = [(self.widget, 0)]
         self.item = self.widget.getPlotItem()
 
@@ -62,11 +61,8 @@ class SpectrumAnalyzer(DataProcessor, AbstractPlot, ABC):
         self.item.showAxes(True, showValues=(False, False, False, True))
         self.item.hideButtons()
         self.axis = self.item.getAxis("bottom")
-        self.axis.setLabel("Frequency [MHz]")
         self.lines = [self.item.plot()]
         self.layout.addWidget(self.widget, 0, 0)
-        self.ticks = None
-        self.window.show()
 
         self.timer = QtCore.QTimer()
         self.timer.timeout.connect(self.update)
@@ -78,19 +74,10 @@ class SpectrumAnalyzer(DataProcessor, AbstractPlot, ABC):
             if data is None or not length:
                 raise KeyboardInterrupt
 
-            amps = fft.fftn(data, norm='forward')
-            # amps = signal.decimate(amps, amps.size // self.nfft)
-            amps = np.abs(fft.fftshift(amps))
-            amps = np.log10(amps * amps)
-            freq = fft.fftshift(fft.fftfreq(amps.size, self.dt))
-
-            if self.ticks is None:
-                for widget, offset in self.widgets:
-                    xr, yr = widget.viewRange()
-                    if xr[0] != -0.5 and xr[1] != 0.5:
-                        self.ticks = self._setTicks(widget.getAxis('bottom'), xr,
-                                                    (-self.nyquistFs, self.nyquistFs), 11,
-                                                    lambda v: str(round((v + self.tuned + offset) / 10E+5, 3)))
+            amps = fftn(data, norm='forward')
+            amps = abs(fftshift(amps))
+            amps = log10(amps * amps)
+            freq = fftshift(fftfreq(amps.size, self.dt))
 
             for line in self.lines:
                 line.setData(freq, amps)
@@ -109,7 +96,10 @@ class SpectrumAnalyzer(DataProcessor, AbstractPlot, ABC):
     def processData(cls, isDead: Value, buffer: Queue, fs: int, *args, **kwargs) -> None:
         try:
             from pyqtgraph.Qt import QtWidgets
-            cls.spec = cls(fs=fs, buffer=buffer, isDead=isDead, *args, **kwargs)
+            spec = cls(fs=fs, buffer=buffer, isDead=isDead, *args, **kwargs)
+            spec.window.show()
+            spec.axis.setLabel("Frequency", units="Hz", unitPrefix="M")
+            spec.axis.setScale(1000)
             QtWidgets.QApplication.instance().exec()
         except KeyboardInterrupt:
             pass

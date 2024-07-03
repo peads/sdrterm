@@ -32,12 +32,11 @@ class SpectrumAnalyzerPlot(SpectrumAnalyzer):
                  **kwargs):
         super().__init__(*args, **kwargs)
         self.iqCorrector = IQCorrection(self.fs) if correctIq else None
+        self._setTicks(self.nyquistFs)
 
     def receiveData(self) -> tuple[int, np.ndarray]:
         data = self.buffer.get()
         length = len(data)
-        # if  length - self.nfft * (length // self.nfft) != 0:
-        #     data = data[:1 << int(np.log2(length))]
         if self.iqCorrector is not None:
             data = self.iqCorrector.correctIq(data)
         return length, shiftFreq(data, self.offset, self.fs)

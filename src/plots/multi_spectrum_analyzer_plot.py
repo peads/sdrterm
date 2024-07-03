@@ -17,7 +17,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-import numpy as np
+from numpy import sqrt, round, ceil
 
 from plots.spectrum_analyzer_plot import SpectrumAnalyzerPlot
 
@@ -28,6 +28,7 @@ class MultiSpectrumAnalyzerPlot(SpectrumAnalyzerPlot):
                  vfos: str = None,
                  *args,
                  **kwargs):
+        from pyqtgraph import PlotWidget
         if vfos is None:
             raise ValueError("MultiSpectrumAnalyzerPlot cannot be used without the vfos option")
         super().__init__(*args, **kwargs)
@@ -38,13 +39,12 @@ class MultiSpectrumAnalyzerPlot(SpectrumAnalyzerPlot):
         self.items = [self.item]
         self.axes = [self.axis]
 
-        size = np.sqrt(len(self.vfos) + 1)
-        cols = int(np.ceil(size))
-        rows = int(np.round(size))
+        size = sqrt(len(self.vfos) + 1)
+        cols = int(ceil(size))
+        rows = int(round(size))
 
         bandwidth >>= 1
         self.item.setXRange(-bandwidth, bandwidth)
-        import pyqtgraph as pg
 
         j = 1
         for i, vfo in enumerate(self.vfos, start=0):
@@ -53,7 +53,7 @@ class MultiSpectrumAnalyzerPlot(SpectrumAnalyzerPlot):
             if i >= rows:
                 i = 1
 
-            widget = pg.PlotWidget()
+            widget = PlotWidget()
             item = widget.getPlotItem()
             item.setXRange(-bandwidth + vfo, bandwidth + vfo)
             item.setYRange(-6, 4)
@@ -62,12 +62,15 @@ class MultiSpectrumAnalyzerPlot(SpectrumAnalyzerPlot):
             item.showAxes(True, showValues=(False, False, False, True))
             item.hideButtons()
             axis = item.getAxis("bottom")
-            axis.setLabel("Frequency [MHz]")
 
             self.widgets.append((widget, vfo))
             self.items.append(item)
             self.lines.append(item.plot())
             self.axes.append(axis)
             self.layout.addWidget(widget, j, i)
+
+            axis.setLabel("Frequency", units="Hz", unitPrefix="M")
+            axis.setScale(100)
             j += 1
         self.window.setWindowTitle("MultiSpectrumAnalyzer")
+        self._setTicks(bandwidth)

@@ -20,6 +20,8 @@
 from abc import ABC, abstractmethod
 from typing import Callable
 
+from numpy import linspace
+
 from misc.general_util import vprint
 
 
@@ -46,12 +48,21 @@ class AbstractPlot(ABC):
         self._dt = None
         self._nyquistFs = None
         self._fs = None
+        self.widgets = None
 
         self.isDead = isDead
         self.frameRate = frameRate
         self.offset = center
         self.tuned = tuned
         self.fs = fs
+
+    def _setTicks(self, n, num=11):
+        for widget, off in self.widgets:
+            xr, _ = widget.viewRange()
+            oldRange = linspace(-n + off, n + off, num)
+            newRange = linspace(xr[0], xr[1], 11)
+            ticks = [[(float(u), str(round((v + self.tuned) / 10E+5, 3))) for u, v in zip(oldRange, newRange)]]
+            widget.getAxis('bottom').setTicks(ticks)
 
     def __del__(self):
         self.quit()
@@ -101,18 +112,6 @@ class AbstractPlot(ABC):
     @abstractmethod
     def update(self) -> None:
         pass
-
-    def _setTicks(self, ax,
-                  oldRange: tuple[any, any],
-                  newRange: tuple[any, any],
-                  num: int,
-                  toString: Callable[[any], str] = str) -> list[list[tuple[float, str]]]:
-        import numpy as np
-        ticks = [[(float(u), toString(v))
-                       for u, v in zip(np.linspace(oldRange[0], oldRange[1], num),
-                                       np.linspace(newRange[0], newRange[1], num))]]
-        ax.setTicks(ticks)
-        return ticks
 
     def quit(self) -> None:
         from pyqtgraph.Qt.QtCore import QCoreApplication
