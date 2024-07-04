@@ -76,7 +76,7 @@ def main(host: Annotated[str, Argument(help='Address of remote rtl_tcp server')]
                             cmdr.setParam(numCmd, param)
                 except (UnrecognizedInputError, ValueError, KeyError) as ex:
                     print(f'ERROR: Input invalid: {ex}. Please try again')
-        except (KeyboardInterrupt | EOFError):
+        except (KeyboardInterrupt ,EOFError):
             pass
         except Exception as e:
             printException(e)

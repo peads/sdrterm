@@ -23,6 +23,7 @@ from typing import Iterable
 
 import numpy as np
 
+from misc.general_util import tprint
 from misc.mappable_enum import MappableEnum
 
 
@@ -35,17 +36,17 @@ class WaveFormat(Enum):
 
 
 class ExWaveFormat(Enum):
-    PCM_S_LE = 0x01  # b'x01'
-    PCM_S_BE = 0x02  # b'x02'
-    PCM_S_PDP = 0x03  # b'x03'
-    PCM_U_LE = 0x05  # b'x05'
-    PCM_U_BE = 0x06  # b'x06'
-    PCM_U_PDP = 0x07  # b'x07'
+    PCM_S_LE = 0x01
+    PCM_S_BE = 0x02
+    # PCM_S_PDP = 0x03
+    PCM_U_LE = 0x05
+    PCM_U_BE = 0x06
+    # PCM_U_PDP = 0x07
 
 
 class DataType(MappableEnum):
-    b = np.dtype('>b')
-    B = np.dtype('>B')
+    b = np.dtype('b')
+    B = np.dtype('B')
 
     h = np.dtype('>h')
     H = np.dtype('>H')
@@ -80,13 +81,13 @@ class DataType(MappableEnum):
                 istZahl = splt[1]
 
             if 8 == bits:
-                return eight[str(istZahl)].value
+                ret = eight[str(istZahl)].value
             elif 16 == bits:
                 ret = sixteen[str(istZahl)].value
             elif 32 == bits:
                 ret = thirtytwo[str(istZahl)].value
 
-            if 'LE' == splt[2]:
+            if 'BE' != splt[2]:
                 ret = ret.newbyteorder('<')
 
         if ret is not None:
@@ -130,14 +131,14 @@ def checkWavHeader(f, fs, enc):
             raise ValueError('Invalid: format section not found')
 
         #      name             bytes
-        ret = (subchunk1Size,  # 4
-               audioFormat,  # 2
-               numChannels,  # 2
-               sampRate,  # 4
-               byteRate,  # 4
-               blockAlign,  # 2
-               bitsPerSample,  # 2
-               # 20
+        ret = (subchunk1Size,   # 4
+               audioFormat,     # 2
+               numChannels,     # 2
+               sampRate,        # 4
+               byteRate,        # 4
+               blockAlign,      # 2
+               bitsPerSample,   # 2
+                                # 20
                ) = struct.unpack('<IHHIIHH', file.read(20))
         ret = zipRet(ret)
         subFormat = None
@@ -146,7 +147,6 @@ def checkWavHeader(f, fs, enc):
             extraParamSize, = struct.unpack('<H', file.read(2))
             subFormatOffset = extraParamSize - 16
             extraParams = struct.unpack('<' + str(subFormatOffset) + 'B', file.read(subFormatOffset))
-            # file.seek(file.tell() + subFormatOffset)
             subFormat, = struct.unpack('<H', file.read(2))
             if b'\x00\x00\x00\x00\x10\x00\x80\x00\x00\xAA\x00\x38\x9B\x71' != file.read(14):
                 raise ValueError('Invalid SubFormat GUID')
@@ -160,8 +160,12 @@ def checkWavHeader(f, fs, enc):
         while -1 == off:
             buf = file.read(100)
             off = buf.find(b'data')
-        off = temp + 4
-        ret['dataOffset'] = off
+        off += temp
+        file.seek(0)
+        buf = file.read(off + 4)
+        if buf[-4:] != b'data':
+            raise ValueError('Invalid: could not find data section.')
+        ret['dataOffset'] = file.tell()
     return ret
 
 # TODO Possible heuristic to determine datatype for raw PCM input by determining angle between real and imag compnents

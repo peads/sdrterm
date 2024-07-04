@@ -25,12 +25,11 @@ import sys
 from multiprocessing import Value, Queue
 from typing import Callable
 
-import numpy as np
-from scipy import signal
+from numpy import ndarray, dtype, complex64, complex128, real, pad, broadcast_to, exp, arange, pi
+from scipy.signal import decimate, dlti, savgol_filter
 
 from dsp.data_processor import DataProcessor
 from dsp.demodulation import amDemod, fmDemod
-from dsp.iq_correction import IQCorrection
 from dsp.util import applyFilters, generateEllipFilter
 from misc.general_util import printException, vprint, eprint
 
@@ -43,10 +42,8 @@ class DspProcessor(DataProcessor):
                  center: int = 0,
                  omegaOut: int = 0,
                  tuned: int = 0,
-                 correctIq: bool = False,
                  dec: int = 2,
                  smooth: bool = False,
-                 cpus: int = 1,
                  **kwargs):
 
         self.bandwidth \
@@ -61,17 +58,11 @@ class DspProcessor(DataProcessor):
         self.centerFreq = center
         self.tunedFreq = tuned
         self.omegaOut = omegaOut
-        if correctIq:
-            setattr(self, 'correctIq', IQCorrection(self.__decimatedFs).correctIq)
         self.smooth = smooth
         self._shift = None
         self._Y = None
         self._nCpus = os.cpu_count()
         self._ii = range(self._nCpus)
-
-    @staticmethod
-    def correctIq(y):
-        return y
 
     @property
     def fs(self):
@@ -105,7 +96,6 @@ class DspProcessor(DataProcessor):
             raise ValueError("Decimation must be at least 2.")
         self._decimationFactor = decimation
         self.fs = self.__fs
-        setattr(self, 'correctIq', IQCorrection(self.__decimatedFs).correctIq)
 
     @property
     def decimatedFs(self):
@@ -115,25 +105,24 @@ class DspProcessor(DataProcessor):
     def decimatedFs(self, _):
         raise NotImplementedError('Setting the decimatedFs directly is not supported. Set fs instead')
 
-    def demod(self, y: np.ndarray[any, np.dtype[np.complex64 | np.complex128]]) -> np.ndarray[any, np.dtype[np.real]]:
+    def demod(self, y: ndarray[any, dtype[complex64 | complex128]]) -> ndarray[any, dtype[real]]:
         pass
 
     def __setDemod(self, fun: Callable[
-        [np.ndarray[any, np.dtype[np.complex64 | np.complex128]]], np.ndarray[any, np.dtype[np.real]]],
-                   *filters) \
-            -> Callable[[np.ndarray[any, np.dtype[np.complex64 | np.complex128]]], np.ndarray[any, np.dtype[np.real]]]:
+        [ndarray[any, dtype[complex64 | complex128]]], ndarray[any, dtype[real]]],
+                   *filters) -> Callable[[ndarray[any, dtype[complex64 | complex128]]], ndarray[any, dtype[real]]]:
         if fun is not None and filters is not None and len(filters) > 0:
             self._outputFilters.clear()
             self._outputFilters.extend(*filters)
             setattr(self, 'demod', fun)
-            self._aaFilter = (
-                signal.ellip(self._FILTER_DEGREE << 1, 0.5, 10,
-                                          Wn=self.bandwidth,
-                                          btype='lowpass',
-                                          analog=False,
-                                          output='zpk',
-                                          fs=self.__fs))
-            self._aaFilter = signal.ZerosPolesGain(*self._aaFilter, dt=self.__dt)
+            # self._aaFilter = (
+            #     ellip(self._FILTER_DEGREE << 1, 0.5, 10,
+            #                  Wn=self.bandwidth,
+            #                  btype='lowpass',
+            #                  analog=False,
+            #                  output='zpk',
+            #                  fs=self.__fs))
+            # self._aaFilter = ZerosPolesGain(*self._aaFilter, dt=self.__dt)
             return self.demod
         raise ValueError("Demodulation function, or filters not defined")
 
@@ -152,11 +141,10 @@ class DspProcessor(DataProcessor):
         self.bandwidth = 10000
         self.__setDemod(amDemod, generateEllipFilter(self.__decimatedFs, self._FILTER_DEGREE, 18000, 'lowpass'))
 
-    def _demod(self, y: np.ndarray):
+    def _demod(self, y: ndarray):
         return [self.demod(yy) for yy in y]
 
-    def _processChunk(self, y: np.ndarray) -> np.ndarray[any, np.dtype[np.real]]:
-        y = self.correctIq(y)
+    def _processChunk(self, y: ndarray) -> ndarray[any, dtype[real]]:
         if self._shift is not None:
             '''
                 NOTE: apparently, numpy doesn't override the unary multiplication arithemetic assignment operator the
@@ -164,22 +152,22 @@ class DspProcessor(DataProcessor):
             '''
             y = y * self._shift
         if self._decimationFactor > 1:
-            y = signal.decimate(y, self._decimationFactor, ftype=self._aaFilter)
+            y = decimate(y, self._decimationFactor)#, ftype=self._aaFilter)
         y = self._demod(y)
         return applyFilters(y, self._outputFilters)
 
-    def _bufferChunk(self, isDead: Value, buffer: Queue) -> np.ndarray[any, np.dtype[np.real]]:
+    def _bufferChunk(self, isDead: Value, buffer: Queue) -> ndarray[any, dtype[real]]:
         for i in self._ii:
             y = buffer.get()
             if y is None or not len(y):
                 isDead.value = 1
                 break
             if self._Y is None:
-                self._Y = np.ndarray(shape=(self._nCpus, y.size), dtype=np.complex128)
+                self._Y = ndarray(shape=(self._nCpus, y.size), dtype=complex128)
             if self._shift is None:
                 self._generateShift(self._nCpus, y.size)
             if len(y) < self._Y.shape[1]:
-                y = np.pad(y, (0, -len(y) + self._Y.shape[1]), mode='constant', constant_values=0)
+                y = pad(y, (0, -len(y) + self._Y.shape[1]), mode='constant', constant_values=0)
             self._Y[i] = y
         return self._processChunk(self._Y)
 
@@ -189,12 +177,13 @@ class DspProcessor(DataProcessor):
             size = y.size
             y = y.flat
             if self.smooth:
-                y = signal.savgol_filter(y, self.smooth, self._FILTER_DEGREE)
+                y = savgol_filter(y, self.smooth, self._FILTER_DEGREE)
             file.write(struct.pack('@' + (size * 'd'), *y))
 
-    def _generateShift(self, r: int, c: int)-> None:
+    def _generateShift(self, r: int, c: int) -> None:
         if self.centerFreq:
-            self._shift = np.broadcast_to(np.exp(-2j * np.pi * (self.centerFreq / self.__fs) * np.arange(c)), (r, c))
+            self._shift = broadcast_to(exp(-2j * pi * (self.centerFreq / self.__fs) * arange(c)), (r, c))
+
     def processData(self, isDead: Value, buffer: Queue, f: str, *args, **kwargs) -> None:
         with open(f, 'wb') if f is not None else open(sys.stdout.fileno(), 'wb', closefd=False) as file:
             try:
@@ -215,11 +204,10 @@ class DspProcessor(DataProcessor):
     def __repr__(self):
         d = {(key if 'Str' not in key else key[:-3]): value for key, value in self.__dict__.items()
              if not (key.startswith('_')
-             or callable(value)
-             or issubclass(type(value), np.ndarray)
-             or issubclass(type(value), signal.dlti)
-             or issubclass(type(value), IQCorrection)
-             or key in {'outputFilters'})}
+                     or callable(value)
+                     or issubclass(type(value), ndarray)
+                     or issubclass(type(value), dlti)
+                     or key in {'outputFilters'})}
         d['fs'] = self.__fs
         d['decimatedFs'] = self.__decimatedFs
         return json.dumps(d, indent=2)

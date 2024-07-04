@@ -17,7 +17,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-from abc import abstractmethod, ABC
+from abc import ABC
 from multiprocessing import Value, Queue
 
 from numpy import log10, abs
@@ -70,8 +70,8 @@ class SpectrumAnalyzer(DataProcessor, AbstractPlot, ABC):
 
     def update(self):
         try:
-            length, data = self.receiveData()
-            if data is None or not length:
+            data = self.receiveData()
+            if data is None or not len(data):
                 raise KeyboardInterrupt
 
             amps = fftn(data, norm='forward')
@@ -82,27 +82,32 @@ class SpectrumAnalyzer(DataProcessor, AbstractPlot, ABC):
             for line in self.lines:
                 line.setData(freq, amps)
 
-        except (ValueError, KeyboardInterrupt):
+        except (RuntimeWarning, TypeError, ValueError, KeyboardInterrupt):
             self.quit()
         except Exception as e:
             printException(e)
             self.quit()
 
-    @abstractmethod
-    def receiveData(self) -> tuple[int, any]:
-        pass
+    def receiveData(self):
+        y = self.buffer.get()
+        self._shiftFreq(y)
+        return y
 
     @classmethod
     def processData(cls, isDead: Value, buffer: Queue, fs: int, *args, **kwargs) -> None:
+        spec = None
         try:
             from pyqtgraph.Qt import QtWidgets
             spec = cls(fs=fs, buffer=buffer, isDead=isDead, *args, **kwargs)
             spec.window.show()
             spec.axis.setLabel("Frequency", units="Hz", unitPrefix="M")
-            spec.axis.setScale(1000)
+            # spec.axis.setScale(1000)
             QtWidgets.QApplication.instance().exec()
         except KeyboardInterrupt:
             pass
+        finally:
+            if spec is not None:
+                spec.quit()
 
     def quit(self):
         self.timer.stop()

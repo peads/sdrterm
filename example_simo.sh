@@ -18,6 +18,9 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
+####
+# Usage: ./example_simo.sh <host>:<port> -eB -r1024k -d25 -c"-1.2E+3" -t123.456M" --vfos=15000,-15000,30000" -w5k
+####
 OIFS=$IFS
 port=0;
 outPath="/mnt/d";

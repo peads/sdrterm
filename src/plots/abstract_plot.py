@@ -20,7 +20,7 @@
 from abc import ABC, abstractmethod
 from typing import Callable
 
-from numpy import linspace
+from numpy import linspace, arange, ndarray, dtype, complex64, complex128, exp, pi
 
 from misc.general_util import vprint
 
@@ -41,7 +41,7 @@ class AbstractPlot(ABC):
     def __init__(self,
                  isDead: Value,
                  fs: int,
-                 frameRate: int = 17,
+                 frameRate: int = 0,
                  center: int = 0,
                  tuned: int = 0,
                  *args, **kwargs):
@@ -55,6 +55,15 @@ class AbstractPlot(ABC):
         self.offset = center
         self.tuned = tuned
         self.fs = fs
+        self._t = None
+        self._omega = -2j * pi * (self.offset / self.fs)
+        self._shift = None
+
+    def _shiftFreq(self, y: ndarray[any, dtype[complex64 | complex128]]) -> None:
+        if self._t is None:
+            self._t = arange(len(y))
+            self._shift = exp(self._omega * self._t)
+        y[:] = y * self._shift
 
     def _setTicks(self, n, num=11):
         for widget, off in self.widgets:
@@ -65,7 +74,6 @@ class AbstractPlot(ABC):
             widget.getAxis('bottom').setTicks(ticks)
 
     def __del__(self):
-        self.quit()
         del self.isDead
         del self.frameRate
         del self.offset

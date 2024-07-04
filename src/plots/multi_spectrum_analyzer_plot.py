@@ -70,7 +70,7 @@ class MultiSpectrumAnalyzerPlot(SpectrumAnalyzerPlot):
             self.layout.addWidget(widget, j, i)
 
             axis.setLabel("Frequency", units="Hz", unitPrefix="M")
-            axis.setScale(100)
+            # axis.setScale(100)
             j += 1
         self.window.setWindowTitle("MultiSpectrumAnalyzer")
-        self._setTicks(bandwidth)
+        # self._setTicks(bandwidth)

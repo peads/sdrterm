@@ -18,25 +18,12 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
 
-import numpy as np
-
-from dsp.iq_correction import IQCorrection
-from dsp.util import shiftFreq
 from plots.spectrum_analyzer import SpectrumAnalyzer
 
 
 class SpectrumAnalyzerPlot(SpectrumAnalyzer):
     def __init__(self,
-                 correctIq: bool = False,
                  *args,
                  **kwargs):
         super().__init__(*args, **kwargs)
-        self.iqCorrector = IQCorrection(self.fs) if correctIq else None
-        self._setTicks(self.nyquistFs)
-
-    def receiveData(self) -> tuple[int, np.ndarray]:
-        data = self.buffer.get()
-        length = len(data)
-        if self.iqCorrector is not None:
-            data = self.iqCorrector.correctIq(data)
-        return length, shiftFreq(data, self.offset, self.fs)
+        # self._setTicks(self.nyquistFs)
