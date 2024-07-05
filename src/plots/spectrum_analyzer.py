@@ -24,7 +24,7 @@ from numpy import log10, abs
 from scipy.fft import fftshift, fftn, fftfreq
 
 from dsp.data_processor import DataProcessor
-from misc.general_util import printException
+from misc.general_util import printException, eprint
 from plots.abstract_plot import AbstractPlot
 
 
@@ -36,33 +36,41 @@ class SpectrumAnalyzer(DataProcessor, AbstractPlot, ABC):
                  *args,
                  **kwargs):
         super().__init__(*args, **kwargs)
-        import pyqtgraph as pg
+        from pyqtgraph import PlotWidget, GraphicsLayoutWidget
         from pyqtgraph.Qt import QtCore, QtWidgets
+
+        self.app = QtWidgets.QApplication([])
+        self.app.quitOnLastWindowClosed()
+
+        self.window = QtWidgets.QMainWindow()
+        self.layout = QtWidgets.QGridLayout()
+        self.centralWidget = GraphicsLayoutWidget()
+        self.widget = PlotWidget()
+        self.item = self.widget.getPlotItem()
+        self.axis = self.item.getAxis("bottom")
+        self.plot = self.item.plot()
+        self.plots = [self.plot]
 
         self.nfft = nfft
         self.buffer = buffer
-        self.app = QtWidgets.QApplication([])
-        self.window = QtWidgets.QMainWindow()
-        self.centralWidget = QtWidgets.QWidget()
-        self.widget = pg.PlotWidget()
-        self.widgets = [(self.widget, 0)]
-        self.item = self.widget.getPlotItem()
+        self.image = None
+        self.amp = None
+        self.freq = None
+        self.isFirst = True
+
+        self.centralWidget.setLayout(self.layout)
+        self.window.setCentralWidget(self.centralWidget)
+        self.layout.addWidget(self.widget, 0, 0)
+
+        self.window.setWindowTitle("SpectrumAnalyzer")
+        # self.window.resize(800, 600)
 
         self.item.setXRange(-self.nyquistFs, self.nyquistFs, padding=0)
-        self.app.quitOnLastWindowClosed()
-        self.window.setWindowTitle("SpectrumAnalyzer")
-        self.window.resize(800, 600)
-        self.window.setCentralWidget(self.centralWidget)
-        self.layout = QtWidgets.QGridLayout()
-        self.centralWidget.setLayout(self.layout)
         self.item.setMouseEnabled(x=False, y=False)
         self.item.setYRange(-6, 4)
         self.item.setMenuEnabled(False)
         self.item.showAxes(True, showValues=(False, False, False, True))
         self.item.hideButtons()
-        self.axis = self.item.getAxis("bottom")
-        self.lines = [self.item.plot()]
-        self.layout.addWidget(self.widget, 0, 0)
 
         self.timer = QtCore.QTimer()
         self.timer.timeout.connect(self.update)
@@ -70,28 +78,43 @@ class SpectrumAnalyzer(DataProcessor, AbstractPlot, ABC):
 
     def update(self):
         try:
-            data = self.receiveData()
-            if data is None or not len(data):
-                raise KeyboardInterrupt
+            self.receiveData()
+            if self.amp is None:
+                self.amp = abs(fftshift(fftn(self.image, norm='forward')))
+            else:
+                self.amp[:] = abs(fftshift(fftn(self.image, norm='forward')))
+            self.amp[:] = log10(self.amp * self.amp)
 
-            amps = fftn(data, norm='forward')
-            amps = abs(fftshift(amps))
-            amps = log10(amps * amps)
-            freq = fftshift(fftfreq(amps.size, self.dt))
+            if self.freq is None:
+                self.freq = fftshift(fftfreq(self.amp.size, self.dt))
+            else:
+                self.freq[:] = fftshift(fftfreq(self.amp.size, self.dt))
 
-            for line in self.lines:
-                line.setData(freq, amps)
 
-        except (RuntimeWarning, TypeError, ValueError, KeyboardInterrupt):
+            for plot in self.plots:
+                plot.setData(self.freq, self.amp)
+                # if not self.isFirst:
+                #     plot.updateItems(False)
+                # else:
+                #     plot.setData(self.freq, self.amp)
+            # self.isFirst = False
+
+        except (RuntimeWarning, ValueError, KeyboardInterrupt):
             self.quit()
         except Exception as e:
             printException(e)
             self.quit()
 
+
     def receiveData(self):
-        y = self.buffer.get()
-        self._shiftFreq(y)
-        return y
+        if self.image is None:
+            self.image = self.buffer.get()
+        else:
+            self.image[:] = self.buffer.get()
+        if self.image is None or not len(self.image):
+            self.quit()
+            return None
+        self._shiftFreq(self.image)
 
     @classmethod
     def processData(cls, isDead: Value, buffer: Queue, fs: int, *args, **kwargs) -> None:

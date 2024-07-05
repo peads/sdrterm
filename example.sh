@@ -50,7 +50,7 @@ runFileInTest "i16" "$1"
 printf "END basic wave file test\n\n";
 
 sox -q -D -twav ${1} -twav -b32 /tmp/tmp0.wav 2>/dev/null;
-runFileInTest "i32" "/tmp/tmp0.wav" "--normalize-input"
+runFileInTest "i32" "/tmp/tmp.wav" "--normalize-input"
 
 sox -q -D -twav ${1} -twav -eunsigned-int -b8 /tmp/tmp1.wav 2>/dev/null;
-runFileInTest "I8" "/tmp/tmp1.wav" "--normalize-input"
+runFileInTest "I8" "/tmp/tmp.wav" "--normalize-input"

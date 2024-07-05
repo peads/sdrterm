@@ -19,6 +19,7 @@
 #
 from numpy import sqrt, round, ceil
 
+from misc.general_util import eprint
 from plots.spectrum_analyzer_plot import SpectrumAnalyzerPlot
 
 
@@ -35,9 +36,6 @@ class MultiSpectrumAnalyzerPlot(SpectrumAnalyzerPlot):
         vfos = '' if vfos is None else vfos
         self.vfos = vfos.split(',')
         self.vfos = [int(vfo) for vfo in self.vfos if vfo is not None and len(vfo)]
-        self.item.setXRange(-bandwidth, bandwidth)
-        self.items = [self.item]
-        self.axes = [self.axis]
 
         size = sqrt(len(self.vfos) + 1)
         cols = int(ceil(size))
@@ -55,22 +53,21 @@ class MultiSpectrumAnalyzerPlot(SpectrumAnalyzerPlot):
 
             widget = PlotWidget()
             item = widget.getPlotItem()
+            axis = item.getAxis("bottom")
+
             item.setXRange(-bandwidth + vfo, bandwidth + vfo)
             item.setYRange(-6, 4)
             item.setMouseEnabled(x=False, y=False)
             item.setMenuEnabled(False)
             item.showAxes(True, showValues=(False, False, False, True))
             item.hideButtons()
-            axis = item.getAxis("bottom")
 
-            self.widgets.append((widget, vfo))
-            self.items.append(item)
-            self.lines.append(item.plot())
-            self.axes.append(axis)
+            plot = item.plot()
+            self.plots.append(plot)
+            # self.widgets.append((widget, vfo))
             self.layout.addWidget(widget, j, i)
 
             axis.setLabel("Frequency", units="Hz", unitPrefix="M")
-            # axis.setScale(100)
             j += 1
         self.window.setWindowTitle("MultiSpectrumAnalyzer")
         # self._setTicks(bandwidth)

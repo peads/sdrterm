@@ -96,8 +96,8 @@ def killChildren(pid, sig):
     children = parent.children(recursive=True)
     for child in children:
         try:
+            tprint(f'Re-throwing {Signals(sig).name} to pid: {child.pid}')
             child.send_signal(sig)
-            tprint(f'Child status: {child.status()}')
         except NoSuchProcess:
             pass
 
@@ -112,13 +112,7 @@ def __extendSignalHandlers(pid: int, handlers: dict, handlePostSignal: Callable[
             tprint(f'Reset signal handler from {handleSignal} back to {newHandler}')
         tprint(f'Handlers after processing: {handlers}')
         handlePostSignal()
-        if 'posix' not in osName:
-            killChildren(pid, sig if sig != SIGINT else SIGTERM)
-        else:
-            from os import killpg, getpgid
-            pgid = getpgid(pid)
-            tprint(f'Re-throwing {Signals(sig).name} to process group: {pgid}')
-            killpg(pgid, sig)
+        killChildren(pid, sig if 'posix' in osName or sig != SIGINT else SIGTERM)
 
     return handleSignal
 

@@ -41,7 +41,7 @@ class AbstractPlot(ABC):
     def __init__(self,
                  isDead: Value,
                  fs: int,
-                 frameRate: int = 0,
+                 frameRate: int = 17,
                  center: int = 0,
                  tuned: int = 0,
                  *args, **kwargs):

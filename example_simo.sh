@@ -93,7 +93,7 @@ for i in "${vfos[@]}"; do
   set -u;
   fileName="/tmp/log-${freq}";
   set -u;
-  cmd="socat TCP4:${host}:${port} - | sox -q -D -B -traw -b64 -ef -r${decimatedFs} - -traw -b16 -es -r48k - 2>/dev/null | dsd -i - -o /dev/null -n -f1 -w ${outPath}/out-${freq}.wav 2>&1 > ${fileName}"
+  cmd="socat TCP4:${host}:${port} - | sox -v0.8 -q -D -B -traw -b64 -ef -r${decimatedFs} - -traw -b16 -es -r48k - 2>/dev/null | dsd -i - -o /dev/null -n -f1 -w ${outPath}/out-${freq}.wav 2>&1 > ${fileName}"
   set -u;
 
   echo "LOG: ${cmd}";
@@ -109,6 +109,7 @@ for i in "${vfos[@]}"; do
   unset coprocName;
   unset tmp_in;
   unset tmp_out;
+  sleep 0.1; #TODO figure out a better way to sync this
 done
 unset i;
 

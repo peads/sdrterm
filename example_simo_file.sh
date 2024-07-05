@@ -100,6 +100,7 @@ for i in "${vfos[@]}"; do
   unset coprocName;
   unset tmp_in;
   unset tmp_out;
+  sleep 0.1; #TODO figure out a better way to sync this
 done
 unset i;
 

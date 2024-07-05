@@ -23,7 +23,7 @@ from numpy import log10, abs, zeros, float64
 from scipy.signal import ShortTimeFFT
 
 from dsp.data_processor import DataProcessor
-from misc.general_util import printException
+from misc.general_util import printException, eprint
 from plots.abstract_plot import AbstractPlot
 
 
@@ -59,7 +59,9 @@ class WaterfallPlot(DataProcessor, AbstractPlot):
         self.plot = self.widget.plotItem
         self.axis = self.plot.getAxis("bottom")
         self.xscale = self.NFFT / self.fs
-        self.image = zeros((self.NFFT, self.NPERSEG + 1), dtype=float64)
+        self.image = None
+        self.size = 0
+        self._y = None
 
         self.window.setCentralWidget(self.widget)
         self.plot.addItem(self.item)
@@ -80,7 +82,6 @@ class WaterfallPlot(DataProcessor, AbstractPlot):
         bwLevels = [-32, 32]
         self.item.setLookupTable(lut)
         self.item.setLevels(bwLevels)
-        self.item.setImage(self.image, autoLevels=False)
 
         self.timer = QTimer()
         self.timer.timeout.connect(self.update)
@@ -93,9 +94,22 @@ class WaterfallPlot(DataProcessor, AbstractPlot):
         super().quit()
 
     def receiveData(self):
-        y = self.buffer.get()
-        self._shiftFreq(y)
-        self.image[:] = 10. * log10(abs(self._SFT.stft(y)))
+        if self._y is None:
+            self._y = self.buffer.get()
+        else:
+            self._y[:] = self.buffer.get()
+
+        length = len(self._y)
+        if self._y is None or not length:
+            return None
+
+        if self.image is None or length != self.size:
+            col = len(self._y) // self.NOOVERLAP
+            self.image = zeros((self.NFFT, col + 1), dtype=float64)
+            self.item.setImage(self.image, autoLevels=False)
+            self.size = length
+        self._shiftFreq(self._y)
+        self.image[:] = 10. * log10(abs(self._SFT.stft(self._y)))
 
     def update(self):
         try:
@@ -104,8 +118,7 @@ class WaterfallPlot(DataProcessor, AbstractPlot):
         except (RuntimeWarning, ValueError, KeyboardInterrupt):
             self.quit()
         except Exception as e:
-            if "shape" not in str(e):
-                printException(e)
+            printException(e)
             self.quit()
 
     @classmethod

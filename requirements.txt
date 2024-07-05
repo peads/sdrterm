@@ -21,7 +21,7 @@ numpy==2.0.0
     # via
     #   -r requirements.in
     #   scipy
-psutil==6.0.0; sys_platform == 'win32'
+psutil==6.0.0
     # via -r requirements.in
 pygments==2.18.0
     # via rich
