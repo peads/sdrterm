@@ -20,7 +20,6 @@
 from multiprocessing import Value
 from queue import Queue
 from socketserver import BaseRequestHandler, ThreadingMixIn, TCPServer
-from threading import BrokenBarrierError
 from typing import Callable
 
 from misc.general_util import shutdownSocket, eprint, findPort
@@ -40,29 +39,22 @@ def initServer(receiver: SocketReceiver, isDead: Value, server_host: str) \
         -> tuple[ThreadedTCPServer, KeyboardInterruptableThread, KeyboardInterruptableThread, Callable[[int], None]]:
     clients: list[Queue] = []
 
-    def awaitBarrier():
-        if not receiver.barrier.broken:
-            try:
-                receiver.barrier.wait()
-            except BrokenBarrierError:
-                return False
-        return True
-
     class ThreadedTCPRequestHandler(BaseRequestHandler):
 
         def handle(self):
             log(f'Connection request from {self.request.getsockname()}')
-            isBarrierPassed = awaitBarrier()
             buffer = Queue()
             clients.append(buffer)
-            while not isDead.value and isBarrierPassed:
-                try:
-                    data = buffer.get()
-                    self.request.sendall(data)
-                    buffer.task_done()
-                except (ConnectionError, EOFError, ValueError) as e:
-                    log(f'Client disconnected: {self.request.getsockname()}: {e}')
-                    break
+            with self.request.makefile('wb', buffering=False) as file:
+                while not isDead.value:
+                    try:
+                        data = buffer.get()
+                        buffer.task_done()
+                        if file.write(data) != len(data):
+                            break
+                    except (ConnectionError, EOFError, ValueError) as e:
+                        log(f'Client disconnected: {self.request.getsockname()}: {e}')
+                        break
             clients.remove(buffer)
             shutdownSocket(self.request)
             del buffer
@@ -70,9 +62,7 @@ def initServer(receiver: SocketReceiver, isDead: Value, server_host: str) \
             return
 
     def receive():
-        isBarrierPassed = awaitBarrier()
-        receiver.barrier.abort()
-        while not isDead.value and isBarrierPassed:
+        while not isDead.value:
             data = receiver.receive()
             for y in data:
                 for client in list(clients):
@@ -82,7 +72,6 @@ def initServer(receiver: SocketReceiver, isDead: Value, server_host: str) \
     server = ThreadedTCPServer((server_host, findPort()), ThreadedTCPRequestHandler)
 
     def shutdownThread():
-        isDead.value = 1
         receiver.disconnect()
         for client in list(clients):
             clients.remove(client)

@@ -23,7 +23,7 @@ from numpy import log10, abs, zeros, float64
 from scipy.signal import ShortTimeFFT
 
 from dsp.data_processor import DataProcessor
-from misc.general_util import printException, eprint
+from misc.general_util import printException
 from plots.abstract_plot import AbstractPlot
 
 
@@ -33,7 +33,6 @@ class WaterfallPlot(DataProcessor, AbstractPlot):
     NFFT: int = 1024
 
     def __init__(self,
-                 buffer: Queue,
                  *args,
                  **kwargs):
         super().__init__(*args, **kwargs)
@@ -41,7 +40,6 @@ class WaterfallPlot(DataProcessor, AbstractPlot):
         from pyqtgraph.Qt.QtCore import QTimer
         from pyqtgraph.Qt.QtWidgets import QMainWindow, QApplication
         from pyqtgraph.Qt.QtGui import QTransform
-        self.buffer = buffer
         self._SFT = ShortTimeFFT.from_window(('kaiser', 5),
                                              self.fs,
                                              self.NPERSEG,
@@ -61,7 +59,6 @@ class WaterfallPlot(DataProcessor, AbstractPlot):
         self.xscale = self.NFFT / self.fs
         self.image = None
         self.size = 0
-        self._y = None
 
         self.window.setCentralWidget(self.widget)
         self.plot.addItem(self.item)
@@ -87,33 +84,16 @@ class WaterfallPlot(DataProcessor, AbstractPlot):
         self.timer.timeout.connect(self.update)
         self.timer.start(self.frameRate)
 
-    def quit(self):
-        self.timer.stop()
-        self.buffer.close()
-        self.buffer.join_thread()
-        super().quit()
-
-    def receiveData(self):
-        if self._y is None:
-            self._y = self.buffer.get()
-        else:
-            self._y[:] = self.buffer.get()
-
-        length = len(self._y)
-        if self._y is None or not length:
-            return None
-
-        if self.image is None or length != self.size:
-            col = len(self._y) // self.NOOVERLAP
-            self.image = zeros((self.NFFT, col + 1), dtype=float64)
-            self.item.setImage(self.image, autoLevels=False)
-            self.size = length
-        self._shiftFreq(self._y)
-        self.image[:] = 10. * log10(abs(self._SFT.stft(self._y)))
-
     def update(self):
         try:
-            self.receiveData()
+            length = self.receiveData()
+            if self.image is None or length != self.size:
+                col = len(self._y) // self.NOOVERLAP
+                self.image = zeros((self.NFFT, col + 1), dtype=float64)
+                self.item.setImage(self.image, autoLevels=False)
+                self.size = length
+            self._shiftFreq(self._y)
+            self.image[:] = 10. * log10(abs(self._SFT.stft(self._y)))
             self.item.setImage(autoLevels=False)
         except (RuntimeWarning, ValueError, KeyboardInterrupt):
             self.quit()
@@ -129,7 +109,7 @@ class WaterfallPlot(DataProcessor, AbstractPlot):
             spec = cls(fs=fs, buffer=buffer, isDead=isDead, *args, **kwargs)
             spec.window.show()
             QtWidgets.QApplication.instance().exec()
-        except KeyboardInterrupt:
+        except (RuntimeWarning, KeyboardInterrupt):
             pass
         finally:
             if spec is not None:

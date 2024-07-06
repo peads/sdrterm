@@ -63,6 +63,7 @@ class DspProcessor(DataProcessor):
         self._Y = None
         self._nCpus = os.cpu_count()
         self._ii = range(self._nCpus)
+        self._isDead = False
 
     @property
     def fs(self):
@@ -159,8 +160,8 @@ class DspProcessor(DataProcessor):
     def _bufferChunk(self, isDead: Value, buffer: Queue) -> ndarray[any, dtype[real]]:
         for i in self._ii:
             y = buffer.get()
-            if y is None or not len(y):
-                isDead.value = 1
+            if y is None or not len(y) or isDead.value:
+                self._isDead = True
                 break
             if self._Y is None:
                 self._Y = ndarray(shape=(self._nCpus, y.size), dtype=complex128)
@@ -172,7 +173,7 @@ class DspProcessor(DataProcessor):
         return self._processChunk(self._Y)
 
     def __processData(self, isDead: Value, buffer: Queue, file):
-        while not isDead.value:
+        while not (self._isDead or isDead.value):
             y = self._bufferChunk(isDead, buffer)
             size = y.size
             y = y.flat

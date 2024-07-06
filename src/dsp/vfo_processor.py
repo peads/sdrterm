@@ -19,7 +19,7 @@
 #
 import socketserver
 import struct
-from multiprocessing import Pipe, Value, Queue, Barrier,JoinableQueue
+from multiprocessing import Pipe, Value, Queue, JoinableQueue
 from threading import Thread
 
 import numpy as np
@@ -66,8 +66,7 @@ class VfoProcessor(DspProcessor):
         eprint('Connection(s) established')
 
     def __processData(self, isDead: Value, buffer: Queue, *args) -> None:
-
-        while not isDead.value:
+        while not (self._isDead or isDead.value):
             y = self._bufferChunk(isDead, buffer)
 
             for (pipe, data) in zip(self.__pipes.values(), y):
@@ -96,6 +95,7 @@ class VfoProcessor(DspProcessor):
         class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler):
             pipes: dict[str, Pipe] = None
             keys: JoinableQueue = None
+            outer_self: DspProcessor = self
 
             def handle(self):
                 eprint(f'Connection request from {self.request.getsockname()}')
@@ -107,7 +107,7 @@ class VfoProcessor(DspProcessor):
                 self.keys.task_done()
 
                 try:
-                    while not isDead.value:
+                    while not (self.outer_self._isDead or isDead.value):
                         self.request.sendall(r.recv())
                 except (OSError, EOFError) as ex:
                     eprint(f'Client disconnected: {self.request.getsockname()}: {ex}')
@@ -126,6 +126,7 @@ class VfoProcessor(DspProcessor):
             thread = Thread(target=server.serve_forever)
             thread.start()
             isShutdown = False
+
             def shutdown():
                 if not isShutdown:
                     serverName = server.__class__.__name__

@@ -47,7 +47,6 @@ class SocketReceiver(Receiver):
         if self._receiver is not None:
             shutdownSocket(self._receiver)
             self._receiver.close()
-        self.barrier.abort()
         self.__cond = None
 
     def connect(self):
@@ -59,10 +58,6 @@ class SocketReceiver(Receiver):
             self.__buffer: array = array('B', size * b'\0')
 
     def receive(self) -> Generator:
-        if not self._barrier.broken:
-            self._barrier.wait()
-            self._barrier.abort()
-
         while not self.isDead.value:
             with socket(AF_INET, SOCK_STREAM) as self._receiver:
                 try:
@@ -76,12 +71,12 @@ class SocketReceiver(Receiver):
                     self._receiver.connect((self.host, self.port))
                     self.isDisconnected = False
 
-                    file = self._receiver.makefile('rb')
-                    while not self.isDead.value and not self.isDisconnected:
-                        with self.__cond:
-                            if not file.readinto(self.__buffer):
-                                break
-                            yield self.__buffer[:]
+                    with self._receiver.makefile('rb') as file:
+                        while not (self.isDisconnected or self.isDead.value):
+                            with self.__cond:
+                                if not file.readinto(self.__buffer):
+                                    break
+                                yield self.__buffer[:]
                 finally:
-                    file.close()
-                    return None
+                    yield b''
+        return None

@@ -23,7 +23,7 @@ from multiprocessing import Value, Queue
 from sys import stdin
 from typing import Iterable
 
-from numpy import frombuffer, dtype, ndarray, complex128, complex64, isnan, ix_
+from numpy import frombuffer, dtype, ndarray, complex128, complex64, ix_, isfinite, invert
 
 from dsp.iq_correction import IQCorrection
 from misc.general_util import vprint
@@ -62,7 +62,7 @@ def readFile(bitsPerSample: dtype = None,
     if normalize:
         def doNormalize(Z: ndarray[any, dtype[complex64 | complex128]]) -> None:
             Z[:] = Z / abs(Z)
-            ix = isnan(Z[:, ])
+            ix = invert(isfinite(Z[:, ]))
             Z[ix] = Z[ix_(ix)].all(0)
 
     def feedBuffers(x: ndarray) -> None:

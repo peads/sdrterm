@@ -102,17 +102,32 @@ def killChildren(pid, sig):
             pass
 
 
-def __extendSignalHandlers(pid: int, handlers: dict, handlePostSignal: Callable[[], None]) \
-        -> Callable[[int, FrameType | None], None]:
-    def handleSignal(sig: int, frame: FrameType):
-        tprint(f'Frame: {frame}\npid {pid} caught: {Signals(sig).name}')
+def __iAlreadyAxedYouOnce(pid: int, handlers: dict) -> Callable[[int, FrameType | None], None]:
+    def handleSignal(sig: int, frame: FrameType) -> None:
+        tprint(f'Frame: {frame}')
+        vprint(f'pid {pid} caught: {Signals(sig).name}')
         if sig in handlers.keys():
             newHandler = handlers.pop(sig)
             signal(sig, newHandler)
             tprint(f'Reset signal handler from {handleSignal} back to {newHandler}')
+
+        isPosix = 'posix' in osName
+        killChildren(pid, sig if isPosix or sig != SIGINT else SIGTERM)
+        if isPosix:
+            from os import getpgid, killpg
+            pgid = getpgid(pid)
+            tprint(f'Re-throwing {Signals(sig).name} to pgid: {pgid}')
+            killpg(pgid, sig)
+    return handleSignal
+
+def __extendSignalHandlers(pid: int, handlers: dict, handlePostSignal: Callable[[], None]) \
+        -> Callable[[int, FrameType | None], None]:
+    def handleSignal(sig: int, frame: FrameType) -> None:
+        tprint(f'Frame: {frame}')
+        vprint(f'pid {pid} caught: {Signals(sig).name}')
+        signal(sig, __iAlreadyAxedYouOnce(pid, handlers))
         tprint(f'Handlers after processing: {handlers}')
         handlePostSignal()
-        killChildren(pid, sig if 'posix' in osName or sig != SIGINT else SIGTERM)
 
     return handleSignal
 

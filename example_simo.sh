@@ -22,10 +22,14 @@
 # Usage: ./example_simo.sh <host>:<port> -eB -r1024k -d25 -c"-1.2E+3" -t123.456M" --vfos=15000,-15000,30000" -w5k
 ####
 OIFS=$IFS
-port=0;
-outPath="/mnt/d";
-params=""
+OUT_PATH="/mnt/d";
+if [[ -z ${DSD_OPTS} ]]; then
+  DSD_OPTS="";
+fi
+echo "$DSD_OPTS"
 
+port=0;
+params=""
 i="\0";
 set -u
 for i in ${@:2}; do
@@ -75,7 +79,7 @@ while IFS= ; read -r line; do
   fi
 done <&"${SDR_IN}"
 
-declare -A pipes;
+#declare -A pipes;
 declare -A pids;
 declare -A logFiles;
 
@@ -93,14 +97,14 @@ for i in "${vfos[@]}"; do
   set -u;
   fileName="/tmp/log-${freq}";
   set -u;
-  cmd="socat TCP4:${host}:${port} - | sox -v0.8 -q -D -B -traw -b64 -ef -r${decimatedFs} - -traw -b16 -es -r48k - 2>/dev/null | dsd -i - -o /dev/null -n -f1 -w ${outPath}/out-${freq}.wav 2>&1 > ${fileName}"
+  cmd="socat TCP4:${host}:${port} - | sox -q -D -B -traw -b64 -ef -r${decimatedFs} - -traw -b16 -es -r48k - 2>/dev/null | dsd ${DSD_OPTS} -i - -o /dev/null -n -f1 -w ${OUT_PATH}/out-${freq}.wav 2>&1 | tee ${fileName}"
   set -u;
 
   echo "LOG: ${cmd}";
   eval "coproc ${coprocName} { ${cmd}; }"
   eval "exec {tmp_in}<&\${${coprocName}[0]}- {tmp_out}>&\${${coprocName}[1]}-";
   eval "pids[\"${coprocName}\"]=\${${coprocName}_PID}";
-  eval "pipes[\"${coprocName}\",1]=${tmp_in}; pipes[\"${coprocName}\",2]=${tmp_out}";
+#  eval "pipes[\"${coprocName}\",1]=${tmp_in}; pipes[\"${coprocName}\",2]=${tmp_out}";
   logFiles["${coprocName}"]=${fileName};
 
   unset fileName;
@@ -114,7 +118,7 @@ done
 unset i;
 
 echo "LOG: ${pids[@]}";
-echo "LOG: ${pipes[@]}";
+#echo "LOG: ${pipes[@]}";
 echo "LOG: ${logFiles[@]}";
 
 while IFS= ; read -r line; do

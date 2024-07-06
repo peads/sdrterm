@@ -356,7 +356,6 @@ def main(server_host: Annotated[str, Option(help='Port of local distribution ser
 
     with SocketReceiver(isDead=isDead) as receiver:
         try:
-            from misc.general_util import setSignalHandlers
             server, lt, ft, resetBuffers = output_server.initServer(receiver, isDead, server_host=server_host)
             app = SdrControl(receiver, server)
 

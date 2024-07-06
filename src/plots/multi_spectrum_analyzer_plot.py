@@ -19,19 +19,19 @@
 #
 from numpy import sqrt, round, ceil
 
-from misc.general_util import eprint
 from plots.spectrum_analyzer_plot import SpectrumAnalyzerPlot
 
 
 class MultiSpectrumAnalyzerPlot(SpectrumAnalyzerPlot):
     def __init__(self,
-                 bandwidth: int = 1,
+                 bandwidth: int,
                  vfos: str = None,
                  *args,
                  **kwargs):
-        from pyqtgraph import PlotWidget
         if vfos is None:
             raise ValueError("MultiSpectrumAnalyzerPlot cannot be used without the vfos option")
+
+        from pyqtgraph import PlotWidget
         super().__init__(*args, **kwargs)
         vfos = '' if vfos is None else vfos
         self.vfos = vfos.split(',')
@@ -42,7 +42,7 @@ class MultiSpectrumAnalyzerPlot(SpectrumAnalyzerPlot):
         rows = int(round(size))
 
         bandwidth >>= 1
-        self.item.setXRange(-bandwidth, bandwidth)
+        self.item.setXRange(-bandwidth, bandwidth, padding=0)
 
         j = 1
         for i, vfo in enumerate(self.vfos, start=0):
@@ -56,10 +56,10 @@ class MultiSpectrumAnalyzerPlot(SpectrumAnalyzerPlot):
             axis = item.getAxis("bottom")
 
             item.setXRange(-bandwidth + vfo, bandwidth + vfo)
-            item.setYRange(-6, 4)
+            item.setYRange(-6, 4, padding=0)
             item.setMouseEnabled(x=False, y=False)
             item.setMenuEnabled(False)
-            item.showAxes(True, showValues=(False, False, False, True))
+            item.showAxes(self._AXES, showValues=self._AXES_VALUES)
             item.hideButtons()
 
             plot = item.plot()

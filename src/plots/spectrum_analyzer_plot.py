@@ -17,13 +17,99 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
+from abc import ABC
+from multiprocessing import Value, Queue
 
-from plots.spectrum_analyzer import SpectrumAnalyzer
+from numpy import log10, abs
+from scipy.fft import fftshift, fftn, fftfreq
+
+from dsp.data_processor import DataProcessor
+from misc.general_util import printException
+from plots.abstract_plot import AbstractPlot
 
 
-class SpectrumAnalyzerPlot(SpectrumAnalyzer):
+class SpectrumAnalyzerPlot(DataProcessor, AbstractPlot, ABC):
+    _AXES = (True, False, False, True)
+    _AXES_VALUES = (False, False, False, True)
     def __init__(self,
+                 nfft: int = 2048,
                  *args,
                  **kwargs):
         super().__init__(*args, **kwargs)
-        # self._setTicks(self.nyquistFs)
+        from pyqtgraph import PlotWidget, GraphicsLayoutWidget
+        from pyqtgraph.Qt import QtCore, QtWidgets
+
+        self.app = QtWidgets.QApplication([])
+        self.app.quitOnLastWindowClosed()
+
+        self.window = QtWidgets.QMainWindow()
+        self.layout = QtWidgets.QGridLayout()
+        self.centralWidget = GraphicsLayoutWidget()
+        self.widget = PlotWidget()
+        self.item = self.widget.getPlotItem()
+        self.axis = self.item.getAxis("bottom")
+        self.plot = self.item.plot()
+        self.plots = [self.plot]
+
+        self.nfft = nfft
+        self.amp = None
+        self.freq = None
+        self.isFirst = True
+
+        self.centralWidget.setLayout(self.layout)
+        self.window.setCentralWidget(self.centralWidget)
+        self.layout.addWidget(self.widget, 0, 0)
+
+        self.window.setWindowTitle("SpectrumAnalyzer")
+        # self.window.resize(800, 600)
+
+        self.item.setXRange(-self.nyquistFs, self.nyquistFs, padding=0)
+        self.item.setMouseEnabled(x=False, y=False)
+        self.item.setYRange(-6, 4, padding=0)
+        self.item.setMenuEnabled(False)
+        self.item.showAxes(self._AXES, showValues=self._AXES_VALUES)
+        self.item.hideButtons()
+
+        self.timer = QtCore.QTimer()
+        self.timer.timeout.connect(self.update)
+        self.timer.start(self.frameRate)
+
+    def update(self):
+        try:
+            self.receiveData()
+            self._shiftFreq(self._y)
+            if self.amp is None:
+                self.amp = abs(fftshift(fftn(self._y, norm='forward')))
+            else:
+                self.amp[:] = abs(fftshift(fftn(self._y, norm='forward')))
+            self.amp[:] = log10(self.amp * self.amp)
+
+            if self.freq is None:
+                self.freq = fftshift(fftfreq(self.amp.size, self.dt))
+            else:
+                self.freq[:] = fftshift(fftfreq(self.amp.size, self.dt))
+
+            for plot in self.plots:
+                plot.setData(self.freq, self.amp)
+
+        except (RuntimeWarning, ValueError, KeyboardInterrupt):
+            self.quit()
+        except Exception as e:
+            printException(e)
+            self.quit()
+
+    @classmethod
+    def processData(cls, isDead: Value, buffer: Queue, fs: int, *args, **kwargs) -> None:
+        spec = None
+        try:
+            from pyqtgraph.Qt import QtWidgets
+            spec = cls(fs=fs, buffer=buffer, isDead=isDead, *args, **kwargs)
+            spec.window.show()
+            spec.axis.setLabel("Frequency", units="Hz", unitPrefix="M")
+            # spec.axis.setScale(1000)
+            QtWidgets.QApplication.instance().exec()
+        except (RuntimeWarning, KeyboardInterrupt):
+            pass
+        finally:
+            if spec is not None:
+                spec.quit()

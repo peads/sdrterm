@@ -41,8 +41,8 @@ def main(host: Annotated[str, Argument(help='Address of remote rtl_tcp server')]
 
 
     with SocketReceiver(isDead=isDead, host=host, port=port) as receiver:
-        server, st, pt, resetBuffers = output_server.initServer(receiver, isDead, server_host)
         receiver.connect()
+        server, st, pt, resetBuffers = output_server.initServer(receiver, isDead, server_host)
 
         cmdr = ControlRtlTcp(receiver, resetBuffers)
         pt.start()
@@ -82,9 +82,9 @@ def main(host: Annotated[str, Argument(help='Address of remote rtl_tcp server')]
             printException(e)
         finally:
             isDead.value = 1
-            receiver.disconnect()
             server.shutdown()
             server.server_close()
+            receiver.disconnect()
             st.join(5)
             pt.join(5)
             vprint('UI halted')
