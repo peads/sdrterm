@@ -23,8 +23,9 @@ from os import name as osName
 from socket import socket, AF_INET, SOCK_STREAM, SO_KEEPALIVE, SO_REUSEADDR, SOL_SOCKET
 from threading import Lock, Event
 from typing import Iterable
+from numpy import log2
 
-from misc.general_util import shutdownSocket, eprint
+from misc.general_util import shutdownSocket, eprint, findMtu
 from sdr.receiver import Receiver
 
 
@@ -54,7 +55,12 @@ class SocketReceiver(Receiver):
         self.__cond = None
         self._receiver = None
 
-    def reset(self, size: int = _BUF_SIZE) -> None:
+    def reset(self) -> None:
+        size = self._BUF_SIZE
+        mtu = findMtu(self._receiver)
+        if mtu > len(self.__buffer):
+            size = 1 << int(log2(mtu))
+            eprint(f'Re-sizing buffer from {len(self.__buffer)} to {size}')
         with self.__cond:
             self.__buffer: array = array('B', size * b'\0')
 
@@ -67,6 +73,7 @@ class SocketReceiver(Receiver):
             self._receiver.setsockopt(SOL_SOCKET, SO_REUSEPORT, 1)
         self._receiver.settimeout(5)
         self._receiver.connect((self.host, self.port))
+        self.reset()
 
     def __receive(self, clients: Iterable[RawIOBase]) -> None:
         for client in clients:

@@ -130,7 +130,7 @@ class VfoProcessor(DspProcessor):
                     self.outer_self.queue.task_done()
                     self.outer_self.event.wait()
 
-        with ThreadedTCPServer((self.host, findPort()), ThreadedTCPRequestHandler) as server:
+        with ThreadedTCPServer((self.host, findPort(self.host)), ThreadedTCPRequestHandler) as server:
             st = Thread(target=server.serve_forever)
 
             try:

@@ -85,9 +85,24 @@ def shutdownSocket(*socks: socket) -> None:
 # taken from https://stackoverflow.com/a/45690594
 def findPort(host='localhost') -> int:
     with closing(socket(AF_INET, SOCK_STREAM)) as s:
+        if 'posix' not in osName:
+            s.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
+        else:
+            from socket import SO_REUSEPORT
+            s.setsockopt(SOL_SOCKET, SO_REUSEPORT, 1)
         s.bind((host, 0))
-        s.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
         return s.getsockname()[1]
+
+
+def findMtu(sock: socket) -> int:
+    from psutil import net_if_stats, net_if_addrs
+    filtered_stats = {k: v.mtu for k, v in net_if_stats().items()}
+    if '0.0.0.0' == sock.getsockname()[0]:
+        return min(filtered_stats.values())
+    else:
+        filtered_addrs = {k: x.address for k, v in net_if_addrs().items() for x in v if
+                          x.address == sock.getsockname()[0]}
+        return min((filtered_stats[k] for k in filtered_addrs.keys()))
 
 
 def killChildren(pid, sig):
@@ -118,7 +133,9 @@ def __iAlreadyAxedYouOnce(pid: int, handlers: dict) -> Callable[[int, FrameType 
             pgid = getpgid(pid)
             tprint(f'Re-throwing {Signals(sig).name} to pgid: {pgid}')
             killpg(pgid, sig)
+
     return handleSignal
+
 
 def __extendSignalHandlers(pid: int, handlers: dict, handlePostSignal: Callable[[], None]) \
         -> Callable[[int, FrameType | None], None]:
