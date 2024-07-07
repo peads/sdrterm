@@ -204,7 +204,7 @@ class DspProcessor(DataProcessor):
 
     def __repr__(self):
         d = {(key if 'Str' not in key else key[:-3]): value for key, value in self.__dict__.items()
-             if not (key.startswith('_')
+             if not (value is None or key.startswith('_')
                      or callable(value)
                      or issubclass(type(value), ndarray)
                      or issubclass(type(value), dlti)
