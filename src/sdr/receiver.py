@@ -18,7 +18,6 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
 from abc import ABC, abstractmethod
-from multiprocessing import Barrier
 from typing import Generator
 
 
@@ -34,7 +33,6 @@ def prevent_out_of_context_execution(method):
 def remove_context(method):
     def decorator(self, *args, **kwargs):
         self._inside_context = False
-        self._barrier.abort()
         return method(self, *args, **kwargs)
 
     return decorator
@@ -42,10 +40,9 @@ def remove_context(method):
 
 class Receiver(ABC):
 
-    def __init__(self, barrier=Barrier(2)):
+    def __init__(self, *args, **kwargs):
         self._inside_context = False
         self._receiver = None
-        self._barrier = barrier
 
     def __enter__(self):
         self._inside_context = True
@@ -55,21 +52,6 @@ class Receiver(ABC):
     @abstractmethod
     def __exit__(self, *exc):
         pass
-
-    @property
-    @prevent_out_of_context_execution
-    def barrier(self):
-        return self._barrier
-
-    @barrier.setter
-    @prevent_out_of_context_execution
-    def barrier(self, _):
-        raise NotImplemented("Receiver does not allow setting barrier")
-
-    @barrier.deleter
-    @prevent_out_of_context_execution
-    def barrier(self):
-        del self._barrier
 
     @property
     @prevent_out_of_context_execution

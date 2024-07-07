@@ -24,27 +24,25 @@ from plots.spectrum_analyzer_plot import SpectrumAnalyzerPlot
 
 class MultiSpectrumAnalyzerPlot(SpectrumAnalyzerPlot):
     def __init__(self,
-                 bandwidth: int = 1,
+                 bandwidth: int,
                  vfos: str = None,
                  *args,
                  **kwargs):
-        from pyqtgraph import PlotWidget
         if vfos is None:
             raise ValueError("MultiSpectrumAnalyzerPlot cannot be used without the vfos option")
+
+        from pyqtgraph import PlotWidget
         super().__init__(*args, **kwargs)
         vfos = '' if vfos is None else vfos
         self.vfos = vfos.split(',')
         self.vfos = [int(vfo) for vfo in self.vfos if vfo is not None and len(vfo)]
-        self.item.setXRange(-bandwidth, bandwidth)
-        self.items = [self.item]
-        self.axes = [self.axis]
 
         size = sqrt(len(self.vfos) + 1)
         cols = int(ceil(size))
         rows = int(round(size))
 
         bandwidth >>= 1
-        self.item.setXRange(-bandwidth, bandwidth)
+        self.item.setXRange(-bandwidth, bandwidth, padding=0)
 
         j = 1
         for i, vfo in enumerate(self.vfos, start=0):
@@ -55,22 +53,21 @@ class MultiSpectrumAnalyzerPlot(SpectrumAnalyzerPlot):
 
             widget = PlotWidget()
             item = widget.getPlotItem()
-            item.setXRange(-bandwidth + vfo, bandwidth + vfo)
-            item.setYRange(-6, 4)
-            item.setMouseEnabled(x=False, y=False)
-            item.setMenuEnabled(False)
-            item.showAxes(True, showValues=(False, False, False, True))
-            item.hideButtons()
             axis = item.getAxis("bottom")
 
-            self.widgets.append((widget, vfo))
-            self.items.append(item)
-            self.lines.append(item.plot())
-            self.axes.append(axis)
+            item.setXRange(-bandwidth + vfo, bandwidth + vfo)
+            item.setYRange(-6, 4, padding=0)
+            item.setMouseEnabled(x=False, y=False)
+            item.setMenuEnabled(False)
+            item.showAxes(self._AXES, showValues=self._AXES_VALUES)
+            item.hideButtons()
+
+            plot = item.plot()
+            self.plots.append(plot)
+            # self.widgets.append((widget, vfo))
             self.layout.addWidget(widget, j, i)
 
             axis.setLabel("Frequency", units="Hz", unitPrefix="M")
-            axis.setScale(100)
             j += 1
         self.window.setWindowTitle("MultiSpectrumAnalyzer")
-        self._setTicks(bandwidth)
+        # self._setTicks(bandwidth)

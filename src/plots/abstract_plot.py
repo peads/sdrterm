@@ -20,14 +20,15 @@
 from abc import ABC, abstractmethod
 from typing import Callable
 
-from numpy import linspace
+from numpy import linspace, arange, ndarray, dtype, complex64, complex128, exp, pi
 
 from misc.general_util import vprint
 
 
-def check_halt_condition(method: Callable[[any], any]) -> Callable[[any], any]:
+def check_halt_condition(method: Callable[[any], int]) -> Callable[[any], int]:
     def decorator(self) -> any:
         if self.isDead.value:
+            self.quit()
             return None
         return method(self)
 
@@ -35,26 +36,46 @@ def check_halt_condition(method: Callable[[any], any]) -> Callable[[any], any]:
 
 
 class AbstractPlot(ABC):
-    from multiprocessing import Value
+    from multiprocessing import Value, Queue
 
     # frameRate default: ~60 fps
     def __init__(self,
                  isDead: Value,
                  fs: int,
+                 buffer: Queue,
                  frameRate: int = 17,
                  center: int = 0,
                  tuned: int = 0,
                  *args, **kwargs):
+        if isDead is None:
+            raise ValueError('MultiSpectrumAnalyzerPlot cannot be used without a halt condition: isDead')
+        if fs is None:
+            raise ValueError('MultiSpectrumAnalyzerPlot cannot be used without a sampling rate: fs')
+        if buffer is None:
+            raise ValueError('MultiSpectrumAnalyzerPlot cannot be used without a buffer')
+
+        self._t = None
+        self._shift = None
+        self._y = None
         self._dt = None
         self._nyquistFs = None
         self._fs = None
         self.widgets = None
+        self.timer = None
 
+        self.buffer = buffer
         self.isDead = isDead
         self.frameRate = frameRate
         self.offset = center
         self.tuned = tuned
         self.fs = fs
+        self._omega = -2j * pi * (self.offset / self.fs)
+
+    def _shiftFreq(self, y: ndarray[any, dtype[complex64 | complex128]]) -> None:
+        if self._t is None:
+            self._t = arange(len(y))
+            self._shift = exp(self._omega * self._t)
+        y[:] = y * self._shift
 
     def _setTicks(self, n, num=11):
         for widget, off in self.widgets:
@@ -65,7 +86,6 @@ class AbstractPlot(ABC):
             widget.getAxis('bottom').setTicks(ticks)
 
     def __del__(self):
-        self.quit()
         del self.isDead
         del self.frameRate
         del self.offset
@@ -104,10 +124,19 @@ class AbstractPlot(ABC):
     def dt(self, value) -> None:
         raise NotImplementedError('Setting the dt directly is not supported. Set fs instead')
 
-    @abstractmethod
     @check_halt_condition
-    def receiveData(self) -> tuple[int, any]:
-        pass
+    def receiveData(self) -> int | None:
+        # set buffer initially
+        if self._y is None:
+            self._y = self.buffer.get()
+        else:
+            self._y[:] = self.buffer.get()
+
+        # check for EOF
+        if self._y is None or not len(self._y):
+            self.quit()
+            return None
+        return len(self._y)
 
     @abstractmethod
     def update(self) -> None:
@@ -115,6 +144,9 @@ class AbstractPlot(ABC):
 
     def quit(self) -> None:
         from pyqtgraph.Qt.QtCore import QCoreApplication
+        self.timer.stop()
+        self.buffer.close()
+        self.buffer.join_thread()
         QCoreApplication.quit()
         vprint(f'Quit {self.__class__.__name__}')
 

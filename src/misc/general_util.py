@@ -95,30 +95,39 @@ def killChildren(pid, sig):
     parent = Process(pid)
     children = parent.children(recursive=True)
     for child in children:
-        tprint(f'Child status: {child.status()}')
         try:
+            tprint(f'Re-throwing {Signals(sig).name} to pid: {child.pid}')
             child.send_signal(sig)
         except NoSuchProcess:
             pass
 
 
-def __extendSignalHandlers(pid: int, handlers: dict, handlePostSignal: Callable[[], None]) \
-        -> Callable[[int, FrameType | None], None]:
-    def handleSignal(sig: int, frame: FrameType):
-        tprint(f'Frame: {frame}\npid {pid} caught: {Signals(sig).name}')
+def __iAlreadyAxedYouOnce(pid: int, handlers: dict) -> Callable[[int, FrameType | None], None]:
+    def handleSignal(sig: int, frame: FrameType) -> None:
+        tprint(f'Frame: {frame}')
+        vprint(f'pid {pid} caught: {Signals(sig).name}')
         if sig in handlers.keys():
             newHandler = handlers.pop(sig)
             signal(sig, newHandler)
             tprint(f'Reset signal handler from {handleSignal} back to {newHandler}')
-        tprint(f'Handlers after processing: {handlers.values()}')
-        handlePostSignal()
-        if 'posix' not in osName:
-            killChildren(pid, sig if sig != SIGINT else SIGTERM)
-        else:
-            from os import killpg, getpgid
+
+        isPosix = 'posix' in osName
+        killChildren(pid, sig if isPosix or sig != SIGINT else SIGTERM)
+        if isPosix:
+            from os import getpgid, killpg
             pgid = getpgid(pid)
-            tprint(f'Re-throwing to process group: {pgid}')
+            tprint(f'Re-throwing {Signals(sig).name} to pgid: {pgid}')
             killpg(pgid, sig)
+    return handleSignal
+
+def __extendSignalHandlers(pid: int, handlers: dict, handlePostSignal: Callable[[], None]) \
+        -> Callable[[int, FrameType | None], None]:
+    def handleSignal(sig: int, frame: FrameType) -> None:
+        tprint(f'Frame: {frame}')
+        vprint(f'pid {pid} caught: {Signals(sig).name}')
+        signal(sig, __iAlreadyAxedYouOnce(pid, handlers))
+        tprint(f'Handlers after processing: {handlers}')
+        handlePostSignal()
 
     return handleSignal
 

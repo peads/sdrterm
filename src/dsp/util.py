@@ -19,45 +19,39 @@
 #
 from typing import Iterable
 
-import numpy as np
-from scipy import signal
+from numpy import ndarray, complex64, complex128, dtype, exp, number
+from scipy.signal import sosfilt, tf2sos, ellip
 
 
-def shiftFreq(y: np.ndarray[any, np.dtype[np.complex64 | np.complex128]], freq: float, fs: float) \
-        -> np.ndarray[any, np.dtype[np.complex64 | np.complex128]] | None:
-    if not freq or not fs or y is None or not len(y):
-        return y
-    t = np.arange(len(y))
-    # shift in frequency specified in Hz
-    shift = np.exp(-2j * np.pi * (freq / fs) * t)
-
-    return y * shift
-
-
-def applyFilters(y: np.ndarray | Iterable, *filters) -> np.ndarray[any, np.dtype[np.complex64 | np.complex128]]:
+def applyFilters(y: ndarray | Iterable, *filters) -> ndarray[any, dtype[complex64 | complex128]]:
     for sos in filters:
-        y = signal.sosfilt(sos, y)
+        y = sosfilt(sos, y)
     return y
 
 
-def generateDeemphFilter(fs: float, f=7.5e-5) -> np.ndarray[any, np.dtype[np.number]]:
-    alpha = 1 / (1 - np.exp(-26666.7 / (f * fs)))
+def generateDeemphFilter(fs: float, f=7.5e-5) -> ndarray[any, dtype[number]]:
+    alpha = 1 / (1 - exp(-26666.7 / (f * fs)))
     B = [alpha, 1]
     A = [1]
-    return signal.tf2sos(B, A)
+    return tf2sos(B, A)
 
 
 def generateEllipFilter(fs: int, deg: int, Wn: float | Iterable[float], btype: str) -> tuple[any, float, any]:
-    return signal.ellip(deg, 1, 30, Wn,
-                        btype=btype,
-                        analog=False,
-                        output='sos',
-                        fs=fs)
-# def normalize(x: np.ndarray | list[Number]) -> np.ndarray[np.number] | list[Number]:
+    return ellip(deg, 1, 30, Wn,
+                 btype=btype,
+                 analog=False,
+                 output='sos',
+                 fs=fs)
+
+# def generateDcBlock():
+#     return tf2sos([1, 0, 0, 0, 0, 1], [1, 0, 0, 0, 0, .95], analog=False)
+
+
+# def normalize(x: ndarray | list[Number]) -> ndarray[number] | list[Number]:
 #     if x is None:
 #         raise ValueError('x is None')
 #
-#     x = np.array(x)
+#     x = array(x)
 #
 #     # def f(a, b):
 #     #     return (b - a) * (x - xmin) / (xmax - xmin) + a
@@ -65,19 +59,11 @@ def generateEllipFilter(fs: int, deg: int, Wn: float | Iterable[float], btype: s
 #     # return f(-0.5, 0.5)
 #     return (x - x.min()) / (x.max() - x.min()) - 0.5
 
-
-# def cnormalize(Z: np.ndarray[any, np.complex64 | np.complex128]) -> np.ndarray[any, np.complex64 | np.complex128]:
-#     ret = Z / np.abs(Z)
-#     ix = np.isnan(ret[:, ])
-#     ret[ix] = ret[np.ix_(ix)].all(0)
-#     return ret
-
-
 # def rms(inp):
 #     def func(a):
-#         return np.sqrt(-np.square(np.sum(a)) + len(a) * np.sum(a * a)) / len(a)
+#         return sqrt(-square(sum(a)) + len(a) * sum(a * a)) / len(a)
 #
-#     ret = np.apply_along_axis(func, -1, inp)
+#     ret = apply_along_axis(func, -1, inp)
 #     return ret
 
 

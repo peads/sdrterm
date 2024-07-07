@@ -17,71 +17,93 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
 from array import array
+from io import RawIOBase
 from multiprocessing import Value
 from os import name as osName
 from socket import socket, AF_INET, SOCK_STREAM, SO_KEEPALIVE, SO_REUSEADDR, SOL_SOCKET
-from threading import Lock
-from typing import Generator
+from threading import Lock, Event
+from typing import Iterable
 
-from misc.general_util import shutdownSocket
+from misc.general_util import shutdownSocket, eprint
 from sdr.receiver import Receiver
 
 
 class SocketReceiver(Receiver):
-    BUF_SIZE = 8192
+    _BUF_SIZE = 8192
+    _MAX_RETRIES = 5
 
     def __init__(self, isDead: Value, host: str = None, port: int = None):
-        self.isDisconnected = False
+        self._clients: dict[RawIOBase, Event] = {}
         self.host = host
         self.port = port
         self.__cond = Lock()
         super().__init__()
         self.isDead = isDead
-        self.__buffer: array | None = None
+        self.__buffer: array = array('B', self._BUF_SIZE * b'\0')
 
     def __exit__(self, *ex):
         self.disconnect()
 
     def disconnect(self):
-        self.isDisconnected = True
+        if self.__cond is not None:
+            for client in list(self._clients.keys()):
+                self._removeClient(client)
         if self._receiver is not None:
             shutdownSocket(self._receiver)
             self._receiver.close()
-        self.barrier.abort()
         self.__cond = None
+        self._receiver = None
 
-    def connect(self):
-        self.reset()
-        self.isDisconnected = not (self.host is None or self.port is None)
-
-    def reset(self, size: int = BUF_SIZE) -> None:
+    def reset(self, size: int = _BUF_SIZE) -> None:
         with self.__cond:
             self.__buffer: array = array('B', size * b'\0')
 
-    def receive(self) -> Generator:
-        if not self._barrier.broken:
-            self._barrier.wait()
-            self._barrier.abort()
+    def _connect(self):
+        self._receiver.setsockopt(SOL_SOCKET, SO_KEEPALIVE, 1)
+        if 'posix' not in osName:
+            self._receiver.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
+        else:
+            from socket import SO_REUSEPORT
+            self._receiver.setsockopt(SOL_SOCKET, SO_REUSEPORT, 1)
+        self._receiver.settimeout(5)
+        self._receiver.connect((self.host, self.port))
 
+    def __receive(self, clients: Iterable[RawIOBase]) -> None:
+        for client in clients:
+            try:
+                client.write(self.__buffer)
+            except (ConnectionError, EOFError, ValueError):
+                self._removeClient(client)
+
+    def _receive(self, file) -> int:
         while not self.isDead.value:
-            with socket(AF_INET, SOCK_STREAM) as self._receiver:
-                try:
-                    self._receiver.setsockopt(SOL_SOCKET, SO_KEEPALIVE, 1)
-                    if 'posix' not in osName:
-                        self._receiver.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
-                    else:
-                        from socket import SO_REUSEPORT
-                        self._receiver.setsockopt(SOL_SOCKET, SO_REUSEPORT, 1)
-                    self._receiver.settimeout(5)
-                    self._receiver.connect((self.host, self.port))
-                    self.isDisconnected = False
+            with self.__cond:
+                if not file.readinto(self.__buffer):
+                    break
+                clients = list(self._clients.keys())
+            self.__receive(clients)
+        return self._MAX_RETRIES
 
-                    file = self._receiver.makefile('rb')
-                    while not self.isDead.value and not self.isDisconnected:
-                        with self.__cond:
-                            if not file.readinto(self.__buffer):
-                                break
-                            yield self.__buffer[:]
-                finally:
-                    file.close()
-                    return None
+    def receive(self) -> None:
+        with socket(AF_INET, SOCK_STREAM) as self._receiver:
+            retries = 0
+            while retries < self._MAX_RETRIES and not self.isDead.value:
+                try:
+                    self._connect()
+                    with self._receiver.makefile('rb') as file:
+                        retries = self._receive(file)
+                except OSError as e:
+                    retries += 1
+                    eprint(f"Connection failed: {e}. Retrying {retries} of {self._MAX_RETRIES} times")
+        return
+
+    def addClient(self, request: RawIOBase) -> Event:
+        event = Event()
+        with self.__cond:
+            self._clients[request] = event
+        return event
+
+    def _removeClient(self, request: RawIOBase):
+        with self.__cond:
+            event = self._clients.pop(request)
+        event.set()

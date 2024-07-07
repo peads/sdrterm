@@ -17,45 +17,70 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-import array
-import io
-import sys
+from array import array
+from io import BufferedReader
 from multiprocessing import Value, Queue
+from sys import stdin
 from typing import Iterable
 
-import numpy as np
+from numpy import frombuffer, dtype, ndarray, complex128, complex64, ix_, isfinite, invert
 
+from dsp.iq_correction import IQCorrection
 from misc.general_util import vprint
 
 
-def readFile(wordtype: np.dtype,
-             offset: int,
+def readFile(bitsPerSample: dtype = None,
+             dataOffset: int = 0,
+             fs: int = None,
              buffers: Iterable[Queue] = None,
              isDead: Value = None,
              inFile: str = None,
-             readSize: int = 65536,
-             swapEndianness: bool = False, **_) -> None:
-    if swapEndianness:
-        wordtype = wordtype.newbyteorder('<' if '>' == wordtype.byteorder else '>')
-    dtype = np.dtype([('re', wordtype), ('im', wordtype)])
-    isFile = inFile is not None
-    buffer = array.array(wordtype.char, readSize * b'0')
+             readSize: int = 131072,
+             swapEndianness: bool = False,
+             correctIq: bool = False,
+             normalize: bool = False,
+             **_) -> None:
+    if fs is None:
+        raise ValueError('fs is not specified')
 
-    def feedBuffers(x: np.ndarray) -> None:
+    if swapEndianness:
+        bitsPerSample = bitsPerSample.newbyteorder('<' if '>' == bitsPerSample.byteorder else '>')
+
+    dataType = dtype([('re', bitsPerSample), ('im', bitsPerSample)])
+    isFile = inFile is not None
+    buffer = array(bitsPerSample.char, readSize * b'0')
+
+    def doCorrectIq(_: ndarray[any, dtype[complex64 | complex128]]) -> None:
+        pass
+
+    def doNormalize(_: ndarray[any, dtype[complex64 | complex128]]) -> None:
+        pass
+
+    if correctIq or (bitsPerSample.char.isupper() and normalize):
+        doCorrectIq = IQCorrection(fs).correctIq
+
+    if normalize:
+        def doNormalize(Z: ndarray[any, dtype[complex64 | complex128]]) -> None:
+            Z[:] = Z / abs(Z)
+            ix = invert(isfinite(Z[:, ]))
+            Z[ix] = Z[ix_(ix)].all(0)
+
+    def feedBuffers(x: ndarray) -> None:
         x = x['re'] + 1j * x['im']
+        doCorrectIq(x)
+        doNormalize(x)
         for client in buffers:
             client.put(x)
 
-    with open(inFile if isFile else sys.stdin.fileno(), 'rb', closefd=isFile) as file:
-        reader = io.BufferedReader(file if isFile else sys.stdin.buffer)
+    with open(inFile if isFile else stdin.fileno(), 'rb', closefd=isFile) as file:
+        reader = BufferedReader(file if isFile else stdin.buffer)
 
-        if offset and file.seekable():
-            file.seek(offset)
-
-        while not isDead.value:
-            if not reader.readinto(buffer):
-                break
-            y = np.frombuffer(buffer, dtype)
+        if dataOffset and file.seekable():
+            file.seek(dataOffset)
+        length = readSize
+        while not isDead.value and length == readSize:
+            length = reader.readinto(buffer)
+            y = frombuffer(buffer, dataType)
             feedBuffers(y)
 
     for buffer in buffers:

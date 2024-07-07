@@ -29,10 +29,10 @@ class IOArgs:
         from misc.general_util import traceOn, verboseOn
         from misc.file_util import checkWavHeader
         IOArgs.strct = kwargs
-        if 1 == verbose:
-            verboseOn()
-        elif verbose > 1:
+        if verbose > 1:
             traceOn()
+        elif verbose > 0:
+            verboseOn()
         kwargs['fileInfo'] = checkWavHeader(kwargs['inFile'], kwargs['fs'], kwargs['enc'])
         kwargs['fs'] = kwargs['fileInfo']['sampRate']
 

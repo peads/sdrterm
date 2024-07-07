@@ -116,7 +116,8 @@ def main(fs: Annotated[int, Option('--fs', '-r',
              str, Option(help='Address on which to listen for vfo client connections')] = 'localhost',
          swap_input_endianness: Annotated[bool, Option('--swap-input-endianness', '-X',
                                                        help='Swap input endianness',
-                                                       show_default='False => network-default, big-endian')] = False):
+                                                       show_default='False => network-default, big-endian')] = False,
+         normalize_input: Annotated[bool, Option(help='Normalize input data.')] = False,):
     from misc.general_util import printException, eprint, tprint
     from misc.io_args import IOArgs
     from misc.read_file import readFile
@@ -142,16 +143,17 @@ def main(fs: Annotated[int, Option('--fs', '-r',
                         simo=simo,
                         verbose=verbose,
                         smooth=smooth_output,
-                        vfoHost=vfo_host)
+                        vfoHost=vfo_host,
+                        normalize=normalize_input)
 
         for proc in processes:
             proc.start()
             tprint(f'Started proc {proc.name}: {proc.pid}')
 
+        tprint(f'Started proc Main: {getpid()}')
         eprint(repr(IOArgs.strct['processor']))
-        readFile(offset=ioArgs.strct['fileInfo']['dataOffset'],
-                 wordtype=ioArgs.strct['fileInfo']['bitsPerSample'],
-                 swapEndianness=swap_input_endianness, **ioArgs.strct)
+        readFile(swapEndianness=swap_input_endianness,
+                 **{**ioArgs.strct, **ioArgs.strct['fileInfo']})
 
         for proc in processes:
             proc.join()
@@ -161,6 +163,8 @@ def main(fs: Annotated[int, Option('--fs', '-r',
     except ValueError as ex:
         if 'is closed' not in str(ex):
             printException(ex)
+    except (BaseException, Exception) as ex:
+        printException(ex)
     finally:
         __stopProcessing()
         for buffer, proc in zip(buffers, processes):
@@ -205,19 +209,21 @@ def __generatePidFile(pid):
     eprint(f'PID file is created: {pidfile.name}')
 
     def deletePidFile():
+        tprint(f'Attempting to delete PID file')
         try:
             unlink(tmpfile)
-            tprint(f'PID file: {tmpfile} deleted')
+            vprint(f'PID file: {tmpfile} deleted')
         except OSError:
             pass
 
-        setSignalHandlers(pid, __stopProcessing)
-
+    setSignalHandlers(pid, __stopProcessing)
     return deletePidFile
 
 
 def __stopProcessing():
+    tprint(f'Setting halt condition')
     isDead.value = 1
+    tprint(f'Halt condition set')
     __deletePidFile()
 
 
@@ -225,4 +231,5 @@ if __name__ == '__main__':
     __setStartMethod()
     __deletePidFile = __generatePidFile(getpid())
     isDead = Value('b', 0)
+    isDead.value = 0
     typerRun(main)

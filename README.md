@@ -13,7 +13,7 @@ source .venv/bin/activate
 
 pip install --upgrade pip
 pip install pip-tools
-pip-compile requirements.in
+(Optional) pip-compile requirements.in
 pip-sync
 ...<do stuff here>...
 deactivate
@@ -21,12 +21,15 @@ deactivate
 Alternatively--if you do not wish to use a virtual environment--the dependencies may be installed via the system's 
 package manager; or, with caution, `pip` directly.
 
-*Plotting support is optional, and can be activated by uncommenting the line containing `pyqtgraph` in the `requirements.in` file
+*Plotting support is optional, and can be activated by uncommenting the line containing `pyqtgraph` and adding a Qt framework in the `requirements.in` file
 before running `pip-compile`, or if it happens to already be installed in the environment.*
-#### NOTE
-***By default, input is expected to be big-endian. To swap this, use the `-X` flag. Also, the default output mode
-(i.e. to stdin, or a file) uses doubles of the system-default endianness and alignment 
-(e.g. doubles are 8 or 4 byte-aligned, little-endian on the typical x86-based system using Windows and Linux respectively).***
+### NOTE
+* By default, raw input is expected to be big-endian. 
+  * To swap this, use the `-X` flag. 
+* The endianness of the wave files is determined from metadata.
+* The default output mode (i.e. to stdin, or a file) double (float64) of the system-default endianness and alignment.
+  * e.g., doubles are 8 or 4 byte-aligned, little-endian on the typical x86-based system using Windows and Linux respectively.
+* By default, simo mode outputs big-endian doubles to its sockets.
 # Examples
 ## sdrterm.py
 ### Pipe output processed from wave file through `sox` then `dsd`

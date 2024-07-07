@@ -18,8 +18,17 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
+####
+# Usage: ./example_simo_file.sh -i <file> -eB -r1024k -d25 -c"-1.2E+3" -t123.456M" --vfos=15000,-15000,30000" -w5k
+####
 OIFS=$IFS
-OUT_PATH="/mnt/d";
+if [[ -z ${DSD_OPTS} ]]; then
+  DSD_OPTS="";
+fi
+
+if [[ -z ${OUT_PATH} ]]; then
+  OUT_PATH="/mnt/d/testing";
+fi
 
 params=""
 i="\0";
@@ -82,7 +91,7 @@ for i in "${vfos[@]}"; do
   set -u;
   fileName="/tmp/log-${freq}";
   set -u;
-  cmd="socat TCP4:${host}:${port} - | sox -q -D -B -traw -b64 -ef -r${decimatedFs} - -traw -b16 -es -r48k - 2>/dev/null | dsd -q -i - -o /dev/null -n -f1 -w ${OUT_PATH}/out-${freq}.wav 2>&1"  # | tee ${fileName}"
+  cmd="socat TCP4:${host}:${port} - | sox -q -D -B -traw -b64 -ef -r${decimatedFs} - -traw -b16 -es -r48k - 2>/dev/null | dsd ${DSD_OPTS} -i - -o /dev/null -n -f1 -w ${OUT_PATH}/out-${freq}.wav 2>&1"  # | tee ${fileName}"
   set -u;
 
   echo "LOG: ${cmd}";
@@ -97,6 +106,7 @@ for i in "${vfos[@]}"; do
   unset coprocName;
   unset tmp_in;
   unset tmp_out;
+  sleep 0.1; #TODO figure out a better way to sync this
 done
 unset i;
 

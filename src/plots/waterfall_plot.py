@@ -23,20 +23,16 @@ from numpy import log10, abs, zeros, float64
 from scipy.signal import ShortTimeFFT
 
 from dsp.data_processor import DataProcessor
-from dsp.iq_correction import IQCorrection
-from dsp.util import shiftFreq
 from misc.general_util import printException
 from plots.abstract_plot import AbstractPlot
 
 
 class WaterfallPlot(DataProcessor, AbstractPlot):
-    NPERSEG = 256
-    NOOVERLAP = NPERSEG >> 1
-    NFFT = 1024
+    NPERSEG: int = 256
+    NOOVERLAP: int = NPERSEG >> 1
+    NFFT: int = 1024
 
     def __init__(self,
-                 buffer: Queue,
-                 correctIq: bool = False,
                  *args,
                  **kwargs):
         super().__init__(*args, **kwargs)
@@ -44,8 +40,6 @@ class WaterfallPlot(DataProcessor, AbstractPlot):
         from pyqtgraph.Qt.QtCore import QTimer
         from pyqtgraph.Qt.QtWidgets import QMainWindow, QApplication
         from pyqtgraph.Qt.QtGui import QTransform
-        self.buffer = buffer
-        self.iqCorrector = IQCorrection(self.fs) if correctIq else None
         self._SFT = ShortTimeFFT.from_window(('kaiser', 5),
                                              self.fs,
                                              self.NPERSEG,
@@ -63,7 +57,8 @@ class WaterfallPlot(DataProcessor, AbstractPlot):
         self.plot = self.widget.plotItem
         self.axis = self.plot.getAxis("bottom")
         self.xscale = self.NFFT / self.fs
-        self.image = zeros((self.NFFT, self.NPERSEG + 1), dtype=float64)
+        self.image = None
+        self.size = 0
 
         self.window.setCentralWidget(self.widget)
         self.plot.addItem(self.item)
@@ -71,7 +66,7 @@ class WaterfallPlot(DataProcessor, AbstractPlot):
         self.plot.setMouseEnabled(x=False, y=False)
         self.plot.setMenuEnabled(False)
         self.plot.hideButtons()
-        self.plot.showAxes(True, showValues=(False, False, False, True))#, size=(self.NFFT, self.NOOVERLAP >> 1))
+        self.plot.showAxes(True, showValues=(False, False, False, True))  # , size=(self.NFFT, self.NOOVERLAP >> 1))
         self.item.setLevels(None)
         self.axis.setLabel("Frequency", units="Hz", unitPrefix="M")
 
@@ -81,47 +76,41 @@ class WaterfallPlot(DataProcessor, AbstractPlot):
 
         colorMap = colormap.get('CET-CBL2')
         lut = colorMap.getLookupTable(nPts=256)
-        bwLevels = [-16, 16]
+        bwLevels = [-32, 32]
         self.item.setLookupTable(lut)
         self.item.setLevels(bwLevels)
-        self.item.setImage(self.image, autoLevels=False)
 
         self.timer = QTimer()
         self.timer.timeout.connect(self.update)
         self.timer.start(self.frameRate)
-        self.receiveData = self.buffer.get
-        if self.iqCorrector is not None:
-            self.correctIq = self.iqCorrector.correctIq
-
-    def correctIq(self, y):
-        return y
-
-    def quit(self):
-        self.timer.stop()
-        self.buffer.close()
-        self.buffer.join_thread()
-        super().quit()
-
-    def receiveData(self):
-        return None
 
     def update(self):
         try:
-            self.image[:] = 10. * log10(abs(self._SFT.stft(shiftFreq(self.correctIq(self.receiveData()), self.offset, self.fs))))
+            length = self.receiveData()
+            if self.image is None or length != self.size:
+                col = len(self._y) // self.NOOVERLAP
+                self.image = zeros((self.NFFT, col + 1), dtype=float64)
+                self.item.setImage(self.image, autoLevels=False)
+                self.size = length
+            self._shiftFreq(self._y)
+            self.image[:] = 10. * log10(abs(self._SFT.stft(self._y)))
             self.item.setImage(autoLevels=False)
-        except KeyboardInterrupt:
+        except (RuntimeWarning, ValueError, KeyboardInterrupt):
             self.quit()
         except Exception as e:
-            if "object has no attribute 'shape'" not in str(e):
-                printException(e)
+            printException(e)
             self.quit()
 
     @classmethod
     def processData(cls, isDead: Value, buffer: Queue, fs: int, *args, **kwargs) -> None:
+        spec = None
         try:
             from pyqtgraph.Qt import QtWidgets
             spec = cls(fs=fs, buffer=buffer, isDead=isDead, *args, **kwargs)
             spec.window.show()
             QtWidgets.QApplication.instance().exec()
-        except KeyboardInterrupt:
+        except (RuntimeWarning, KeyboardInterrupt):
             pass
+        finally:
+            if spec is not None:
+                spec.quit()

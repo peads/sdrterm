@@ -19,13 +19,13 @@
 #
 import socketserver
 import struct
-from multiprocessing import Pipe, Value, Queue, Barrier
-from threading import BrokenBarrierError, Thread
+from multiprocessing import Pipe, Value, Queue, JoinableQueue
+from threading import Thread
 
-import numpy as np
+from numpy import pi, array, ndarray, complex128, exp, arange, broadcast_to, ones
 
 from dsp.dsp_processor import DspProcessor
-from misc.general_util import eprint, printException, findPort, tprint, vprint
+from misc.general_util import eprint, printException, findPort, tprint, vprint, shutdownSocket
 
 
 class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
@@ -42,40 +42,39 @@ class VfoProcessor(DspProcessor):
         self.vfos = vfos.split(',')
         self.vfos = [int(x) + self.centerFreq for x in self.vfos if x is not None]
         self.vfos.append(self.centerFreq)
-        self.vfos = np.array(self.vfos)
+        self.vfos = array(self.vfos)
         self._nFreq = len(self.vfos)
-        self.omega = -2j * np.pi * (self.vfos / self.fs)
+        self.__omega = -2j * pi * (self.vfos / self.fs)
         self.host = vfoHost
+        self.__pipes: dict[str, Pipe] = {k: None for k in self.__omega}
+        self.__keys = JoinableQueue()
 
-    def _demod(self, y: np.ndarray):
+    def _demod(self, y: ndarray):
         ret = []
         for yy in y:
             ret.append([self.demod(yyy) for yyy in yy])
-        return np.array(ret)
+        return array(ret)
 
     def _generateShift(self, r: int, c: int) -> None:
-        self._shift = np.ones(shape=(self._nFreq, r, c), dtype=np.complex128)
-        if self.centerFreq:
-            shifts = np.exp([w * np.arange(c) for w in self.omega])
-            for i, shift in enumerate(shifts):
-                self._shift[i][:] = (np.broadcast_to(shift, (r, c)))
+        self._shift = ones(shape=(self._nFreq, r, c), dtype=complex128)
+        for i, w in enumerate(self.__pipes.keys()):
+            shift = exp(w * arange(c))
+            self._shift[i][:] = (broadcast_to(shift, (r, c)))
+            self.__keys.put(w)
+            tprint(f'Put {w}')
+        self.__keys.join()
+        eprint('Connection(s) established')
 
-    def __processData(self, isDead: Value, buffer: Queue, pipes: list[Pipe]) -> None:
-
-        while not isDead.value:
-            y = self._bufferChunk(isDead, buffer)
-
-            for (pipe, data) in zip(pipes, y):
+    def __processData(self, isDead: Value, buffer: Queue, *args) -> None:
+        while not (self._isDead or isDead.value):
+            for (pipe, data) in zip(self.__pipes.values(), self._bufferChunk(isDead, buffer)):
                 _, w = pipe
                 w.send(struct.pack('!' + str(data.size) + 'd', *data.flat))
-        for pipe in pipes:
-            VfoProcessor.removePipe(pipes, pipe)
 
-    @staticmethod
-    def removePipe(pipes, pipe):
+    def removePipe(self, key):
         try:
+            pipe = self.__pipes.pop(key)
             tprint(f'Removing pipe {pipe}')
-            pipes.remove(pipe)
             r, w = pipe
             r.close()
             w.close()
@@ -84,49 +83,49 @@ class VfoProcessor(DspProcessor):
         except (OSError, ValueError):
             return False
 
-    @staticmethod
-    def removePipes(pipes):
-        for pipe in list(pipes):
-            VfoProcessor.removePipe(pipes, pipe)
+    def removePipes(self):
+        for key in list(self.__pipes.keys()):
+            self.removePipe(key)
 
     def processData(self, isDead: Value, buffer: Queue, *args, **kwargs) -> None:
         children: int = self._nFreq + 1
-        barrier: Barrier = Barrier(children)
-        pipes: list[Pipe] = []
-
-        def awaitBarrier():
-            try:
-                if not barrier.broken:
-                    barrier.wait()
-                    barrier.abort()
-            except BrokenBarrierError:
-                pass
 
         class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler):
+            pipes: dict[str, Pipe] = None
+            keys: JoinableQueue = None
+            outer_self: DspProcessor = self
+
             def handle(self):
                 eprint(f'Connection request from {self.request.getsockname()}')
-                awaitBarrier()
-                r, w = pipe = Pipe(False)
-                pipes.append(pipe)
-                while not isDead.value:
-                    try:
-                        self.request.sendall(r.recv())
-                    except (OSError, EOFError) as ex:
-                        eprint(f'Client disconnected: {self.request.getsockname()}: {ex}')
-                        VfoProcessor.removePipe(pipes, pipe)
-                        del pipe
-                        self.request.close()
-                        return
-                VfoProcessor.removePipe(pipes, pipe)
-                del pipe
-                self.request.close()
-                return
 
+                r, w = pipe = Pipe(False)
+                key = self.keys.get()
+                tprint(f'Got {key}')
+                self.pipes[key] = pipe
+                self.keys.task_done()
+
+                try:
+                    while not (self.outer_self._isDead or isDead.value):
+                        self.request.sendall(r.recv())
+                except (OSError, EOFError) as ex:
+                    eprint(f'Client disconnected: {self.request.getsockname()}: {ex}')
+                finally:
+                    shutdownSocket(self.request)
+                    r.close()
+                    w.close()
+                    del pipe
+                    self.request.close()
+                    self.keys.put(key)
+                    return
+
+        ThreadedTCPRequestHandler.pipes = self.__pipes
+        ThreadedTCPRequestHandler.keys = self.__keys
         with ThreadedTCPServer((self.host, findPort()), ThreadedTCPRequestHandler) as server:
             server.max_children = children
             thread = Thread(target=server.serve_forever)
             thread.start()
             isShutdown = False
+
             def shutdown():
                 if not isShutdown:
                     serverName = server.__class__.__name__
@@ -142,9 +141,7 @@ class VfoProcessor(DspProcessor):
 
             try:
                 eprint(f'\nAccepting connections on {server.socket.getsockname()}\n')
-                awaitBarrier()
-                eprint('Connection(s) established')
-                self.__processData(isDead, buffer, pipes)
+                self.__processData(isDead, buffer)
                 isShutdown = shutdown()
                 threadName = thread.__class__.__name__
                 tprint(f'Awaiting {threadName}')
@@ -157,6 +154,6 @@ class VfoProcessor(DspProcessor):
             finally:
                 isShutdown = shutdown()
                 thread.join(5)
-                self.removePipes(pipes)
+                self.removePipes()
                 vprint(f'Multi-VFO writer halted')
                 return

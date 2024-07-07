@@ -17,11 +17,7 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-from multiprocessing import Value
-from queue import Queue
 from socketserver import BaseRequestHandler, ThreadingMixIn, TCPServer
-from threading import BrokenBarrierError
-from typing import Callable
 
 from misc.general_util import shutdownSocket, eprint, findPort
 from misc.keyboard_interruptable_thread import KeyboardInterruptableThread
@@ -32,64 +28,34 @@ def log(*args, **kwargs) -> None:
     eprint(*args, **kwargs)
 
 
-class ThreadedTCPServer(ThreadingMixIn, TCPServer):
-    pass
+class OutputServer(ThreadingMixIn, TCPServer):
+    def __init__(self, receiver: SocketReceiver, server_host: str, *args, **kwargs):
+        class ThreadedTCPRequestHandler(BaseRequestHandler):
+            def finish(self):
+                log(f'Client disconnected: {self.request.getsockname()}')
+                shutdownSocket(self.request)
+                self.request.close()
 
+            def handle(self):
+                log(f'Connection request from {self.request.getsockname()}')
+                with self.request.makefile('wb', buffering=False) as file:
+                    receiver.addClient(file).wait()
+                return
 
-def initServer(receiver: SocketReceiver, isDead: Value, server_host: str) \
-        -> tuple[ThreadedTCPServer, KeyboardInterruptableThread, KeyboardInterruptableThread, Callable[[int], None]]:
-    clients: list[Queue] = []
+        super().__init__((server_host, findPort(server_host)), ThreadedTCPRequestHandler, *args, **kwargs)
 
-    def awaitBarrier():
-        if not receiver.barrier.broken:
-            try:
-                receiver.barrier.wait()
-            except BrokenBarrierError:
-                return False
-        return True
+        self.receiver = receiver
+        self.pt = KeyboardInterruptableThread(receiver.disconnect, target=receiver.receive)
+        self.st = KeyboardInterruptableThread(receiver.disconnect, target=self.serve_forever)
 
-    class ThreadedTCPRequestHandler(BaseRequestHandler):
+    def __enter__(self):
+        super().__enter__()
+        self.pt.start()
+        self.st.start()
+        return self
 
-        def handle(self):
-            log(f'Connection request from {self.request.getsockname()}')
-            isBarrierPassed = awaitBarrier()
-            buffer = Queue()
-            clients.append(buffer)
-            while not isDead.value and isBarrierPassed:
-                try:
-                    data = buffer.get()
-                    self.request.sendall(data)
-                    buffer.task_done()
-                except (ConnectionError, EOFError, ValueError) as e:
-                    log(f'Client disconnected: {self.request.getsockname()}: {e}')
-                    break
-            clients.remove(buffer)
-            shutdownSocket(self.request)
-            del buffer
-            self.request.close()
-            return
-
-    def receive():
-        isBarrierPassed = awaitBarrier()
-        receiver.barrier.abort()
-        while not isDead.value and isBarrierPassed:
-            data = receiver.receive()
-            for y in data:
-                for client in list(clients):
-                    client.put(y)
-        return
-
-    server = ThreadedTCPServer((server_host, findPort()), ThreadedTCPRequestHandler)
-
-    def shutdownThread():
-        isDead.value = 1
-        receiver.disconnect()
-        for client in list(clients):
-            clients.remove(client)
-            client.join()
-            del client
-        return
-
-    st = KeyboardInterruptableThread(shutdownThread, target=server.serve_forever)
-    rt = KeyboardInterruptableThread(shutdownThread, target=receive)
-    return server, st, rt, receiver.reset
+    def __exit__(self, *args, **kwargs):
+        self.receiver.disconnect()
+        self.pt.join(5)
+        self.st.join(5)
+        super().__exit__(*args, **kwargs)
