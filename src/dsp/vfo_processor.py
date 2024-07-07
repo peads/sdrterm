@@ -22,10 +22,10 @@ import struct
 from multiprocessing import Pipe, Value, Queue, JoinableQueue
 from threading import Thread
 
-import numpy as np
+from numpy import pi, array, ndarray, complex128, exp, arange, broadcast_to, ones
 
 from dsp.dsp_processor import DspProcessor
-from misc.general_util import eprint, printException, findPort, tprint, vprint
+from misc.general_util import eprint, printException, findPort, tprint, vprint, shutdownSocket
 
 
 class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
@@ -42,24 +42,24 @@ class VfoProcessor(DspProcessor):
         self.vfos = vfos.split(',')
         self.vfos = [int(x) + self.centerFreq for x in self.vfos if x is not None]
         self.vfos.append(self.centerFreq)
-        self.vfos = np.array(self.vfos)
+        self.vfos = array(self.vfos)
         self._nFreq = len(self.vfos)
-        self.__omega = -2j * np.pi * (self.vfos / self.fs)
+        self.__omega = -2j * pi * (self.vfos / self.fs)
         self.host = vfoHost
         self.__pipes: dict[str, Pipe] = {k: None for k in self.__omega}
         self.__keys = JoinableQueue()
 
-    def _demod(self, y: np.ndarray):
+    def _demod(self, y: ndarray):
         ret = []
         for yy in y:
             ret.append([self.demod(yyy) for yyy in yy])
-        return np.array(ret)
+        return array(ret)
 
     def _generateShift(self, r: int, c: int) -> None:
-        self._shift = np.ones(shape=(self._nFreq, r, c), dtype=np.complex128)
+        self._shift = ones(shape=(self._nFreq, r, c), dtype=complex128)
         for i, w in enumerate(self.__pipes.keys()):
-            shift = np.exp(w * np.arange(c))
-            self._shift[i][:] = (np.broadcast_to(shift, (r, c)))
+            shift = exp(w * arange(c))
+            self._shift[i][:] = (broadcast_to(shift, (r, c)))
             self.__keys.put(w)
             tprint(f'Put {w}')
         self.__keys.join()
@@ -67,9 +67,7 @@ class VfoProcessor(DspProcessor):
 
     def __processData(self, isDead: Value, buffer: Queue, *args) -> None:
         while not (self._isDead or isDead.value):
-            y = self._bufferChunk(isDead, buffer)
-
-            for (pipe, data) in zip(self.__pipes.values(), y):
+            for (pipe, data) in zip(self.__pipes.values(), self._bufferChunk(isDead, buffer)):
                 _, w = pipe
                 w.send(struct.pack('!' + str(data.size) + 'd', *data.flat))
 
@@ -112,11 +110,12 @@ class VfoProcessor(DspProcessor):
                 except (OSError, EOFError) as ex:
                     eprint(f'Client disconnected: {self.request.getsockname()}: {ex}')
                 finally:
-                    self.keys.put(key)
+                    shutdownSocket(self.request)
                     r.close()
                     w.close()
                     del pipe
                     self.request.close()
+                    self.keys.put(key)
                     return
 
         ThreadedTCPRequestHandler.pipes = self.__pipes
