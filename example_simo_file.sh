@@ -22,11 +22,13 @@
 # Usage: ./example_simo_file.sh -i <file> -eB -r1024k -d25 -c"-1.2E+3" -t123.456M" --vfos=15000,-15000,30000" -w5k
 ####
 OIFS=$IFS
-OUT_PATH="/mnt/d/testing/";
 if [[ -z ${DSD_OPTS} ]]; then
   DSD_OPTS="";
 fi
-echo "$DSD_OPTS"
+
+if [[ -z ${OUT_PATH} ]]; then
+  OUT_PATH="/mnt/d/testing";
+fi
 
 params=""
 i="\0";

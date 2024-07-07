@@ -21,31 +21,31 @@
 ####
 # Usage: ./example.sh <wave_file>
 ####
-OUT_PATH=/mnt/d/testing/
+if [[ -z ${OUT_PATH} ]]; then
+  OUT_PATH="/mnt/d/testing";
+fi
 
 function runStdinTest {
-  time sox -q -D -twav ${1} -traw -b${3} -e${4} -B - 2>/dev/null \
-    | python src/sdrterm.py -w5000 -e${5} -r48000 ${2} 2>/dev/null \
+  time sox -q -D -twav ${1} -traw -b${2} -e${3} -B - 2>/dev/null \
+    | python src/sdrterm.py -w5000 -e${4} -r48000 ${5} 2>/dev/null \
     | sox -q -D -v0.75 -traw -r24k -b64 -ef - -traw -r48k -b16 -es - 2>/dev/null \
-    | dsd -q -i - -o /dev/null -n -w ${OUT_PATH}/out${5}.wav | grep "Total" - | grep -E --color=always '[0-9]+' -;
+    | dsd -q -i - -o /dev/null -n -w ${OUT_PATH}/out${4}.wav 2>&1 | grep "Total" - | grep -E --color=always '[0-9]+' -;
 }
 
 function runFileInTest {
-time python src/sdrterm.py -i ${2} -w5000 2>/dev/null \
-  | sox -q -D -traw -r24k -b64 -ef - -traw -r48k -b16 -es - 2>/dev/null \
-  | dsd -q -i - -o /dev/null -n -w ${OUT_PATH}/out${1}.wav | grep "Total" - | grep -E --color=always '[0-9]+' -;
+  time python src/sdrterm.py -i ${1} -w5k ${3} 2>/dev/null \
+    | sox -q -v0.8 -D -traw -ef -b64 -r24k - -traw -es -b16 -r48k - 2>/dev/null \
+    | dsd -q -i - -n -o /dev/null -w ${OUT_PATH}/out${2}.wav 2>&1 | grep "Total" - | grep -E --color=always '[0-9]+' -;
   rm -f /tmp/tmp.wav;
 }
 
 echo "START basic raw stdin test";
-runStdinTest "$1" "$2" "16" "s" "h"
+runStdinTest "$1" "16" "s" "h"
+runStdinTest "$1" "8" "unsigned-int" "B" "--correct-iq"
 printf "END basic raw stdin test\n\n";
 
-runStdinTest "$1" "--normalize-input ${2} " "8" "unsigned-int" "B"
-runStdinTest "$1" "--normalize-input ${2} " "32" "s" "i"
-runStdinTest "$1" "--normalize-input ${2} " "32" "f" "f"
-runStdinTest "$1" "--normalize-input ${2} " "64" "f" "d"
-
 echo "START basic wave file test";
-runFileInTest "i16" "$1"
+runFileInTest "$1" "i16"
+sox -q -D -twav ${1} -twav -eunsigned-int -r48k -b8 /tmp/tmp.wav 2>/dev/null;
+runFileInTest "/tmp/tmp.wav" "u8" "--correct-iq"
 printf "END basic wave file test\n\n";
