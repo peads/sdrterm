@@ -19,8 +19,10 @@
 #
 import socketserver
 import struct
-from multiprocessing import Pipe, Value, Queue, JoinableQueue
-from threading import Thread
+from io import RawIOBase
+from multiprocessing import Value
+from queue import Queue
+from threading import Thread, Event
 
 from numpy import pi, array, ndarray, complex128, exp, arange, broadcast_to, ones
 
@@ -46,8 +48,46 @@ class VfoProcessor(DspProcessor):
         self._nFreq = len(self.vfos)
         self.__omega = -2j * pi * (self.vfos / self.fs)
         self.host = vfoHost
-        self.__pipes: dict[str, Pipe] = {k: None for k in self.__omega}
-        self.__keys = JoinableQueue()
+
+        self.__queue: Queue[str] | None = None
+        self.__clients: dict[str, RawIOBase] | None = None
+        self.__event: Event | None = None
+
+    @property
+    def clients(self) -> dict[str, RawIOBase]:
+        return self.__clients
+
+    @clients.setter
+    def clients(self, _):
+        raise NotImplemented('Setting queue is not allowed')
+
+    @clients.deleter
+    def clients(self):
+        del self.__clients
+
+    @property
+    def event(self) -> Event:
+        return self.__event
+
+    @event.setter
+    def event(self, _):
+        raise NotImplemented('Setting queue is not allowed')
+
+    @event.deleter
+    def event(self):
+        del self.__event
+
+    @property
+    def queue(self) -> Queue[str]:
+        return self.__queue
+
+    @queue.setter
+    def queue(self, _):
+        raise NotImplemented('Setting queue is not allowed')
+
+    @queue.deleter
+    def queue(self):
+        del self.__queue
 
     def _demod(self, y: ndarray):
         ret = []
@@ -57,103 +97,53 @@ class VfoProcessor(DspProcessor):
 
     def _generateShift(self, r: int, c: int) -> None:
         self._shift = ones(shape=(self._nFreq, r, c), dtype=complex128)
-        for i, w in enumerate(self.__pipes.keys()):
+        for i, w in enumerate(self.__omega):
             shift = exp(w * arange(c))
             self._shift[i][:] = (broadcast_to(shift, (r, c)))
-            self.__keys.put(w)
+            self.queue.put(w)
             tprint(f'Put {w}')
-        self.__keys.join()
+        self.queue.join()
         eprint('Connection(s) established')
 
     def __processData(self, isDead: Value, buffer: Queue, *args) -> None:
         while not (self._isDead or isDead.value):
-            for (pipe, data) in zip(self.__pipes.values(), self._bufferChunk(isDead, buffer)):
-                _, w = pipe
-                w.send(struct.pack('!' + str(data.size) + 'd', *data.flat))
-
-    def removePipe(self, key):
-        try:
-            pipe = self.__pipes.pop(key)
-            tprint(f'Removing pipe {pipe}')
-            r, w = pipe
-            r.close()
-            w.close()
-            tprint(f'Removed pipe {pipe}')
-            return True
-        except (OSError, ValueError):
-            return False
-
-    def removePipes(self):
-        for key in list(self.__pipes.keys()):
-            self.removePipe(key)
+            for (request, data) in zip(self.__clients.values(), self._bufferChunk(isDead, buffer)):
+                request.write(struct.pack('!' + str(data.size) + 'd', *data.flat))
 
     def processData(self, isDead: Value, buffer: Queue, *args, **kwargs) -> None:
-        children: int = self._nFreq + 1
+        self.__queue = Queue()
+        self.__event = Event()
+        self.__clients = {}
 
         class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler):
-            pipes: dict[str, Pipe] = None
-            keys: JoinableQueue = None
-            outer_self: DspProcessor = self
+            outer_self: VfoProcessor = self
+
+            def finish(self):
+                eprint(f'Client disconnected: {self.request.getsockname()}')
+                shutdownSocket(self.request)
+                self.request.close()
 
             def handle(self):
                 eprint(f'Connection request from {self.request.getsockname()}')
+                with self.request.makefile('wb', buffering=False) as file:
+                    self.outer_self.clients[self.outer_self.queue.get()] = file
+                    self.outer_self.queue.task_done()
+                    self.outer_self.event.wait()
 
-                r, w = pipe = Pipe(False)
-                key = self.keys.get()
-                tprint(f'Got {key}')
-                self.pipes[key] = pipe
-                self.keys.task_done()
-
-                try:
-                    while not (self.outer_self._isDead or isDead.value):
-                        self.request.sendall(r.recv())
-                except (OSError, EOFError) as ex:
-                    eprint(f'Client disconnected: {self.request.getsockname()}: {ex}')
-                finally:
-                    shutdownSocket(self.request)
-                    r.close()
-                    w.close()
-                    del pipe
-                    self.request.close()
-                    self.keys.put(key)
-                    return
-
-        ThreadedTCPRequestHandler.pipes = self.__pipes
-        ThreadedTCPRequestHandler.keys = self.__keys
         with ThreadedTCPServer((self.host, findPort()), ThreadedTCPRequestHandler) as server:
-            server.max_children = children
-            thread = Thread(target=server.serve_forever)
-            thread.start()
-            isShutdown = False
-
-            def shutdown():
-                if not isShutdown:
-                    serverName = server.__class__.__name__
-                    tprint(f'{buffer} shutting down')
-                    buffer.close()
-                    buffer.join_thread()
-                    tprint(f'{buffer} shut down')
-                    tprint(f'{serverName} shutting down')
-                    server.shutdown()
-                    tprint(f'{serverName} shutdown')
-                    return True
-                return isShutdown
+            st = Thread(target=server.serve_forever)
 
             try:
                 eprint(f'\nAccepting connections on {server.socket.getsockname()}\n')
+                st.start()
                 self.__processData(isDead, buffer)
-                isShutdown = shutdown()
-                threadName = thread.__class__.__name__
-                tprint(f'Awaiting {threadName}')
-                thread.join()
-                tprint(f'{threadName} joined')
             except (KeyboardInterrupt, TypeError):
                 pass
             except Exception as e:
                 printException(e)
             finally:
-                isShutdown = shutdown()
-                thread.join(5)
-                self.removePipes()
+                self.event.set()
+                server.shutdown()
+                st.join()
                 vprint(f'Multi-VFO writer halted')
                 return
