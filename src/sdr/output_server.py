@@ -45,8 +45,8 @@ class OutputServer(ThreadingMixIn, TCPServer):
         super().__init__((server_host, findPort(server_host)), ThreadedTCPRequestHandler, *args, **kwargs)
 
         self.receiver = receiver
-        self.pt = KeyboardInterruptableThread(receiver.disconnect, target=receiver.receive)
-        self.st = KeyboardInterruptableThread(receiver.disconnect, target=self.serve_forever)
+        self.pt = KeyboardInterruptableThread(self.shutdown, target=receiver.receive)
+        self.st = KeyboardInterruptableThread(self.shutdown, target=self.serve_forever)
 
     def __enter__(self):
         super().__enter__()

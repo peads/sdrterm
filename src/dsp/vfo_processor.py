@@ -17,11 +17,10 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-import socketserver
-import struct
 from io import RawIOBase
 from multiprocessing import Value
 from queue import Queue
+from socketserver import ThreadingMixIn, TCPServer, BaseRequestHandler
 from threading import Thread, Event
 
 from numpy import pi, array, ndarray, complex128, exp, arange, broadcast_to, ones
@@ -30,7 +29,7 @@ from dsp.dsp_processor import DspProcessor
 from misc.general_util import eprint, printException, findPort, tprint, vprint, shutdownSocket
 
 
-class ThreadedTCPServer(socketserver.ThreadingMixIn, socketserver.TCPServer):
+class ThreadedTCPServer(ThreadingMixIn, TCPServer):
     pass
 
 
@@ -106,16 +105,17 @@ class VfoProcessor(DspProcessor):
         eprint('Connection(s) established')
 
     def __processData(self, isDead: Value, buffer: Queue, *args) -> None:
+        from struct import pack
         while not (self._isDead or isDead.value):
             for (request, data) in zip(self.__clients.values(), self._bufferChunk(isDead, buffer)):
-                request.write(struct.pack('!' + str(data.size) + 'd', *data.flat))
+                request.write(pack('!' + str(data.size) + 'd', *data.flat))
 
     def processData(self, isDead: Value, buffer: Queue, *args, **kwargs) -> None:
         self.__queue = Queue()
         self.__event = Event()
         self.__clients = {}
 
-        class ThreadedTCPRequestHandler(socketserver.BaseRequestHandler):
+        class ThreadedTCPRequestHandler(BaseRequestHandler):
             outer_self: VfoProcessor = self
 
             def finish(self):
@@ -142,8 +142,11 @@ class VfoProcessor(DspProcessor):
             except Exception as e:
                 printException(e)
             finally:
-                self.event.set()
                 server.shutdown()
+                self._isDead = True
+                self.__event.set()
+                with self.__queue.all_tasks_done:
+                    self.__queue.all_tasks_done.notify_all()
                 st.join()
                 vprint(f'Multi-VFO writer halted')
                 return

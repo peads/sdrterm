@@ -17,15 +17,10 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-import json
-import multiprocessing
-import os
-import struct
-import sys
 from multiprocessing import Value, Queue
 from typing import Callable
 
-from numpy import ndarray, dtype, complex64, complex128, real, pad, broadcast_to, exp, arange, pi
+from numpy import ndarray, dtype, complex64, complex128, float32, float64, pad, broadcast_to, exp, arange, pi
 from scipy.signal import decimate, dlti, savgol_filter
 
 from dsp.data_processor import DataProcessor
@@ -44,6 +39,7 @@ class DspProcessor(DataProcessor):
                  tuned: int = 0,
                  dec: int = 2,
                  smooth: bool = False,
+                 fileInfo:dict = None,
                  **kwargs):
 
         self.bandwidth \
@@ -61,9 +57,10 @@ class DspProcessor(DataProcessor):
         self.smooth = smooth
         self._shift = None
         self._Y = None
-        self._nCpus = os.cpu_count()
+        self._nCpus = 1
         self._ii = range(self._nCpus)
         self._isDead = False
+        self.__fileInfo = fileInfo
 
     @property
     def fs(self):
@@ -106,24 +103,17 @@ class DspProcessor(DataProcessor):
     def decimatedFs(self, _):
         raise NotImplementedError('Setting the decimatedFs directly is not supported. Set fs instead')
 
-    def demod(self, y: ndarray[any, dtype[complex64 | complex128]]) -> ndarray[any, dtype[real]]:
+    def demod(self, y: ndarray[any, dtype[complex64 | complex128]]) -> ndarray[any, dtype[float32 | float64]]:
         pass
 
     def __setDemod(self, fun: Callable[
-        [ndarray[any, dtype[complex64 | complex128]]], ndarray[any, dtype[real]]],
-                   *filters) -> Callable[[ndarray[any, dtype[complex64 | complex128]]], ndarray[any, dtype[real]]]:
+        [ndarray[any, dtype[complex64 | complex128]]], ndarray[any, dtype[float32 | float64]]],
+                   *filters) -> Callable[
+        [ndarray[any, dtype[complex64 | complex128]]], ndarray[any, dtype[float32 | float64]]]:
         if fun is not None and filters is not None and len(filters) > 0:
             self._outputFilters.clear()
             self._outputFilters.extend(*filters)
             setattr(self, 'demod', fun)
-            # self._aaFilter = (
-            #     ellip(self._FILTER_DEGREE << 1, 0.5, 10,
-            #                  Wn=self.bandwidth,
-            #                  btype='lowpass',
-            #                  analog=False,
-            #                  output='zpk',
-            #                  fs=self.__fs))
-            # self._aaFilter = ZerosPolesGain(*self._aaFilter, dt=self.__dt)
             return self.demod
         raise ValueError("Demodulation function, or filters not defined")
 
@@ -145,7 +135,7 @@ class DspProcessor(DataProcessor):
     def _demod(self, y: ndarray):
         return [self.demod(yy) for yy in y]
 
-    def _processChunk(self, y: ndarray) -> ndarray[any, dtype[real]]:
+    def _processChunk(self, y: ndarray) -> ndarray[any, dtype[float32 | float64]]:
         if self._shift is not None:
             '''
                 NOTE: apparently, numpy doesn't override the unary multiplication arithemetic assignment operator the
@@ -153,11 +143,11 @@ class DspProcessor(DataProcessor):
             '''
             y = y * self._shift
         if self._decimationFactor > 1:
-            y = decimate(y, self._decimationFactor)#, ftype=self._aaFilter)
+            y = decimate(y, self._decimationFactor)
         y = self._demod(y)
         return applyFilters(y, self._outputFilters)
 
-    def _bufferChunk(self, isDead: Value, buffer: Queue) -> ndarray[any, dtype[real]]:
+    def _bufferChunk(self, isDead: Value, buffer: Queue) -> ndarray[any, dtype[float32 | float64]]:
         for i in self._ii:
             y = buffer.get()
             if y is None or not len(y) or isDead.value:
@@ -173,20 +163,23 @@ class DspProcessor(DataProcessor):
         return self._processChunk(self._Y)
 
     def __processData(self, isDead: Value, buffer: Queue, file):
+        from struct import pack
         while not (self._isDead or isDead.value):
             y = self._bufferChunk(isDead, buffer)
             size = y.size
             y = y.flat
             if self.smooth:
                 y = savgol_filter(y, self.smooth, self._FILTER_DEGREE)
-            file.write(struct.pack('@' + (size * 'd'), *y))
+            file.write(pack('@' + (size * 'd'), *y))
 
     def _generateShift(self, r: int, c: int) -> None:
         if self.centerFreq:
             self._shift = broadcast_to(exp(-2j * pi * (self.centerFreq / self.__fs) * arange(c)), (r, c))
 
     def processData(self, isDead: Value, buffer: Queue, f: str, *args, **kwargs) -> None:
-        with open(f, 'wb') if f is not None else open(sys.stdout.fileno(), 'wb', closefd=False) as file:
+        from multiprocessing import current_process
+        from sys import stdout
+        with open(f, 'wb') if f is not None else open(stdout.fileno(), 'wb', closefd=False) as file:
             try:
                 self.__processData(isDead, buffer, file)
                 file.write(b'')
@@ -194,7 +187,7 @@ class DspProcessor(DataProcessor):
             except KeyboardInterrupt:
                 pass
             except Exception as e:
-                eprint(f'Process {multiprocessing.current_process().name} raised exception')
+                eprint(f'Process {current_process().name} raised exception')
                 printException(e)
             finally:
                 buffer.close()
@@ -203,15 +196,17 @@ class DspProcessor(DataProcessor):
                 return
 
     def __repr__(self):
+        from json import dumps
         d = {(key if 'Str' not in key else key[:-3]): value for key, value in self.__dict__.items()
              if not (value is None or key.startswith('_')
                      or callable(value)
                      or issubclass(type(value), ndarray)
                      or issubclass(type(value), dlti)
                      or key in {'outputFilters'})}
+        d['encoding'] = str(self.__fileInfo['bitsPerSample'])
         d['fs'] = self.__fs
         d['decimatedFs'] = self.__decimatedFs
-        return json.dumps(d, indent=2)
+        return dumps(d, indent=2)
 
     def __str__(self):
         return self.__class__.__name__

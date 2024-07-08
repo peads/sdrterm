@@ -17,8 +17,8 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-import struct
 from enum import Enum
+from struct import unpack
 from typing import Iterable
 
 import numpy as np
@@ -123,7 +123,7 @@ def checkWavHeader(f, fs, enc):
         # derived from http://soundfile.sapp.org/doc/WaveFormat/ and https://bts.keep-cool.org/wiki/Specs/CodecsValues
         if b'RIFF' != file.read(4):
             return parseRawType(fs, enc)
-        chunkSize, = struct.unpack('<I', file.read(4))
+        chunkSize, = unpack('<I', file.read(4))
         if b'WAVE' != file.read(4):
             raise ValueError('Invalid: not wave file')
         if b'fmt ' != file.read(4):  # 0x666D7420:  # fmt
@@ -138,15 +138,15 @@ def checkWavHeader(f, fs, enc):
                blockAlign,      # 2
                bitsPerSample,   # 2
                                 # 20
-               ) = struct.unpack('<IHHIIHH', file.read(20))
+               ) = unpack('<IHHIIHH', file.read(20))
         ret = zipRet(ret)
         subFormat = None
 
         if WaveFormat.WAVE_FORMAT_EXTENSIBLE.value == ret['audioFormat']:
-            extraParamSize, = struct.unpack('<H', file.read(2))
+            extraParamSize, = unpack('<H', file.read(2))
             subFormatOffset = extraParamSize - 16
-            extraParams = struct.unpack('<' + str(subFormatOffset) + 'B', file.read(subFormatOffset))
-            subFormat, = struct.unpack('<H', file.read(2))
+            extraParams = unpack('<' + str(subFormatOffset) + 'B', file.read(subFormatOffset))
+            subFormat, = unpack('<H', file.read(2))
             if b'\x00\x00\x00\x00\x10\x00\x80\x00\x00\xAA\x00\x38\x9B\x71' != file.read(14):
                 raise ValueError('Invalid SubFormat GUID')
             subFormat = ExWaveFormat(subFormat)
@@ -179,7 +179,7 @@ def checkWavHeader(f, fs, enc):
 #
 #         frame = file.readframes(LEN)
 #         for b in TYPES[bitdepth]:
-#             v = np.array(struct.unpack(b * LEN, frame))
+#             v = np.array(unpack(b * LEN, frame))
 #             x = v[0::2]
 #             y = v[1::2]
 #             if len(x) < len(y):

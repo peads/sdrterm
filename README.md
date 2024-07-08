@@ -1,8 +1,8 @@
 # Requirements
-* python3 (other requirements will be handled via pip-tools [see below](#Installing-required-packages))
-# Installing required dependencies
+## Installing required dependencies
 After cloning this repo perform the following:
 ```
+cd <path/to/clone>
 python -m venv .venv
 
 (if using windows)
@@ -11,11 +11,13 @@ python -m venv .venv
 (otherwise)
 source .venv/bin/activate
 
-pip install --upgrade pip
-pip install pip-tools
-(Optional) pip-compile requirements.in
-pip-sync
+(either)
+pip install .
+(or to include optional graphing dependencies)
+pip install .[gui]
+
 ...<do stuff here>...
+
 deactivate
 ```
 Alternatively--if you do not wish to use a virtual environment--the dependencies may be installed via the system's 

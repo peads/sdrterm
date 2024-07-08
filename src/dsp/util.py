@@ -19,17 +19,17 @@
 #
 from typing import Iterable
 
-from numpy import ndarray, complex64, complex128, dtype, exp, number
+from numpy import ndarray, complex64, complex128, dtype, exp, float32, float64
 from scipy.signal import sosfilt, tf2sos, ellip
 
 
-def applyFilters(y: ndarray | Iterable, *filters) -> ndarray[any, dtype[complex64 | complex128]]:
+def applyFilters(y: ndarray | Iterable, *filters) -> ndarray[any, dtype[float32 | float64 | complex64 | complex128]]:
     for sos in filters:
         y = sosfilt(sos, y)
     return y
 
 
-def generateDeemphFilter(fs: float, f=7.5e-5) -> ndarray[any, dtype[number]]:
+def generateDeemphFilter(fs: float, f: float = 7.5e-5) -> ndarray[any, dtype[float32 | float64]]:
     alpha = 1 / (1 - exp(-26666.7 / (f * fs)))
     B = [alpha, 1]
     A = [1]

@@ -17,20 +17,18 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-from abc import ABC
-from multiprocessing import Value, Queue
 
 from numpy import log10, abs
 from scipy.fft import fftshift, fftn, fftfreq
 
-from dsp.data_processor import DataProcessor
 from misc.general_util import printException
 from plots.abstract_plot import AbstractPlot
 
 
-class SpectrumAnalyzerPlot(DataProcessor, AbstractPlot, ABC):
+class SpectrumAnalyzerPlot(AbstractPlot):
     _AXES = (True, False, False, True)
     _AXES_VALUES = (False, False, False, True)
+
     def __init__(self,
                  nfft: int = 2048,
                  *args,
@@ -61,7 +59,6 @@ class SpectrumAnalyzerPlot(DataProcessor, AbstractPlot, ABC):
         self.layout.addWidget(self.widget, 0, 0)
 
         self.window.setWindowTitle("SpectrumAnalyzer")
-        # self.window.resize(800, 600)
 
         self.item.setXRange(-self.nyquistFs, self.nyquistFs, padding=0)
         self.item.setMouseEnabled(x=False, y=False)
@@ -97,19 +94,3 @@ class SpectrumAnalyzerPlot(DataProcessor, AbstractPlot, ABC):
         except Exception as e:
             printException(e)
             self.quit()
-
-    @classmethod
-    def processData(cls, isDead: Value, buffer: Queue, fs: int, *args, **kwargs) -> None:
-        spec = None
-        try:
-            from pyqtgraph.Qt import QtWidgets
-            spec = cls(fs=fs, buffer=buffer, isDead=isDead, *args, **kwargs)
-            spec.window.show()
-            spec.axis.setLabel("Frequency", units="Hz", unitPrefix="M")
-            # spec.axis.setScale(1000)
-            QtWidgets.QApplication.instance().exec()
-        except (RuntimeWarning, KeyboardInterrupt):
-            pass
-        finally:
-            if spec is not None:
-                spec.quit()

@@ -22,10 +22,11 @@ from typing import Callable
 
 from numpy import linspace, arange, ndarray, dtype, complex64, complex128, exp, pi
 
+from dsp.data_processor import DataProcessor
 from misc.general_util import vprint
 
 
-def check_halt_condition(method: Callable[[any], int]) -> Callable[[any], int]:
+def check_halt_condition(method: Callable[..., int]) -> Callable[..., int]:
     def decorator(self) -> any:
         if self.isDead.value:
             self.quit()
@@ -35,7 +36,7 @@ def check_halt_condition(method: Callable[[any], int]) -> Callable[[any], int]:
     return decorator
 
 
-class AbstractPlot(ABC):
+class AbstractPlot(DataProcessor, ABC):
     from multiprocessing import Value, Queue
 
     # frameRate default: ~60 fps
@@ -62,6 +63,8 @@ class AbstractPlot(ABC):
         self._fs = None
         self.widgets = None
         self.timer = None
+        self.axis = None
+        self.window = None
 
         self.buffer = buffer
         self.isDead = isDead
@@ -149,6 +152,22 @@ class AbstractPlot(ABC):
         self.buffer.join_thread()
         QCoreApplication.quit()
         vprint(f'Quit {self.__class__.__name__}')
+
+    @classmethod
+    def processData(cls, isDead: Value, buffer: Queue, fs: int, *args, **kwargs) -> None:
+        spec = None
+        try:
+            from pyqtgraph.Qt import QtWidgets
+            spec = cls(fs=fs, buffer=buffer, isDead=isDead, *args, **kwargs)
+            spec.window.resize(640, 480)
+            spec.window.show()
+            spec.axis.setLabel("Frequency", units="Hz", unitPrefix="M")
+            QtWidgets.QApplication.instance().exec()
+        except (RuntimeWarning, KeyboardInterrupt):
+            pass
+        finally:
+            if spec is not None:
+                spec.quit()
 
     def __str__(self):
         return self.__class__.__name__
