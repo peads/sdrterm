@@ -66,7 +66,7 @@ class WaterfallPlot(AbstractPlot):
         self.widget = PlotWidget()
         self.plot = self.widget.plotItem
         self.axis = self.plot.getAxis("bottom")
-        self.xscale = self._NFFT / self.fs
+        # self.xscale = self._NFFT / self.fs
 
         self.window.setCentralWidget(self.widget)
         self.plot.addItem(self.item)
@@ -74,11 +74,11 @@ class WaterfallPlot(AbstractPlot):
         self.plot.setMouseEnabled(x=False, y=False)
         self.plot.setMenuEnabled(False)
         self.plot.hideButtons()
-        self.plot.showAxes(True, showValues=(False, False, False, True))  # , size=(self.NFFT, self.NOOVERLAP >> 1))
+        self.plot.showAxes(True, showValues=(False, False, False, True))
         self.item.setLevels(None)
 
-        transform = QTransform.fromScale(self.fs * self.xscale, 1)
-        transform = transform.translate(-self.nyquistFs * self.xscale, 0)
+        transform = QTransform.fromScale(self._NFFT, 1)
+        transform = transform.translate(-(self._NFFT >> 1), 0)  # + self.tuned / self._NFFT, 0)
         self.item.setTransform(transform)
         self.item.setLookupTable(LUT)
         self.item.setLevels(BW_LEVELS)

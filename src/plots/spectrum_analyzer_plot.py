@@ -62,7 +62,7 @@ class SpectrumAnalyzerPlot(AbstractPlot):
 
         self.item.setXRange(-self.nyquistFs, self.nyquistFs, padding=0)
         self.item.setMouseEnabled(x=False, y=False)
-        self.item.setYRange(-6, 4, padding=0)
+        self.item.setYRange(-10, 10, padding=0)
         self.item.setMenuEnabled(False)
         self.item.showAxes(self._AXES, showValues=self._AXES_VALUES)
         self.item.hideButtons()
