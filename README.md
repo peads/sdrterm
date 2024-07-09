@@ -1,3 +1,8 @@
+# Installation
+`pip install sdrterm`
+
+*NOTE: Unless you intend to modify to source code, skip ahead to [here](#examples).
+
 # Requirements
 ## Installing required dependencies
 After cloning this repo perform the following:
