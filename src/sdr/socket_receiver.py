@@ -20,9 +20,10 @@ from array import array
 from io import RawIOBase
 from multiprocessing import Value
 from os import name as osName
-from socket import socket, AF_INET, SOCK_STREAM, SO_KEEPALIVE, SO_REUSEADDR, SOL_SOCKET
+from socket import socket, AF_INET, SOCK_STREAM, SO_KEEPALIVE, SO_REUSEADDR, SOL_SOCKET, gaierror
 from threading import Lock, Event
 from typing import Iterable
+
 from numpy import log2
 
 from misc.general_util import shutdownSocket, eprint, findMtu
@@ -44,16 +45,14 @@ class SocketReceiver(Receiver):
 
     def __exit__(self, *ex):
         self.disconnect()
+        self._removeClients()
+        self.__cond = None
+        self._receiver = None
 
     def disconnect(self):
-        if self.__cond is not None:
-            for client in list(self._clients.keys()):
-                self._removeClient(client)
         if self._receiver is not None:
             shutdownSocket(self._receiver)
             self._receiver.close()
-        self.__cond = None
-        self._receiver = None
 
     def reset(self) -> None:
         size = self._BUF_SIZE
@@ -92,17 +91,24 @@ class SocketReceiver(Receiver):
         return self._MAX_RETRIES
 
     def receive(self) -> None:
-        with socket(AF_INET, SOCK_STREAM) as self._receiver:
-            retries = 0
-            while retries < self._MAX_RETRIES and not self.isDead.value:
+        retries = 0
+        while retries < self._MAX_RETRIES and not self.isDead.value:
+            with socket(AF_INET, SOCK_STREAM) as self._receiver:
                 try:
                     self._connect()
+                    retries = 0
                     with self._receiver.makefile('rb') as file:
                         retries = self._receive(file)
-                except OSError as e:
+                except (TimeoutError, ConnectionError, gaierror) as e:
+                    self.disconnect()
                     retries += 1
-                    eprint(f"Connection failed: {e}. Retrying {retries} of {self._MAX_RETRIES} times")
+                    eprint(f'Connection failed: {e}. Retrying {retries} of {self._MAX_RETRIES} times')
         return
+
+    def _removeClients(self):
+        if self.__cond is not None:
+            for client in list(self._clients.keys()):
+                self._removeClient(client)
 
     def addClient(self, request: RawIOBase) -> Event:
         event = Event()

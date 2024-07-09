@@ -28,24 +28,27 @@ fi
 function runStdinTest {
   time sox -q -D -twav ${1} -traw -b${2} -e${3} -B - 2>/dev/null \
     | python src/sdrterm.py -w5000 -e${4} -r48000 ${5} 2>/dev/null \
-    | sox -q -D -v0.75 -traw -r24k -b64 -ef - -traw -r48k -b16 -es - 2>/dev/null \
-    | dsd -q -i - -o /dev/null -n -w ${OUT_PATH}/out${4}.wav 2>&1 | grep "Total" - | grep -E --color=always '[0-9]+' -;
+    | sox -q -D -v0.5 -traw -r24k -b64 -ef - -traw -r48k -b16 -es - 2>/dev/null \
+    | dsd -q -i - -o /dev/null -n -w "${OUT_PATH}/out${4}.wav" 2>&1 | grep "Total" - | grep -E --color=always '[0-9]+' -;
 }
 
 function runFileInTest {
   time python src/sdrterm.py -i ${1} -w5k ${3} 2>/dev/null \
     | sox -q -v0.8 -D -traw -ef -b64 -r24k - -traw -es -b16 -r48k - 2>/dev/null \
-    | dsd -q -i - -n -o /dev/null -w ${OUT_PATH}/out${2}.wav 2>&1 | grep "Total" - | grep -E --color=always '[0-9]+' -;
+    | dsd -q -i - -n -o /dev/null -w "${OUT_PATH}/out${2}.wav" 2>&1 | grep "Total" - | grep -E --color=always '[0-9]+' -;
   rm -f /tmp/tmp.wav;
 }
 
 echo "START basic raw stdin test";
 runStdinTest "$1" "16" "s" "h"
 runStdinTest "$1" "8" "unsigned-int" "B" "--correct-iq"
+runStdinTest "$1" "32" "s" "i"
+runStdinTest "$1" "32" "f" "f"
+runStdinTest "$1" "64" "f" "d"
 printf "END basic raw stdin test\n\n";
 
 echo "START basic wave file test";
 runFileInTest "$1" "i16"
+
 sox -q -D -twav ${1} -twav -eunsigned-int -r48k -b8 /tmp/tmp.wav 2>/dev/null;
 runFileInTest "/tmp/tmp.wav" "u8" "--correct-iq"
-printf "END basic wave file test\n\n";

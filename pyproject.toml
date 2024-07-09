@@ -1,0 +1,64 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src"]
+
+[project]
+name = "sdrterm"
+version = "0.1"
+dependencies = [
+    'scipy',
+    'numpy>=1.26',
+    'typer-slim',
+    'psutil'
+]
+requires-python = ">=3.8"
+authors = [
+    { name = "Patrick Eads", email = "peads@users.noreply.github.com" },
+]
+maintainers = [
+    { name = "Patrick Eads", email = "peads@users.noreply.github.com" },
+]
+description = "Terminal-based tools for (mostly SDR-originated) signal analysis"
+readme = "README.md"
+license = { file = "LICENSE" }
+keywords = ['sdr', 'sdrterm', 'rtl', 'rtlsdr', 'rtl-sdr', 'software-defined radio', 'signal analysis', 'sigint']
+classifiers = [
+    'Development Status :: 4 - Beta',
+    'Intended Audience :: Developers',
+    'Intended Audience :: Science/Research',
+    'Intended Audience :: Telecommunications Industry',
+    'License :: OSI Approved :: GNU General Public License v3 (GPLv3)',
+    'Environment :: Console',
+    'Natural Language :: English',
+    'Operating System :: POSIX :: Linux',
+    'Operating System :: Microsoft :: Windows :: Windows 7',
+    'Operating System :: Microsoft :: Windows :: Windows 8',
+    'Operating System :: Microsoft :: Windows :: Windows 8.1',
+    'Operating System :: Microsoft :: Windows :: Windows 10',
+    'Operating System :: Microsoft :: Windows :: Windows 11',
+    'Programming Language :: Python :: 3 :: Only',
+    'Programming Language :: Python :: 3.8',
+    'Programming Language :: Python :: 3.9',
+    'Programming Language :: Python :: 3.10',
+    'Programming Language :: Python :: 3.11',
+    'Programming Language :: Python :: 3.12',
+    'Topic :: Multimedia :: Sound/Audio :: Analysis',
+    'Topic :: Scientific/Engineering :: Physics',
+    'Topic :: Scientific/Engineering :: Mathematics',
+    'Topic :: System :: Hardware :: Universal Serial Bus (USB) :: Audio',
+    'Topic :: System :: Networking',
+    'Topic :: Utilities',
+    'Typing :: Typed'
+]
+
+[project.optional-dependencies]
+gui = ["pyqtgraph", "PyQt5"]
+cli = ["textual", "textual-slider"]
+
+[project.urls]
+Homepage = "https://github.com/peads/sdrterm"
+Repository = "https://github.com/peads/sdrterm.git"
+"Bug Tracker" = "https://github.com/peads/sdrterm/issues"

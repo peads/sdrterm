@@ -22,6 +22,7 @@
 # Usage: ./example_simo.sh <host>:<port> -eB -r1024k -d25 -c"-1.2E+3" -t123.456M" --vfos=15000,-15000,30000" -w5k
 ####
 OIFS=$IFS
+ts=$(date +%s);
 if [[ -z ${DSD_OPTS} ]]; then
   DSD_OPTS="";
 fi
@@ -47,7 +48,7 @@ coproc SOCAT { eval "$cmd"; }
 exec {SOCAT_IN}<&${SOCAT[0]}- {SOCAT_OUT}>&${SOCAT[1]}-
 unset cmd;
 
-cmd="python src/sdrterm.py ${params} --simo 2>&1 0<&${SOCAT_IN}";
+cmd="python src/sdrterm.py ${params} --simo 2>&1 0<&${SOCAT_IN} | tee /tmp/sdrterm.log";
 set -u;
 echo "LOG: ${cmd}";
 coproc SDRTERM { eval "$cmd"; }
@@ -104,7 +105,7 @@ for i in "${vfos[@]}"; do
   set -u;
   fileName="/tmp/log-${freq}";
   set -u;
-  cmd="socat TCP4:${host}:${port} - | sox -q -D -B -traw -b64 -ef -r${decimatedFs} - -traw -b16 -es -r48k - 2>/dev/null | dsd ${DSD_OPTS} -i - -o /dev/null -n -f1 -w ${OUT_PATH}/out-${freq}.wav 2>${fileName}"
+  cmd="socat TCP4:${host}:${port} - | sox -v0.6 -q -D -B -traw -b64 -ef -r${decimatedFs} - -traw -b16 -es -r48k - 2>/dev/null | dsd ${DSD_OPTS} -i - -o /dev/null -n -f1 -w ${OUT_PATH}/out-${freq}-${ts}.wav 2>${fileName}"
   set -u;
 
   echo "LOG: ${cmd}";
@@ -142,7 +143,7 @@ function cleanup {
     while IFS= ; read -r line; do
       echo "LOG: ${line}";
     done < ${logFiles["$i"]}
-    rm "${logFiles[$i]}";
+#    rm "${logFiles[$i]}";
   done
   unset i;
 }

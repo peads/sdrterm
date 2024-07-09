@@ -17,38 +17,48 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-from multiprocessing import Queue, Value
 
 from numpy import log10, abs, zeros, float64
 from scipy.signal import ShortTimeFFT
 
-from dsp.data_processor import DataProcessor
+from dsp.iq_correction import IQCorrection
 from misc.general_util import printException
 from plots.abstract_plot import AbstractPlot
 
 
-class WaterfallPlot(DataProcessor, AbstractPlot):
-    NPERSEG: int = 256
-    NOOVERLAP: int = NPERSEG >> 1
-    NFFT: int = 1024
+class WaterfallPlot(AbstractPlot):
+    _NPERSEG: int = 256
+    _NOOVERLAP: int = _NPERSEG >> 1
+    _NFFT: int = 1024
 
     def __init__(self,
+                 correctIq=False,
+                 fileInfo=None,
                  *args,
                  **kwargs):
+
         super().__init__(*args, **kwargs)
+
         from pyqtgraph import ImageItem, PlotWidget, colormap
         from pyqtgraph.Qt.QtCore import QTimer
         from pyqtgraph.Qt.QtWidgets import QMainWindow, QApplication
         from pyqtgraph.Qt.QtGui import QTransform
+
+        COLOR_MAP = colormap.get('CET-CBL2')
+        LUT = COLOR_MAP.getLookupTable(nPts=256)
+        BW_LEVELS = (-32, 32)
+
+        self.image = None
+        self.size = 0
         self._SFT = ShortTimeFFT.from_window(('kaiser', 5),
                                              self.fs,
-                                             self.NPERSEG,
-                                             self.NOOVERLAP,
-                                             mfft=self.NFFT,
+                                             self._NPERSEG,
+                                             self._NOOVERLAP,
+                                             mfft=self._NFFT,
                                              fft_mode='centered',
                                              scale_to='magnitude',
                                              phase_shift=None)
-        self.pad_extent = (self.NFFT - self.NOOVERLAP) / (self.fs << 1)
+        self._padExtent = (self._NFFT - self._NOOVERLAP) / (self.fs << 1)
 
         self.app = QApplication([])
         self.window = QMainWindow()
@@ -56,9 +66,7 @@ class WaterfallPlot(DataProcessor, AbstractPlot):
         self.widget = PlotWidget()
         self.plot = self.widget.plotItem
         self.axis = self.plot.getAxis("bottom")
-        self.xscale = self.NFFT / self.fs
-        self.image = None
-        self.size = 0
+        # self.xscale = self._NFFT / self.fs
 
         self.window.setCentralWidget(self.widget)
         self.plot.addItem(self.item)
@@ -66,32 +74,33 @@ class WaterfallPlot(DataProcessor, AbstractPlot):
         self.plot.setMouseEnabled(x=False, y=False)
         self.plot.setMenuEnabled(False)
         self.plot.hideButtons()
-        self.plot.showAxes(True, showValues=(False, False, False, True))  # , size=(self.NFFT, self.NOOVERLAP >> 1))
+        self.plot.showAxes(True, showValues=(False, False, False, True))
         self.item.setLevels(None)
-        self.axis.setLabel("Frequency", units="Hz", unitPrefix="M")
 
-        transform = QTransform.fromScale(self.fs * self.xscale, 1)
-        transform = transform.translate(-self.nyquistFs * self.xscale, 0)
+        transform = QTransform.fromScale(self._NFFT, 1)
+        transform = transform.translate(-(self._NFFT >> 1), 0)  # + self.tuned / self._NFFT, 0)
         self.item.setTransform(transform)
-
-        colorMap = colormap.get('CET-CBL2')
-        lut = colorMap.getLookupTable(nPts=256)
-        bwLevels = [-32, 32]
-        self.item.setLookupTable(lut)
-        self.item.setLevels(bwLevels)
+        self.item.setLookupTable(LUT)
+        self.item.setLevels(BW_LEVELS)
 
         self.timer = QTimer()
         self.timer.timeout.connect(self.update)
         self.timer.start(self.frameRate)
+        if not correctIq and fileInfo['bitsPerSample'].char.isupper():
+            setattr(self, '_doCorrectIq', IQCorrection(self.fs).correctIq)
+
+    def _doCorrectIq(self, _) -> None:
+        pass
 
     def update(self):
         try:
             length = self.receiveData()
             if self.image is None or length != self.size:
-                col = len(self._y) // self.NOOVERLAP
-                self.image = zeros((self.NFFT, col + 1), dtype=float64)
+                col = len(self._y) // self._NOOVERLAP
+                self.image = zeros((self._NFFT, col + 1), dtype=float64)
                 self.item.setImage(self.image, autoLevels=False)
                 self.size = length
+            self._doCorrectIq(self._y)
             self._shiftFreq(self._y)
             self.image[:] = 10. * log10(abs(self._SFT.stft(self._y)))
             self.item.setImage(autoLevels=False)
@@ -100,17 +109,3 @@ class WaterfallPlot(DataProcessor, AbstractPlot):
         except Exception as e:
             printException(e)
             self.quit()
-
-    @classmethod
-    def processData(cls, isDead: Value, buffer: Queue, fs: int, *args, **kwargs) -> None:
-        spec = None
-        try:
-            from pyqtgraph.Qt import QtWidgets
-            spec = cls(fs=fs, buffer=buffer, isDead=isDead, *args, **kwargs)
-            spec.window.show()
-            QtWidgets.QApplication.instance().exec()
-        except (RuntimeWarning, KeyboardInterrupt):
-            pass
-        finally:
-            if spec is not None:
-                spec.quit()

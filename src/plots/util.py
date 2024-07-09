@@ -51,5 +51,5 @@ def selectPlotType(plotType: string):
         else:
             eprint(f'Invalid plot type {plotType}')
     except ModuleNotFoundError as e:
-        printException(e, "No module named 'pyqtgraph'")
+        printException(e)
         return None

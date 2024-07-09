@@ -33,6 +33,8 @@ class MultiSpectrumAnalyzerPlot(SpectrumAnalyzerPlot):
 
         from pyqtgraph import PlotWidget
         super().__init__(*args, **kwargs)
+
+        self.widgets = []
         vfos = '' if vfos is None else vfos
         self.vfos = vfos.split(',')
         self.vfos = [int(vfo) for vfo in self.vfos if vfo is not None and len(vfo)]
@@ -43,6 +45,8 @@ class MultiSpectrumAnalyzerPlot(SpectrumAnalyzerPlot):
 
         bandwidth >>= 1
         self.item.setXRange(-bandwidth, bandwidth, padding=0)
+        self.item.setYRange(-10, 10, padding=0)
+        self.widgets.append((self.widget, 0))
 
         j = 1
         for i, vfo in enumerate(self.vfos, start=0):
@@ -56,7 +60,7 @@ class MultiSpectrumAnalyzerPlot(SpectrumAnalyzerPlot):
             axis = item.getAxis("bottom")
 
             item.setXRange(-bandwidth + vfo, bandwidth + vfo)
-            item.setYRange(-6, 4, padding=0)
+            item.setYRange(-10, 10, padding=0)
             item.setMouseEnabled(x=False, y=False)
             item.setMenuEnabled(False)
             item.showAxes(self._AXES, showValues=self._AXES_VALUES)
@@ -64,10 +68,10 @@ class MultiSpectrumAnalyzerPlot(SpectrumAnalyzerPlot):
 
             plot = item.plot()
             self.plots.append(plot)
-            # self.widgets.append((widget, vfo))
+            self.widgets.append((widget, vfo))
             self.layout.addWidget(widget, j, i)
 
             axis.setLabel("Frequency", units="Hz", unitPrefix="M")
             j += 1
         self.window.setWindowTitle("MultiSpectrumAnalyzer")
-        # self._setTicks(bandwidth)
+        self._setTicks(bandwidth)
