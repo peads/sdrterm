@@ -19,7 +19,7 @@
 #
 from array import array
 from io import BufferedReader
-from multiprocessing import Value, Queue
+from multiprocessing import Value, Queue, Process
 from sys import stdin
 from typing import Iterable
 
@@ -33,6 +33,7 @@ def readFile(bitsPerSample: dtype = None,
              dataOffset: int = 0,
              fs: int = None,
              buffers: Iterable[Queue] = None,
+             processes: Iterable[Process] = None,
              isDead: Value = None,
              inFile: str = None,
              readSize: int = 131072,
@@ -64,13 +65,20 @@ def readFile(bitsPerSample: dtype = None,
             Z[:] = Z / abs(Z)
             ix = invert(isfinite(Z[:, ]))
             Z[ix] = Z[ix_(ix)].all(0)
+    procs = list(processes)
+    clients = list(buffers)
 
     def feedBuffers(x: ndarray) -> None:
         x = x['re'] + 1j * x['im']
         doCorrectIq(x)
         doNormalize(x)
-        for client in buffers:
-            client.put(x)
+        for proc, client in zip(procs, clients):
+            if proc.exitcode is None:
+                client.put(x)
+            else:
+                client.close()
+                clients.remove(client)
+                procs.remove(proc)
 
     with open(inFile if isFile else stdin.fileno(), 'rb', closefd=isFile) as file:
         reader = BufferedReader(file if isFile else stdin.buffer)

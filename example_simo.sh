@@ -22,13 +22,13 @@
 # Usage: ./example_simo.sh <host>:<port> -eB -r1024k -d25 -c"-1.2E+3" -t123.456M" --vfos=15000,-15000,30000" -w5k
 ####
 OIFS=$IFS
-ts=$(date +%s);
+ts=$(date +%Y%m%d%H%M);
 if [[ -z ${DSD_OPTS} ]]; then
   DSD_OPTS="";
 fi
 
 if [[ -z ${OUT_PATH} ]]; then
-  OUT_PATH="/mnt/d";
+  OUT_PATH=/mnt/d/simo;
 fi
 
 declare -A pids;
@@ -60,13 +60,41 @@ host="";
 port="";
 decimatedFs="";
 mainPid="";
+declare -a outFiles;
+
+function log {
+  echo "$(date +'%F %T')Z: ${1}";
+}
+
+function cleanup {
+  kill $SDRTERM_PID;
+  kill $mainPid;
+  kill "${pids[@]}";
+  i="\0";
+  set -u;
+  for i in "${!logFiles[@]}"; do
+    while IFS= ; read -r line; do
+      log "${line}";
+    done < ${logFiles["$i"]}
+#    rm "${logFiles[$i]}";
+  done
+  unset i;
+
+  i="\0";
+  set -u;
+  for i in "${outFiles[@]}"; do
+      outFilesStr="$(stat -c"%n:%s" ${i})";
+      rm -f "${outFilesStr//:44/}";
+  done
+  unset i;
+}
 
 function generateRegex {
   echo "s/^\s*\"*${1}\"*:\s*${2},*\s*$/\1/g"
 }
 
 while IFS= ; read -r line; do
-  echo "LOG: ${line}"
+  log "${line}"
   if [[ ! -z $(echo $line | grep "host" -) ]]; then
     host=$(sed -E "`generateRegex "host" '\"(([a-zA-Z0-9]+)+)\"'`" <<< $line);
   fi
@@ -104,15 +132,17 @@ for i in "${vfos[@]}"; do
   coprocName="SOCAT_${freq}";
   set -u;
   fileName="/tmp/log-${freq}";
+  outFile="${OUT_PATH}/out-${freq}-${ts}.wav"
   set -u;
-  cmd="socat TCP4:${host}:${port} - | sox -v0.6 -q -D -B -traw -b64 -ef -r${decimatedFs} - -traw -b16 -es -r48k - 2>/dev/null | dsd ${DSD_OPTS} -i - -o /dev/null -n -f1 -w ${OUT_PATH}/out-${freq}-${ts}.wav 2>${fileName}"
+  cmd="socat TCP4:${host}:${port} - | sox -q -D -B -traw -b64 -ef -r${decimatedFs} - -traw -b16 -es -r48k - 2>/dev/null | dsd -q ${DSD_OPTS} -i - -o /dev/null -n -f1 -w ${outFile} 2>${fileName}"
   set -u;
 
-  echo "LOG: ${cmd}";
+  log "${cmd}";
   eval "coproc ${coprocName} { ${cmd}; }"
   eval "exec {tmp_in}<&\${${coprocName}[0]}- {tmp_out}>&\${${coprocName}[1]}-";
   eval "pids[\"${coprocName}\"]=\${${coprocName}_PID}";
   logFiles["${coprocName}"]=${fileName};
+  outFiles+=(${outFile});
 
   unset fileName;
   unset cmd;
@@ -124,32 +154,16 @@ for i in "${vfos[@]}"; do
 done
 unset i;
 
-#echo "LOG: ${pids[@]}";
-
 while IFS= ; read -r line; do
-  echo "LOG: ${line}"
+  log "${line}"
   if [[ $line == *"established"* ]]; then
     break;
   fi
 done <&"${SDR_IN}"
 
-function cleanup {
-  kill $SDRTERM_PID;
-  kill $mainPid;
-  kill "${pids[@]}";
-  i="\0";
-  set -u;
-  for i in "${!logFiles[@]}"; do
-    while IFS= ; read -r line; do
-      echo "LOG: ${line}";
-    done < ${logFiles["$i"]}
-#    rm "${logFiles[$i]}";
-  done
-  unset i;
-}
 trap cleanup EXIT;
 
-echo "LOG: Awaiting sdrterm";
+log "Awaiting sdrterm";
 wait $SDRTERM_PID;
-echo "LOG: sdrterm returned: ${?}";
+log "sdrterm returned: ${?}";
 exit;
