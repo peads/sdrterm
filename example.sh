@@ -30,10 +30,12 @@ if [[ -z ${DSD_CMD} ]]; then
 fi
 
 function runStdinTest {
+  fileName="${OUT_PATH}/out${4}${6}.wav";
+  echo "$fileName";
   time sox -q -D -twav ${1} -traw -b${2} -e${3} ${6} - 2>/dev/null \
     | python src/sdrterm.py -w5000 -e${4} -r48000 ${5} 2>/dev/null \
     | sox -q -D -v0.5 -traw -r24k -b64 -ef - -traw -r48k -b16 -es - 2>/dev/null \
-    | ${DSD_CMD} -i - -o /dev/null -n -w "${OUT_PATH}/out${4}.wav" 2>&1 | grep "Total" - | grep -E --color=always '[0-9]+' -;
+    | ${DSD_CMD} -i - -o /dev/null -n -w "$fileName" 2>&1 | grep "Total" - | grep -E --color=always '[0-9]+' -;
 }
 
 function runFileInTest {

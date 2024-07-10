@@ -134,31 +134,30 @@ in the code currently committed to the master branch*
 ```
  Usage: sdrterm.py [OPTIONS]
 
-╭─ Options ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
-│ --fs                     -r                     NUMBER                 Sampling frequency in k/M/Samples per sec                                                                                       │
-│ --center-frequency       -c                     NUMBER                 Offset from tuned frequency in k/M/Hz [default: 0]                                                                              │
-│ --input                  -i                     TEXT                   Input device [default: (stdin)]                                                                                                 │
-│ --output                 -o                     TEXT                   Output device [default: (stdout)]                                                                                               │
-│ --plot                                          TEXT                   1D-Comma-separated value of plot type(s) [default: None]                                                                        │
-│ --demodulation           -m                     [fm|wfm|am|re|im|fft]  Demodulation type [default: fm]                                                                                                 │
-│ --tuned-frequency        -t                     NUMBER                 Tuned frequency in k/M/Hz [default: 0]                                                                                          │
-│ --vfos                                          TEXT                   1D-Comma-separated value of offsets from tuned frequency to process in addition to tuned frequency in k/M/Hz [default: None]    │
-│ --decimation             -d                     INTEGER RANGE [x>=2]   Decimation factor [default: 2]                                                                                                  │
-│ --encoding               -e                     [b|B|h|H|i|I|f|d]      Binary encoding (ignored if wav file) [default: None]                                                                           │
-│ --omega-out              -w                     NUMBER                 Output cutoff frequency in k/M/Hz [default: 12500]                                                                              │
-│ --correct-iq                 --no-correct-iq                           Toggle iq correction [default: no-correct-iq]                                                                                   │
-│ --simo                       --no-simo                                 N.B. unlike normal mode, which uses the system-default endianness for output, the sockets output  network-default, big-endian   │
-│                                                                        bytes. Enable using sockets to output data processed from multiple channels specified by the vfos option. [Implies: --vfos      │
-│                                                                        <csv>]                                                                                                                          │
-│                                                                        [default: no-simo]                                                                                                              │
-│ --verbose                -v                     INTEGER                Toggle verbose output. Repetition increases verbosity (e.g. -vv, or -v -v) [default: 0]                                         │
-│ --smooth-output                                 INTEGER                Provide length of polynomial for smoothing output with Savitzky–Golay filter. A larger polynomial implies more aggressive       │
-│                                                                        filtering.                                                                                                                      │
-│                                                                        [default: (0 => no filtering)]                                                                                                  │
-│ --vfo-host                                      TEXT                   Address on which to listen for vfo client connections [default: localhost]                                                      │
-│ --swap-input-endianness  -X                                            Swap input endianness [default: (False => network-default, big-endian)]                                                         │
-│ --help                                                                 Show this message and exit.                                                                                                     │
-╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ --fs                     -r                          NUMBER                 Sampling frequency in k/M/Samples per sec                                                                                                 │
+│ --center-frequency       -c                          NUMBER                 Offset from tuned frequency in k/M/Hz [default: 0]                                                                                        │
+│ --input                  -i                          TEXT                   Input device [default: (stdin)]                                                                                                           │
+│ --output                 -o                          TEXT                   Output device [default: (stdout)]                                                                                                         │
+│ --plot                                               TEXT                   1D-Comma-separated value of plot type(s) [default: None]                                                                                  │
+│ --demodulation           -m                          [fm|wfm|am|re|im|fft]  Demodulation type [default: fm]                                                                                                           │
+│ --tuned-frequency        -t                          NUMBER                 Tuned frequency in k/M/Hz [default: 0]                                                                                                    │
+│ --vfos                                               TEXT                   1D-Comma-separated value of offsets from tuned frequency to process in addition to tuned frequency in k/M/Hz [default: None]              │
+│ --decimation             -d                          INTEGER RANGE [x>=2]   Decimation factor [default: 2]                                                                                                            │
+│ --encoding               -e                          [b|B|h|H|i|I|f|d]      Binary encoding (ignored if wav file) [default: None]                                                                                     │
+│ --omega-out              -w                          NUMBER                 Output cutoff frequency in k/M/Hz [default: 12500]                                                                                        │
+│ --correct-iq                 --no-correct-iq                                Toggle iq correction [default: no-correct-iq]                                                                                             │
+│ --simo                       --no-simo                                      Enable using sockets to output data processed from multiple channels specified by the vfos option. N.B. unlike normal mode, which uses    │
+│                                                                             the system-default endianness for output, the sockets output  network-default, big-endian doubles. [Implies: --vfos <csv>]                │
+│                                                                             [default: no-simo]                                                                                                                        │
+│ --verbose                -v                          INTEGER                Toggle verbose output. Repetition increases verbosity (e.g. -vv, or -v -v) [default: 0]                                                   │
+│ --smooth-output                                      INTEGER                Provide length of polynomial for smoothing output with Savitzky–Golay filter. A larger polynomial implies more aggressive filtering.      │
+│                                                                             [default: (0 => no filtering)]                                                                                                            │
+│ --vfo-host                                           TEXT                   Address on which to listen for vfo client connections [default: localhost]                                                                │
+│ --swap-input-endianness  -X                                                 Swap input endianness [default: (False => system-default, or as defined in RIFF header)]                                                  │
+│ --normalize-input            --no-normalize-input                           Normalize input data. [default: no-normalize-input]                                                                                       │
+│ --help                                                                      Show this message and exit.                                                                                                               │
+╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 ```
 
 ## rtltcp.py
@@ -167,13 +166,14 @@ in the code currently committed to the master branch*
 ```
  Usage: rtltcp.py [OPTIONS] HOST PORT
 
-╭─ Arguments ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
-│ *    host      TEXT     Address of remote rtl_tcp server [default: None] [required]                                                       │
-│ *    port      INTEGER  Port of remote rtl_tcp server [default: None] [required]                                                          │
-╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-╭─ Options ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
-│ --help          Show this message and exit.                                                                                               │
-╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ Arguments ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ *    host      TEXT     Address of remote rtl_tcp server [default: None] [required]                                                                                                                                   │
+│ *    port      INTEGER  Port of remote rtl_tcp server [default: None] [required]                                                                                                                                      │
+╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ --server-host        TEXT  Port of local distribution server [default: localhost]                                                                                                                                     │
+│ --help                     Show this message and exit.                                                                                                                                                                │
+╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
 ```
 <img width="466" alt="Screenshot 2024-06-18 at 20 45 48" src="https://github.com/peads/sdrterm/assets/902685/29812f55-479f-4934-930b-56b2aaf743c4">
 

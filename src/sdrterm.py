@@ -103,9 +103,9 @@ def main(fs: Annotated[int, Option('--fs', '-r',
                                          help='Output cutoff frequency in k/M/Hz')] = '12500',
          correct_iq: Annotated[bool, Option(help='Toggle iq correction')] = False,
          simo: Annotated[bool, Option(help='''
+            Enable using sockets to output data processed from multiple channels specified by the vfos option.
             N.B. unlike normal mode, which uses the system-default endianness for output, the sockets output 
-            network-default, big-endian bytes. Enable using sockets to output data processed from multiple channels
-            specified by the vfos option. [Implies: --vfos <csv>]''')] = False,
+            network-default, big-endian doubles. [Implies: --vfos <csv>]''')] = False,
          verbose: Annotated[int, Option("--verbose", "-v",
                                         count=True,
                                         help='Toggle verbose output. Repetition increases verbosity (e.g. -vv, or -v -v)')] = 0,
@@ -116,7 +116,7 @@ def main(fs: Annotated[int, Option('--fs', '-r',
              str, Option(help='Address on which to listen for vfo client connections')] = 'localhost',
          swap_input_endianness: Annotated[bool, Option('--swap-input-endianness', '-X',
                                                        help='Swap input endianness',
-                                                       show_default='False => network-default, big-endian')] = False,
+                                                       show_default='False => system-default, or as defined in RIFF header')] = False,
          normalize_input: Annotated[bool, Option(help='Normalize input data.')] = False,):
     from misc.general_util import printException, eprint, tprint
     from misc.io_args import IOArgs
