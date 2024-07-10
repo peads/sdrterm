@@ -26,7 +26,7 @@ from typing import Iterable
 from numpy import frombuffer, dtype, ndarray, complex128, complex64, ix_, isfinite, invert
 
 from dsp.iq_correction import IQCorrection
-from misc.general_util import vprint
+from misc.general_util import vprint, eprint, tprint
 
 
 def readFile(bitsPerSample: dtype = None,
@@ -48,7 +48,6 @@ def readFile(bitsPerSample: dtype = None,
         bitsPerSample = bitsPerSample.newbyteorder('<' if '>' == bitsPerSample.byteorder else '>')
 
     dataType = dtype([('re', bitsPerSample), ('im', bitsPerSample)])
-    isFile = inFile is not None
     buffer = array(bitsPerSample.char, readSize * b'0')
 
     def doCorrectIq(_: ndarray[any, dtype[complex64 | complex128]]) -> None:
@@ -79,17 +78,49 @@ def readFile(bitsPerSample: dtype = None,
                 client.close()
                 clients.remove(client)
                 procs.remove(proc)
-
-    with open(inFile if isFile else stdin.fileno(), 'rb', closefd=isFile) as file:
-        reader = BufferedReader(file if isFile else stdin.buffer)
-
-        if dataOffset and file.seekable():
-            file.seek(dataOffset)
+    def readData(reader: BufferedReader) -> None:
         length = readSize
         while not isDead.value and length == readSize:
             length = reader.readinto(buffer)
             y = frombuffer(buffer, dataType)
             feedBuffers(y)
+    def readFd() -> None:
+        isFile = inFile is not None
+        with open(inFile if isFile else stdin.fileno(), 'rb', closefd=isFile) as file:
+            reader = BufferedReader(file if isFile else stdin.buffer)
+            if dataOffset and file.seekable():
+                file.seek(dataOffset)
+            readData(reader)
+            
+    def readSocket() -> None:
+        from socket import socket, AF_INET, SOCK_STREAM, SO_KEEPALIVE, SO_REUSEADDR, SOL_SOCKET, gaierror
+        from os import name as osName
+        MAX_RETRIES = 5
+        retries = 0
+        while retries < MAX_RETRIES and not isDead.value:
+            try:
+                with socket(AF_INET, SOCK_STREAM) as sock:
+                    sock.setsockopt(SOL_SOCKET, SO_KEEPALIVE, 1)
+                    if 'posix' not in osName:
+                        sock.setsockopt(SOL_SOCKET, SO_REUSEADDR, 1)
+                    else:
+                        from socket import SO_REUSEPORT
+                        sock.setsockopt(SOL_SOCKET, SO_REUSEPORT, 1)
+                    sock.settimeout(5)
+                    host, port = inFile.split(':')
+                    sock.connect((host, int(port)))
+                    tprint(f'Connected to {sock.getpeername()}')
+                    retries = 0
+                    with sock.makefile('rb') as reader:
+                        readData(reader)
+            except (TimeoutError, ConnectionError, gaierror) as e:
+                retries += 1
+                eprint(f'Connection failed: {e}. Retrying {retries} of {MAX_RETRIES} times')
+
+    if inFile is not None and ':' in inFile:
+        readSocket()
+    else:
+        readFd()
 
     for buffer in buffers:
         buffer.put(b'')

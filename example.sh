@@ -25,11 +25,15 @@ if [[ -z ${OUT_PATH} ]]; then
   OUT_PATH="/mnt/d/testing";
 fi
 
+if [[ -z ${DSD_CMD} ]]; then
+  DSD_CMD="dsd -q";
+fi
+
 function runStdinTest {
-  time sox -q -D -twav ${1} -traw -b${2} -e${3} -B - 2>/dev/null \
+  time sox -q -D -twav ${1} -traw -b${2} -e${3} ${6} - 2>/dev/null \
     | python src/sdrterm.py -w5000 -e${4} -r48000 ${5} 2>/dev/null \
     | sox -q -D -v0.5 -traw -r24k -b64 -ef - -traw -r48k -b16 -es - 2>/dev/null \
-    | dsd -q -i - -o /dev/null -n -w "${OUT_PATH}/out${4}.wav" 2>&1 | grep "Total" - | grep -E --color=always '[0-9]+' -;
+    | ${DSD_CMD} -i - -o /dev/null -n -w "${OUT_PATH}/out${4}.wav" 2>&1 | grep "Total" - | grep -E --color=always '[0-9]+' -;
 }
 
 function runFileInTest {
@@ -45,6 +49,11 @@ runStdinTest "$1" "8" "unsigned-int" "B" "--correct-iq"
 runStdinTest "$1" "32" "s" "i"
 runStdinTest "$1" "32" "f" "f"
 runStdinTest "$1" "64" "f" "d"
+
+runStdinTest "$1" "16" "s" "h" "-X" "-B"
+runStdinTest "$1" "32" "s" "i" "-X" "-B"
+runStdinTest "$1" "32" "f" "f" "-X" "-B"
+runStdinTest "$1" "64" "f" "d" "-X" "-B"
 printf "END basic raw stdin test\n\n";
 
 echo "START basic wave file test";

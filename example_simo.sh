@@ -23,8 +23,8 @@
 ####
 OIFS=$IFS
 ts=$(date +%Y%m%d%H%M);
-if [[ -z ${DSD_OPTS} ]]; then
-  DSD_OPTS="";
+if [[ -z ${DSD_CMD} ]]; then
+  DSD_CMD="dsd -q";
 fi
 
 if [[ -z ${OUT_PATH} ]]; then
@@ -134,7 +134,7 @@ for i in "${vfos[@]}"; do
   fileName="/tmp/log-${freq}";
   outFile="${OUT_PATH}/out-${freq}-${ts}.wav"
   set -u;
-  cmd="socat TCP4:${host}:${port} - | sox -q -D -B -traw -b64 -ef -r${decimatedFs} - -traw -b16 -es -r48k - 2>/dev/null | dsd -q ${DSD_OPTS} -i - -o /dev/null -n -f1 -w ${outFile} 2>${fileName}"
+  cmd="socat TCP4:${host}:${port} - | sox -q -D -B -traw -b64 -ef -r${decimatedFs} - -traw -b16 -es -r48k - 2>/dev/null | ${DSD_CMD} -i - -o /dev/null -n -f1 -w ${outFile} 2>${fileName}"
   set -u;
 
   log "${cmd}";
