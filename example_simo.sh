@@ -19,12 +19,19 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
 ####
-# Usage: ./example_simo.sh <host>:<port> -eB -r1024k -d25 -c"-1.2E+3" -t123.456M" --vfos=15000,-15000,30000" -w5k
+# Usage: ./example_simo.sh -i [<file> | <host>:<port>] -eB -r1024k -d25 -c"-1.2E+3" -t123.456M" --vfos=15000,-15000,30000" -w5k
 ####
 OIFS=$IFS
+
+function log {
+  echo "$(date +'%F %T')Z: ${1}";
+}
+
 ts=$(date +%Y%m%d%H%M);
+log "timestamp: ${ts}";
+
 if [[ -z ${DSD_CMD} ]]; then
-  DSD_CMD="dsd -q";
+  DSD_CMD="dsd -q -i - -o /dev/null -n";
 fi
 
 if [[ -z ${OUT_PATH} ]]; then
@@ -36,19 +43,12 @@ port=0;
 params=""
 i="\0";
 set -u
-for i in ${@:2}; do
+for i in ${@:1}; do
   params+="${i} ";
 done
 unset i;
 
-cmd="socat TCP4:${1} -";
-set -u;
-echo "LOG: ${cmd}";
-coproc SOCAT { eval "$cmd"; }
-exec {SOCAT_IN}<&${SOCAT[0]}- {SOCAT_OUT}>&${SOCAT[1]}-
-unset cmd;
-
-cmd="python src/sdrterm.py ${params} --simo 2>&1 0<&${SOCAT_IN} | tee /tmp/sdrterm.log";
+cmd="python src/sdrterm.py ${params} --simo 2>&1 | tee /tmp/sdrterm-${ts}.log";
 set -u;
 echo "LOG: ${cmd}";
 coproc SDRTERM { eval "$cmd"; }
@@ -61,10 +61,6 @@ port="";
 decimatedFs="";
 mainPid="";
 declare -a outFiles;
-
-function log {
-  echo "$(date +'%F %T')Z: ${1}";
-}
 
 function cleanup {
   kill $SDRTERM_PID;
@@ -131,10 +127,10 @@ for i in "${vfos[@]}"; do
   set -u;
   coprocName="SOCAT_${freq}";
   set -u;
-  fileName="/tmp/log-${freq}";
+  fileName="/tmp/log-${freq}-${ts}";
   outFile="${OUT_PATH}/out-${freq}-${ts}.wav"
   set -u;
-  cmd="socat TCP4:${host}:${port} - | sox -q -D -B -traw -b64 -ef -r${decimatedFs} - -traw -b16 -es -r48k - 2>/dev/null | ${DSD_CMD} -i - -o /dev/null -n -f1 -w ${outFile} 2>${fileName}"
+  cmd="socat TCP4:${host}:${port} - | sox -q -D -B -traw -b64 -ef -r${decimatedFs} - -traw -b16 -es -r48k - 2>/dev/null | ${DSD_CMD} -w ${outFile} 2>${fileName}"
   set -u;
 
   log "${cmd}";
