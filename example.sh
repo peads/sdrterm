@@ -21,21 +21,27 @@
 ####
 # Usage: ./example.sh <wave_file>
 ####
+if [[ -z ${DSD_CMD} ]]; then
+  DSD_CMD="dsd -q -i - -o /dev/null -n";
+fi
+
 if [[ -z ${OUT_PATH} ]]; then
-  OUT_PATH="/mnt/d/testing";
+  OUT_PATH=/mnt/d/simo;
 fi
 
 function runStdinTest {
-  time sox -q -D -twav ${1} -traw -b${2} -e${3} -B - 2>/dev/null \
+  fileName="${OUT_PATH}/out${4}${6}.wav";
+  echo "$fileName";
+  time sox -q -D -twav ${1} -traw -b${2} -e${3} ${6} - 2>/dev/null \
     | python src/sdrterm.py -w5000 -e${4} -r48000 ${5} 2>/dev/null \
     | sox -q -D -v0.5 -traw -r24k -b64 -ef - -traw -r48k -b16 -es - 2>/dev/null \
-    | dsd -q -i - -o /dev/null -n -w "${OUT_PATH}/out${4}.wav" 2>&1 | grep "Total" - | grep -E --color=always '[0-9]+' -;
+    | ${DSD_CMD} -w "$fileName" 2>&1 | grep "Total" - | grep -E --color=always '[0-9]+' -;
 }
 
 function runFileInTest {
   time python src/sdrterm.py -i ${1} -w5k ${3} 2>/dev/null \
     | sox -q -v0.8 -D -traw -ef -b64 -r24k - -traw -es -b16 -r48k - 2>/dev/null \
-    | dsd -q -i - -n -o /dev/null -w "${OUT_PATH}/out${2}.wav" 2>&1 | grep "Total" - | grep -E --color=always '[0-9]+' -;
+    | ${DSD_CMD} -w "${OUT_PATH}/out${2}.wav" 2>&1 | grep "Total" - | grep -E --color=always '[0-9]+' -;
   rm -f /tmp/tmp.wav;
 }
 
@@ -45,6 +51,11 @@ runStdinTest "$1" "8" "unsigned-int" "B" "--correct-iq"
 runStdinTest "$1" "32" "s" "i"
 runStdinTest "$1" "32" "f" "f"
 runStdinTest "$1" "64" "f" "d"
+
+runStdinTest "$1" "16" "s" "h" "-X" "-B"
+runStdinTest "$1" "32" "s" "i" "-X" "-B"
+runStdinTest "$1" "32" "f" "f" "-X" "-B"
+runStdinTest "$1" "64" "f" "d" "-X" "-B"
 printf "END basic raw stdin test\n\n";
 
 echo "START basic wave file test";

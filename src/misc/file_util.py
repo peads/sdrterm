@@ -20,8 +20,9 @@
 from enum import Enum
 from struct import unpack
 from typing import Iterable
+from numpy import dtype
 
-import numpy as np
+
 
 from misc.mappable_enum import MappableEnum
 
@@ -44,23 +45,23 @@ class ExWaveFormat(Enum):
 
 
 class DataType(MappableEnum):
-    b = np.dtype('b')
-    B = np.dtype('B')
+    b = dtype('|b')
+    B = dtype('|B')
 
-    h = np.dtype('>h')
-    H = np.dtype('>H')
+    h = dtype('=h')
+    H = dtype('=H')
 
-    i = np.dtype('>i4')
-    I = np.dtype('>u4')
+    i = dtype('=i4')
+    I = dtype('=u4')
 
-    f = np.dtype('>f4')
-    d = np.dtype('>f8')
+    f = dtype('=f4')
+    d = dtype('=f8')
 
     def __str__(self):
         return self.name
 
     @classmethod
-    def fromWav(cls, bits: int, aFormat: Enum, bFormat: Enum):
+    def fromWav(cls, bits: int, aFormat: Enum, bFormat: Enum) -> dtype:
         eight = {'S': cls.b, 'U': cls.B, 'None': cls.B}
         sixteen = {'S': cls.h, 'U': cls.H, 'None': cls.h}
         thirtytwo = {'S': cls.i, 'U': cls.I, 'None': cls.i}
@@ -88,6 +89,8 @@ class DataType(MappableEnum):
 
             if 'BE' != splt[2]:
                 ret = ret.newbyteorder('<')
+            else:
+                ret = ret.newbyteorder('>')
 
         if ret is not None:
             return ret
@@ -95,11 +98,14 @@ class DataType(MappableEnum):
         raise ValueError(f'Unsupported format: {bits}: {aFormat}')
 
 
-def parseRawType(fs, enc):
+def parseRawType(file: str, fs: int, enc: str) -> dict:
     if fs is None or fs < 1 or enc is None:
         raise ValueError('Sampling rate, encoding type and bit-size are required for raw pcm input')
     fs = int(fs)
-    result = zipRet((0, 0, 0, fs, fs, 0, DataType[enc].value))
+    dataType = DataType[enc].value
+    if file is not None and ':' in file:
+        dataType = dataType.newbyteorder('>')
+    result = zipRet((0, 0, 0, fs, fs, 0, dataType))
     result['dataOffset'] = 0
     return result
 
@@ -115,14 +121,14 @@ def zipRet(x: Iterable):
     return val
 
 
-def checkWavHeader(f, fs, enc):
-    if not f:
-        return parseRawType(fs, enc)
+def checkWavHeader(f: str, fs: int, enc: str) -> dict:
+    if not f or ':' in f:
+        return parseRawType(f, fs, enc)
 
     with open(f, 'rb') as file:
         # derived from http://soundfile.sapp.org/doc/WaveFormat/ and https://bts.keep-cool.org/wiki/Specs/CodecsValues
         if b'RIFF' != file.read(4):
-            return parseRawType(fs, enc)
+            return parseRawType(f, fs, enc)
         chunkSize, = unpack('<I', file.read(4))
         if b'WAVE' != file.read(4):
             raise ValueError('Invalid: not wave file')
@@ -166,31 +172,3 @@ def checkWavHeader(f, fs, enc):
             raise ValueError('Invalid: could not find data section.')
         ret['dataOffset'] = file.tell()
     return ret
-
-# TODO Possible heuristic to determine datatype for raw PCM input by determining angle between real and imag compnents
-#   (should be +/-Pi/2 +/- EPSILON)
-# LEN = 128
-# TYPES =
-#  dict(((1, ('b', 'B')), (2, ('h', 'H')), (4, ('i', 'I', 'f')), (8, ('l', 'L', 'd'))))
-# TYPES = dict(((8, 'B'), (16, 'h'), (32, ('i', 'f')), (64, 'd')))
-# EPSILON = 10E-9
-#         if len(TYPES[bitdepth]):
-#             return bitdepth, TYPES[bitdepth], fs
-#
-#         frame = file.readframes(LEN)
-#         for b in TYPES[bitdepth]:
-#             v = np.array(unpack(b * LEN, frame))
-#             x = v[0::2]
-#             y = v[1::2]
-#             if len(x) < len(y):
-#                 x[-1] = 0
-#             else:
-#                 y[-1] = 0
-#             z = x + 1j * y
-#             z = 1 / np.abs(z)
-#             x = np.arccos(x * z)
-#             y = np.arcsin(y * z)
-#             z = np.sum(x - y)
-#             if z < EPSILON:
-#                 break
-# return bitdepth, b, fs

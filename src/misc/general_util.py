@@ -52,9 +52,10 @@ def tprint(*args, **kwargs) -> None:
     __VerbosePrint.tprint(*args, **kwargs)
 
 
-def printException(e: Exception | BaseException, *args) -> None:
+def printException(*args, **kwargs) -> None:
     from traceback import print_exc
-    eprint(e, *args)
+    from multiprocessing import current_process
+    eprint(f'Process {current_process().name} raised exception:', *args, **kwargs)
     print_exc(file=stderr)
 
 

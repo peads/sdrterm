@@ -18,15 +18,16 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
 from multiprocessing import Value, Queue
+from sys import stdout
 from typing import Callable
 
-from numpy import ndarray, dtype, complex64, complex128, float32, float64, pad, broadcast_to, exp, arange, pi
+from numpy import ndarray, dtype, complex64, complex128, float32, float64, pad, exp, arange, pi, array
 from scipy.signal import decimate, dlti, savgol_filter
 
 from dsp.data_processor import DataProcessor
 from dsp.demodulation import amDemod, fmDemod
 from dsp.util import applyFilters, generateEllipFilter
-from misc.general_util import printException, vprint, eprint
+from misc.general_util import vprint
 
 
 class DspProcessor(DataProcessor):
@@ -39,7 +40,7 @@ class DspProcessor(DataProcessor):
                  tuned: int = 0,
                  dec: int = 2,
                  smooth: bool = False,
-                 fileInfo:dict = None,
+                 fileInfo: dict = None,
                  **kwargs):
 
         self.bandwidth \
@@ -56,11 +57,10 @@ class DspProcessor(DataProcessor):
         self.omegaOut = omegaOut
         self.smooth = smooth
         self._shift = None
-        self._Y = None
-        self._nCpus = 1
-        self._ii = range(self._nCpus)
         self._isDead = False
         self.__fileInfo = fileInfo
+        self.__xSize = -1
+        self._pool = None
 
     @property
     def fs(self):
@@ -104,6 +104,23 @@ class DspProcessor(DataProcessor):
         raise NotImplementedError('Setting the decimatedFs directly is not supported. Set fs instead')
 
     def demod(self, y: ndarray[any, dtype[complex64 | complex128]]) -> ndarray[any, dtype[float32 | float64]]:
+        if y.ndim < 2:
+            setattr(self, 'demod', self._demod)
+            return self._demod(y)
+        else:
+            ret = array([self._demod(yy) for yy in y])
+
+            def demod(x):
+                i = 0
+                for val in self._pool.map(self._demod, x):
+                    ret[i][:] = val
+                    i += 1
+                return ret
+
+            setattr(self, 'demod', demod)
+            return ret
+
+    def _demod(self, y: ndarray[any, dtype[complex64 | complex128]]) -> ndarray[any, dtype[float32 | float64]]:
         pass
 
     def __setDemod(self, fun: Callable[
@@ -113,7 +130,7 @@ class DspProcessor(DataProcessor):
         if fun is not None and filters is not None and len(filters) > 0:
             self._outputFilters.clear()
             self._outputFilters.extend(*filters)
-            setattr(self, 'demod', fun)
+            setattr(self, '_demod', fun)
             return self.demod
         raise ValueError("Demodulation function, or filters not defined")
 
@@ -132,9 +149,6 @@ class DspProcessor(DataProcessor):
         self.bandwidth = 10000
         self.__setDemod(amDemod, generateEllipFilter(self.__decimatedFs, self._FILTER_DEGREE, 18000, 'lowpass'))
 
-    def _demod(self, y: ndarray):
-        return [self.demod(yy) for yy in y]
-
     def _processChunk(self, y: ndarray) -> ndarray[any, dtype[float32 | float64]]:
         if self._shift is not None:
             '''
@@ -144,51 +158,50 @@ class DspProcessor(DataProcessor):
             y = y * self._shift
         if self._decimationFactor > 1:
             y = decimate(y, self._decimationFactor)
-        y = self._demod(y)
+        y = self.demod(y)
         return applyFilters(y, self._outputFilters)
 
-    def _bufferChunk(self, isDead: Value, buffer: Queue) -> ndarray[any, dtype[float32 | float64]]:
-        for i in self._ii:
-            y = buffer.get()
-            if y is None or not len(y) or isDead.value:
-                self._isDead = True
-                break
-            if self._Y is None:
-                self._Y = ndarray(shape=(self._nCpus, y.size), dtype=complex128)
-            if self._shift is None:
-                self._generateShift(self._nCpus, y.size)
-            if len(y) < self._Y.shape[1]:
-                y = pad(y, (0, -len(y) + self._Y.shape[1]), mode='constant', constant_values=0)
-            self._Y[i] = y
-        return self._processChunk(self._Y)
-
-    def __processData(self, isDead: Value, buffer: Queue, file):
+    def _transformData(self, x: ndarray, file) -> None:
         from struct import pack
-        while not (self._isDead or isDead.value):
-            y = self._bufferChunk(isDead, buffer)
-            size = y.size
-            y = y.flat
-            if self.smooth:
-                y = savgol_filter(y, self.smooth, self._FILTER_DEGREE)
-            file.write(pack('@' + (size * 'd'), *y))
+        y = self._processChunk(x)
 
-    def _generateShift(self, r: int, c: int) -> None:
+        if self.smooth:
+            y = savgol_filter(y, self.smooth, self._FILTER_DEGREE)
+
+        file.write(pack('@' + (y.size * 'd'), *y))
+
+    def _processData(self, isDead: Value, buffer: Queue, file) -> None:
+        x = None
+        while not (self._isDead or isDead.value):
+            if x is None:
+                x = buffer.get()
+                self.__xSize = self.__xSize
+            else:
+                x[:] = buffer.get()
+
+            if self._shift is None:
+                self._generateShift(x.size)
+
+            if x.size < self.__xSize:
+                x[:] = pad(x, (0, -x.size + self.__xSize), mode='constant', constant_values=0)
+
+            self._transformData(x, file)
+
+    def _generateShift(self, c: int) -> None:
         if self.centerFreq:
-            self._shift = broadcast_to(exp(-2j * pi * (self.centerFreq / self.__fs) * arange(c)), (r, c))
+            self._shift = exp(-2j * pi * (self.centerFreq / self.__fs) * arange(c))
 
     def processData(self, isDead: Value, buffer: Queue, f: str, *args, **kwargs) -> None:
-        from multiprocessing import current_process
-        from sys import stdout
         with open(f, 'wb') if f is not None else open(stdout.fileno(), 'wb', closefd=False) as file:
             try:
-                self.__processData(isDead, buffer, file)
+                self._processData(isDead, buffer, file)
                 file.write(b'')
                 file.flush()
             except KeyboardInterrupt:
                 pass
-            except Exception as e:
-                eprint(f'Process {current_process().name} raised exception')
-                printException(e)
+            # except Exception as e:
+            #     from misc.general_util import printException
+            #     printException(e)
             finally:
                 buffer.close()
                 buffer.join_thread()

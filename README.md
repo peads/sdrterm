@@ -1,10 +1,8 @@
 # Installation
 `pip install sdrterm`
 
-*NOTE: Unless you intend to modify to source code, skip ahead to [here](#examples).
-
+*NOTE: Unless you intend use code on the bleeding-edge, or to modify the source, skip ahead to [here](#notes).
 # Requirements
-## Installing required dependencies
 After cloning this repo perform the following:
 ```
 cd <path/to/clone>
@@ -26,45 +24,106 @@ pip install .[gui]
 deactivate
 ```
 Alternatively--if you do not wish to use a virtual environment--the dependencies may be installed via the system's 
-package manager; or, with caution, `pip` directly.
+package manager; or, with caution, using `pip` directly.
 
-*Plotting support is optional, and can be activated by uncommenting the line containing `pyqtgraph` and adding a Qt framework in the `requirements.in` file
-before running `pip-compile`, or if it happens to already be installed in the environment.*
-### NOTE
-* By default, raw input is expected to be big-endian. 
-  * To swap this, use the `-X` flag. 
-* The endianness of the wave files is determined from metadata.
-* The default output mode (i.e. to stdin, or a file) double (float64) of the system-default endianness and alignment.
-  * e.g., doubles are 8 or 4 byte-aligned, little-endian on the typical x86-based system using Windows and Linux respectively.
-* By default, simo mode outputs big-endian doubles to its sockets.
+*Plotting support is optional, and dependencies can be installed by specifying by the 
+`[gui]` option during install, or if they happen to already be installed in the environment.*
+## Notes
+### Input data
+* For raw files, input is system-default endianness, 
+* For wave files, the endianness defined by the RIFF header
+* For tcp connections, data is expected to be big-endian
+* Endianness can be inverted using the `-X` flag
+* When necessary to specify the input datatype (`-e` flag), the selections map exactly to the "integer" and "float" types listed [here](https://docs.python.org/3/library/struct.html#format-characters)
+### Ouput data
+* Standard mode outputs doubles (float64) with system-default endianness and alignment
+* Multiple VFO mode (`--simo` flag) output is always big-endian doubles
+### Misc
+* Be aware that piping binary (i.e. non-text) data between processes in Powershell is only natively-supported 
+in Powershell v7.4+ (https://stackoverflow.com/a/68696757/8372013), which you may have 
+to install separately from the default version included with your copy of Windows. 
+*N.B. this does not affect modes that use sockets for IO.*
 # Examples
 ## sdrterm.py
-### Pipe output processed from wave file through `sox` then `dsd`
-`src/sdrterm.py -X --correct-iq -w5k --plot=ps -c"-3.5E+5" -i file.wav --plot=ps --decimation 100 | sox -D -traw -r24k -b64 -ef - -traw -es -b16 -r48k - | dsd -i - -o /dev/null -n`
-#### Explanation of options
-*N.B. the `-X` flag is specified since this hypothetical wav file has only standard header 
-information (i.e. does not have extended RIFF data) with no endianness indicator, 
-and its encoding is little-endian*
+### Read input from wave file
+`python src/sdrterm.py -i file.wav --omega-out=5k --decimation=64 --center-frequency="15k" --plot=spec --correct-iq -o out.bin`
+#### General explanation of options
+* Input source: wave file
+* Input data type: determined by RIFF header metadata
+* Sample rate: determined by RIFF header metadata
+* Output lp: 5 kHz
+* Decimation factor: 64 $\implies$ output fs: $1024k \over 64$ = 16k S/s
+* Offset from tuned frequency: +15 kHz
+* Plot(s): Spectrum Analyzer
+* IQ correction: enabled
+* Output destination: out.bin
+### Read input from socket, and pipe output to stdout 
+`python src/sdrterm.py -i <host>:<port> -eh -r1024k -w5k -d64 -c"-30k" --plot=water | ...`
+#### General explanation of options
+*N.B. sampling rate and datatype must be specified for raw input*
+* Input source: TCP socket at \<host> on \<port>
+* Input data type: 16-bit, signed integer
+* Sample rate: 1024k S/s
+* Output lp: 5 kHz
+* Decimation factor: 64 $\implies$ output fs: $1024k \over 64$ = 16k S/s
+* Offset from tuned frequency: -30 kHz
+* Plot(s): Waterfall
+* Output destination: stdout
+### Select multiple frequencies to process from data input via a socket and output them via separate sockets
+#### See [exmaple_simo.sh](example_simo.sh) for a complete example
 
-Plot(s): Spectrum analyzer
+*More examples can be found in the shell scripts  in the root of this repo.* 
+```
+ Usage: sdrterm.py [OPTIONS]
 
-Endianness swap: Enabled
+╭─ Options ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ --fs                     -r                          NUMBER                 Sampling frequency in k/M/Samples per sec                                                                                                 │
+│ --center-frequency       -c                          NUMBER                 Offset from tuned frequency in k/M/Hz [default: 0]                                                                                        │
+│ --input                  -i                          TEXT                   Input device [default: (stdin)]                                                                                                           │
+│ --output                 -o                          TEXT                   Output device [default: (stdout)]                                                                                                         │
+│ --plot                                               TEXT                   1D-Comma-separated value of plot type(s) [default: None]                                                                                  │
+│ --demodulation           -m                          [fm|wfm|am|re|im|fft]  Demodulation type [default: fm]                                                                                                           │
+│ --tuned-frequency        -t                          NUMBER                 Tuned frequency in k/M/Hz [default: 0]                                                                                                    │
+│ --vfos                                               TEXT                   1D-Comma-separated value of offsets from tuned frequency to process in addition to tuned frequency in k/M/Hz [default: None]              │
+│ --decimation             -d                          INTEGER RANGE [x>=2]   Decimation factor [default: 2]                                                                                                            │
+│ --encoding               -e                          [b|B|h|H|i|I|f|d]      Binary encoding (ignored if wav file) [default: None]                                                                                     │
+│ --omega-out              -w                          NUMBER                 Output cutoff frequency in k/M/Hz [default: 12500]                                                                                        │
+│ --correct-iq                 --no-correct-iq                                Toggle iq correction [default: no-correct-iq]                                                                                             │
+│ --simo                       --no-simo                                      Enable using sockets to output data processed from multiple channels specified by the vfos option. N.B. unlike normal mode, which uses    │
+│                                                                             the system-default endianness for output, the sockets output  network-default, big-endian doubles. [Implies: --vfos <csv>]                │
+│                                                                             [default: no-simo]                                                                                                                        │
+│ --verbose                -v                          INTEGER                Toggle verbose output. Repetition increases verbosity (e.g. -vv, or -v -v) [default: 0]                                                   │
+│ --smooth-output                                      INTEGER                Provide length of polynomial for smoothing output with Savitzky–Golay filter. A larger polynomial implies more aggressive filtering.      │
+│                                                                             [default: (0 => no filtering)]                                                                                                            │
+│ --vfo-host                                           TEXT                   Address on which to listen for vfo client connections [default: localhost]                                                                │
+│ --swap-input-endianness  -X                                                 Swap input endianness [default: (False => system-default, or as defined in RIFF header)]                                                  │
+│ --normalize-input            --no-normalize-input                           Normalize input data. [default: no-normalize-input]                                                                                       │
+│ --help                                                                      Show this message and exit.                                                                                                               │
+╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+```
 
-Sample rate: Determined via RIFF header
+## rtltcp.py
+#### rtl_tcp running on server <ip | addr> on \<port>
+`python src/rtltcp.py <host> <port>`
+```
+ Usage: rtltcp.py [OPTIONS] HOST PORT
 
-Input data type: Determined via RIFF header
+╭─ Arguments ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ *    host      TEXT     Address of remote rtl_tcp server [default: None] [required]                                                                                                                                   │
+│ *    port      INTEGER  Port of remote rtl_tcp server [default: None] [required]                                                                                                                                      │
+╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+╭─ Options ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
+│ --server-host        TEXT  Port of local distribution server [default: localhost]                                                                                                                                     │
+│ --help                     Show this message and exit.                                                                                                                                                                │
+╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
+```
+<img width="466" alt="Screenshot 2024-06-18 at 20 45 48" src="https://github.com/peads/sdrterm/assets/902685/29812f55-479f-4934-930b-56b2aaf743c4">
 
-Input source: file.wav
+## sdrcontrol.py [EXPERIMENTAL]
 
-Output destination(s): stdout -> sox -> dsd
+<img width="993" alt="Screenshot 2024-06-18 at 20 43 23" src="https://github.com/peads/sdrterm/assets/902685/7fd07d90-e79a-47e9-9cec-3ebc7cd446af">
 
-Offset from (tuner's) center frequency: -350 kHz
-
-IQ correction: Enabled
-
-Decimation factor: 100 times => output fs: 2400k/100 = 24k S/s 
-
-Output lowpass elliptical filter cutoff frequency: 5 kHz
+*Due to the experimental nature of this interface, do not hesitate to report suspected bugs.*
 
 *N.B. if you'd like to be sure of your wave file's sampling rate beforehand, 
 you can use a tool like `mediainfo` available via most POSIX-like systems' package managers. 
@@ -76,119 +135,7 @@ of sdrterm's operation. e.g.,*
   "centerFreq": 0,
   "tunedFreq": 0,
   "omegaOut": 5000,
-  "smooth": 0,
   "fs": 48000,
   "decimatedFs": 24000
 }
 ```
-### Pipe raw data from `socat` in, and output to pipe via stdout 
-*N.B. sampling rate and datatype must be specified for raw input*
-
-`socat -u TCP4:<host>:<port> - | python src/sdrterm.py -w18k --fs=1024k -t162.5M -c"-30k" -eh --plot=water | ...`
-#### Explanation of options
-Plot(s): Waterfall
-
-Sample rate: 1024k S/s
-
-Tuned frequency (only used to make frequency axis of plots clearer): 162.500Mhz
-
-Offset from tuned frequency: -30 kHz
-
-Input data type: 16-bit, signed integer
-
-Input source: socat->stdin
-
-Output destination(s): stdout
-
-Decimation factor: default (i.e. 2 => output fs is 1024k/2 = 512k S/s)
-
-Output lp: 18 kHz
-
-### Select multiple frequencies to process from data piped via `socat` and output them via separate sockets
-*See [exmaple_simo.sh](example_simo.sh) for a complete example*
-#### General explanation of options
-Input source: piped via stdin from `socat`
-
-Output destination(s): server listening for connections on all available interfaces (i.e. on "0.0.0.0" specified by the `--vfo-host` 
-option) distributing respective data on sockets; one for each channel frequency specified 
-
-*N.B. Unlike the normal, single-output mode, the `--simo` setting outputs data as network-default, big-endian doubles 
-to its socket(s)*
-
-Offset from tuned frequency: +15 kHz
-
-IQ correction: Enabled
-
-Decimation factor: 50 => output fs: 1024k/50 = 20480 S/s
-
-Output lp: 18 kHz
-
-*Less trivial examples can be found in the shell scripts of the form `example*.sh` in the root of this repo.*
-
-#### Further options can be found via `python src/sdrterm.py --help` 
-
-*N.B. output below may be out of date, the source of truth 
-should always be considered version output by the aforementioned option 
-in the code currently committed to the master branch*
-
-```
- Usage: sdrterm.py [OPTIONS]
-
-╭─ Options ──────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
-│ --fs                     -r                     NUMBER                 Sampling frequency in k/M/Samples per sec                                                                                       │
-│ --center-frequency       -c                     NUMBER                 Offset from tuned frequency in k/M/Hz [default: 0]                                                                              │
-│ --input                  -i                     TEXT                   Input device [default: (stdin)]                                                                                                 │
-│ --output                 -o                     TEXT                   Output device [default: (stdout)]                                                                                               │
-│ --plot                                          TEXT                   1D-Comma-separated value of plot type(s) [default: None]                                                                        │
-│ --demodulation           -m                     [fm|wfm|am|re|im|fft]  Demodulation type [default: fm]                                                                                                 │
-│ --tuned-frequency        -t                     NUMBER                 Tuned frequency in k/M/Hz [default: 0]                                                                                          │
-│ --vfos                                          TEXT                   1D-Comma-separated value of offsets from tuned frequency to process in addition to tuned frequency in k/M/Hz [default: None]    │
-│ --decimation             -d                     INTEGER RANGE [x>=2]   Decimation factor [default: 2]                                                                                                  │
-│ --encoding               -e                     [b|B|h|H|i|I|f|d]      Binary encoding (ignored if wav file) [default: None]                                                                           │
-│ --omega-out              -w                     NUMBER                 Output cutoff frequency in k/M/Hz [default: 12500]                                                                              │
-│ --correct-iq                 --no-correct-iq                           Toggle iq correction [default: no-correct-iq]                                                                                   │
-│ --simo                       --no-simo                                 N.B. unlike normal mode, which uses the system-default endianness for output, the sockets output  network-default, big-endian   │
-│                                                                        bytes. Enable using sockets to output data processed from multiple channels specified by the vfos option. [Implies: --vfos      │
-│                                                                        <csv>]                                                                                                                          │
-│                                                                        [default: no-simo]                                                                                                              │
-│ --verbose                -v                     INTEGER                Toggle verbose output. Repetition increases verbosity (e.g. -vv, or -v -v) [default: 0]                                         │
-│ --smooth-output                                 INTEGER                Provide length of polynomial for smoothing output with Savitzky–Golay filter. A larger polynomial implies more aggressive       │
-│                                                                        filtering.                                                                                                                      │
-│                                                                        [default: (0 => no filtering)]                                                                                                  │
-│ --vfo-host                                      TEXT                   Address on which to listen for vfo client connections [default: localhost]                                                      │
-│ --swap-input-endianness  -X                                            Swap input endianness [default: (False => network-default, big-endian)]                                                         │
-│ --help                                                                 Show this message and exit.                                                                                                     │
-╰────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-```
-
-## rtltcp.py
-#### rtl_tcp running on server <ip | addr> on \<port>
-`python src/rtltcp.py <host> <port>`
-```
- Usage: rtltcp.py [OPTIONS] HOST PORT
-
-╭─ Arguments ───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
-│ *    host      TEXT     Address of remote rtl_tcp server [default: None] [required]                                                       │
-│ *    port      INTEGER  Port of remote rtl_tcp server [default: None] [required]                                                          │
-╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-╭─ Options ─────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╮
-│ --help          Show this message and exit.                                                                                               │
-╰───────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────────╯
-```
-<img width="466" alt="Screenshot 2024-06-18 at 20 45 48" src="https://github.com/peads/sdrterm/assets/902685/29812f55-479f-4934-930b-56b2aaf743c4">
-
-## sdrcontrol.py [EXPERIMENTAL]
-
-<img width="993" alt="Screenshot 2024-06-18 at 20 43 23" src="https://github.com/peads/sdrterm/assets/902685/7fd07d90-e79a-47e9-9cec-3ebc7cd446af">
-
-*Due to the experimental nature of this interface, do not hesitate to report suspected bugs.*
-
-## Notes
-* Default input is expected to be big-endian, but this can be swapped with the `-X` flag
-  * When necessary to specify the input *datatype*, the selections map exactly to [the "integer" and "float" types listed here](https://docs.python.org/3/library/struct.html#format-characters)
-* Default output mode always uses the system's default-endianness and alignment for the double (float64) datatype
-* Multiple VFO mode (i.e. when using the `--simo` flag) output is always big-endian double
-* Be aware that piping binary (i.e. non-text) data between processes in Powershell is only natively-supported 
-in Powershell v7.4+ (https://stackoverflow.com/a/68696757/8372013), which you may have 
-to install separately from the default version included with your copy of Windows, if you wish to 
-handle data via that method. *N.B. this does not affect modes that directly use sockets for IO.*

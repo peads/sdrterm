@@ -23,10 +23,10 @@ from queue import Queue
 from socketserver import ThreadingMixIn, TCPServer, BaseRequestHandler
 from threading import Thread, Event
 
-from numpy import pi, array, ndarray, complex128, exp, arange, broadcast_to, ones
+from numpy import pi, array, complex128, exp, arange, ones
 
 from dsp.dsp_processor import DspProcessor
-from misc.general_util import eprint, printException, findPort, tprint, vprint, shutdownSocket
+from misc.general_util import eprint, findPort, tprint, vprint, shutdownSocket
 
 
 class ThreadedTCPServer(ThreadingMixIn, TCPServer):
@@ -88,27 +88,19 @@ class VfoProcessor(DspProcessor):
     def queue(self):
         del self.__queue
 
-    def _demod(self, y: ndarray):
-        ret = []
-        for yy in y:
-            ret.append([self.demod(yyy) for yyy in yy])
-        return array(ret)
-
-    def _generateShift(self, r: int, c: int) -> None:
-        self._shift = ones(shape=(self._nFreq, r, c), dtype=complex128)
+    def _generateShift(self, c: int) -> None:
+        self._shift = ones(shape=(self._nFreq, c), dtype=complex128)
         for i, w in enumerate(self.__omega):
-            shift = exp(w * arange(c))
-            self._shift[i][:] = (broadcast_to(shift, (r, c)))
+            self._shift[i][:] = exp(w * arange(c))
             self.queue.put(w)
             tprint(f'Put {w}')
         self.queue.join()
         eprint('Connection(s) established')
 
-    def __processData(self, isDead: Value, buffer: Queue, *args) -> None:
+    def _transformData(self, x, _=None) -> None:
         from struct import pack
-        while not (self._isDead or isDead.value):
-            for (request, data) in zip(self.__clients.values(), self._bufferChunk(isDead, buffer)):
-                request.write(pack('!' + str(data.size) + 'd', *data.flat))
+        for (request, data) in zip(self.__clients.values(), self._processChunk(x)):
+            request.write(pack('!' + str(data.size) + 'd', *data))
 
     def processData(self, isDead: Value, buffer: Queue, *args, **kwargs) -> None:
         self.__queue = Queue()
@@ -134,17 +126,21 @@ class VfoProcessor(DspProcessor):
             st = Thread(target=server.serve_forever)
 
             try:
+                from concurrent.futures import ThreadPoolExecutor as Executor
                 eprint(f'\nAccepting connections on {server.socket.getsockname()}\n')
                 st.start()
-                self.__processData(isDead, buffer)
-            except (KeyboardInterrupt, TypeError):
+                with Executor(max_workers=self._nFreq) as self._pool:
+                    self._processData(isDead, buffer, None)
+            except KeyboardInterrupt:
                 pass
-            except Exception as e:
-                printException(e)
+            # except Exception as e:
+            #     from misc.general_util import printException
+            #     printException(e)
             finally:
-                server.shutdown()
-                self._isDead = True
                 self.__event.set()
+                self._isDead = True
+                self._pool.shutdown(wait=False, cancel_futures=False)
+                server.shutdown()
                 with self.__queue.all_tasks_done:
                     self.__queue.all_tasks_done.notify_all()
                 st.join()
