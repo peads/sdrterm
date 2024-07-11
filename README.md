@@ -46,26 +46,26 @@ to install separately from the default version included with your copy of Window
 # Examples
 ## sdrterm.py
 ### Read input from wave file
-`python src/sdrterm.py -i file.wav --omega-out=5k --decimation=64 --center-frequency="15k" --plot=spec --correct-iq -o out.bin`
+`python -m sdrterm -i file.wav --omega-out=5k --decimation=64 --center-frequency="15k" --plot=spec --correct-iq -o out.bin`
 #### General explanation of options
 * Input source: wave file
 * Input data type: determined by RIFF header metadata
-* Sample rate: determined by RIFF header metadata
+* Sample rate: determined by RIFF header metadata ($fs$ $S \over s$)
 * Output lp: 5 kHz
-* Decimation factor: 64 $\implies$ output fs: $1024k \over 64$ = 16k S/s
+* Decimation factor: $64 \implies$ $fs \over 64$ $S \over s$
 * Offset from tuned frequency: +15 kHz
 * Plot(s): Spectrum Analyzer
 * IQ correction: enabled
 * Output destination: out.bin
 ### Read input from socket, and pipe output to stdout 
-`python src/sdrterm.py -i <host>:<port> -eh -r1024k -w5k -d64 -c"-30k" --plot=water | ...`
+`python -m sdrterm -i <host>:<port> -eh -r1024k -w5k -d64 -c"-30k" --plot=water | ...`
 #### General explanation of options
 *N.B. sampling rate and datatype must be specified for raw input*
 * Input source: TCP socket at \<host> on \<port>
 * Input data type: 16-bit, signed integer
-* Sample rate: 1024k S/s
+* Sample rate: $1024k$ $S \over s$
 * Output lp: 5 kHz
-* Decimation factor: 64 $\implies$ output fs: $1024k \over 64$ = 16k S/s
+* Decimation factor: $64 \implies$ $1024k \over 64$ $= 16k$ $S \over s$
 * Offset from tuned frequency: -30 kHz
 * Plot(s): Waterfall
 * Output destination: stdout
@@ -104,7 +104,7 @@ to install separately from the default version included with your copy of Window
 
 ## rtltcp.py
 #### rtl_tcp running on server <ip | addr> on \<port>
-`python src/rtltcp.py <host> <port>`
+`python -m rtltcp <host> <port>`
 ```
  Usage: rtltcp.py [OPTIONS] HOST PORT
 
