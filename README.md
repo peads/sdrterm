@@ -50,7 +50,7 @@ to install separately from the default version included with your copy of Window
 #### General explanation of options
 * Input source: wave file
 * Input data type: determined by RIFF header metadata
-* Sample rate: determined by RIFF header metadata ($fs S \over s$)
+* Sample rate: determined by RIFF header metadata ($fs$ S/s)
 * Output lp: 5 kHz
 * Decimation factor: $64 \implies$ $fs \over 64$ S/s
 * Offset from tuned frequency: +15 kHz
