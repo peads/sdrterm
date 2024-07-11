@@ -52,7 +52,7 @@ to install separately from the default version included with your copy of Window
 * Input data type: determined by RIFF header metadata
 * Sample rate: determined by RIFF header metadata ($fs S \over s$)
 * Output lp: 5 kHz
-* Decimation factor: $64 \implies fs \over 64 S \over s$
+* Decimation factor: $64 \implies fs \over 64$ S/s
 * Offset from tuned frequency: +15 kHz
 * Plot(s): Spectrum Analyzer
 * IQ correction: enabled
@@ -65,7 +65,7 @@ to install separately from the default version included with your copy of Window
 * Input data type: 16-bit, signed integer
 * Sample rate: $1024k S \over s$
 * Output lp: 5 kHz
-* Decimation factor: $64 \implies 1024k \over 64 = 16k S \over s$
+* Decimation factor: $64 \implies 1024k \over 64 = 16k S/s$
 * Offset from tuned frequency: -30 kHz
 * Plot(s): Waterfall
 * Output destination: stdout
