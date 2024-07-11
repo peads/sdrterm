@@ -63,7 +63,7 @@ to install separately from the default version included with your copy of Window
 *N.B. sampling rate and datatype must be specified for raw input*
 * Input source: TCP socket at \<host> on \<port>
 * Input data type: 16-bit, signed integer
-* Sample rate: $1024k S \over s$
+* Sample rate: $1024k$ $S \over s$
 * Output lp: 5 kHz
 * Decimation factor: $64 \implies$ $1024k \over 64$ $= 16k$ $S \over s$
 * Offset from tuned frequency: -30 kHz
