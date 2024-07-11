@@ -4,15 +4,11 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src"]
-
-# TODO figure out why neither of these work
-#[envs.default.env-vars]
-##[tool.hatch.envs.default.env-vars]
-#PIP_NO_BINARY="numpy,scipy"
+sources = ["src"]
 
 [project]
 name = "sdrterm"
-version = "0.1"
+version = "0.2.1"
 dependencies = [
     'scipy',
     'numpy>=1.26',
