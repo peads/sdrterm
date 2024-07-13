@@ -52,7 +52,7 @@ for i in ${@:1}; do
 done
 unset i;
 
-cmd="${SDRTERM_EXEC} ${params} --simo 2>&1"; # | tee /tmp/sdrterm-${ts}.log";
+cmd="${SDRTERM_EXEC} ${params} --simo 2>&1";
 set -u;
 echo "LOG: ${cmd}";
 coproc SDRTERM { eval "$cmd"; }

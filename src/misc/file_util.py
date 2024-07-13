@@ -178,7 +178,5 @@ def checkWavHeader(f, fs: int, enc: str) -> dict:
         file.seek(0)
         buf = file.read(off + 4)
         assert b'data' == buf[-4:]
-        # if buf[-4:] != b'data':
-        #     raise ValueError('Invalid: could not find data section.')
         ret['dataOffset'] = file.tell()
     return ret

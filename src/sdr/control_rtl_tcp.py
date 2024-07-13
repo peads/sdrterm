@@ -30,13 +30,6 @@ class ControlRtlTcp(Controller):
     def __init__(self, connection: Receiver, resetBuffers: Callable):
         super().__init__(connection)
         self._resetBuffers = resetBuffers
-        # if resetBuffers is not None:
-        #     setattr(self, 'resetBuffers', resetBuffers)
-        # connection.sendall(pack('>BI', RtlTcpCommands.SET_GAIN_MODE.value, 1))
-        # connection.sendall(pack('>BI', RtlTcpCommands.SET_AGC_MODE.value, 0))
-        # connection.sendall(pack('>BI', RtlTcpCommands.SET_TUNER_GAIN_BY_INDEX.value, 0))
-        # connection.sendall(pack('>BI', RtlTcpCommands.SET_SAMPLE_RATE.value, 1024000))
-        # connection.sendall(pack('>BI', RtlTcpCommands.SET_BIAS_TEE.value, 0))
 
     @property
     def resetBuffers(self) -> Callable:
