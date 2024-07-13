@@ -66,7 +66,6 @@ class WaterfallPlot(AbstractPlot):
         self.widget = PlotWidget()
         self.plot = self.widget.plotItem
         self.axis = self.plot.getAxis("bottom")
-        # self.xscale = self._NFFT / self.fs
 
         self.window.setCentralWidget(self.widget)
         self.plot.addItem(self.item)

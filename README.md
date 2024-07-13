@@ -31,7 +31,7 @@ package manager; or, with caution, using `pip` directly.
 ## Notes
 ### Input data
 * For raw files, input is system-default endianness, 
-* For wave files, the endianness defined by the RIFF header
+* For wave files, the endianness defined by the RIFF/X header
 * For tcp connections, data is expected to be big-endian
 * Endianness can be inverted using the `-X` flag
 * When necessary to specify the input datatype (`-e` flag), the selections map exactly to the "integer" and "float" types listed [here](https://docs.python.org/3/library/struct.html#format-characters)
@@ -49,8 +49,8 @@ to install separately from the default version included with your copy of Window
 `python -m sdrterm -i file.wav --omega-out=5k --decimation=64 --center-frequency="15k" --plot=spec --correct-iq -o out.bin`
 #### General explanation of options
 * Input source: wave file
-* Input data type: determined by RIFF header metadata
-* Sample rate: determined by RIFF header metadata ($fs$ $S \over s$)
+* Input data type: determined by RIFF/X header metadata
+* Sample rate: determined by RIFF/X header metadata ($fs$ $S \over s$)
 * Output lp: 5 kHz
 * Decimation factor: $64 \implies$ $fs \over 64$ $S \over s$
 * Offset from tuned frequency: +15 kHz

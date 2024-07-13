@@ -22,13 +22,17 @@
 # Usage: ./example_simo.sh -i [<file> | <host>:<port>] -eB -r1024k -d25 -c"-1.2E+3" -t123.456M" --vfos=15000,-15000,30000" -w5k
 ####
 OIFS=$IFS
-SDRTERM_EXEC="python -m sdrterm";
+
 function log {
   echo "$(date +'%F %T')Z: ${1}";
 }
 
 ts=$(date +%Y%m%d%H%M);
 log "timestamp: ${ts}";
+
+if [[ -z ${SDRTERM_EXEC} ]]; then
+  SDRTERM_EXEC="python -m sdrterm";
+fi
 
 if [[ -z ${DSD_CMD} ]]; then
   DSD_CMD="dsd -q -i - -o /dev/null -n";
@@ -48,7 +52,7 @@ for i in ${@:1}; do
 done
 unset i;
 
-cmd="${SDRTERM_EXEC} ${params} --simo 2>&1 | tee /tmp/sdrterm-${ts}.log";
+cmd="${SDRTERM_EXEC} ${params} --simo 2>&1";
 set -u;
 echo "LOG: ${cmd}";
 coproc SDRTERM { eval "$cmd"; }
@@ -72,7 +76,7 @@ function cleanup {
     while IFS= ; read -r line; do
       log "${line}";
     done < ${logFiles["$i"]}
-#    rm "${logFiles[$i]}";
+    rm "${logFiles[$i]}";
   done
   unset i;
 

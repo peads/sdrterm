@@ -61,12 +61,15 @@ class IOArgs:
                                    buffers: list[Queue] = None,
                                    **kwargs) -> None:
         import os
-        from dsp.dsp_processor import DspProcessor
-        from dsp.vfo_processor import VfoProcessor
         from misc.general_util import eprint
         from plots.util import selectDemodulation, selectPlotType
 
-        cls.strct['processor'] = DspProcessor if not simo else VfoProcessor
+        if not simo:
+            from dsp.dsp_processor import DspProcessor
+            cls.strct['processor'] = DspProcessor
+        else:
+            from dsp.vfo_processor import VfoProcessor
+            cls.strct['processor'] = VfoProcessor
         cls.strct['processor'] = cls.strct['processor'](fs, **kwargs)
         selectDemodulation(dm, cls.strct['processor'])()
 

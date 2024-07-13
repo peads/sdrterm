@@ -299,7 +299,6 @@ class SdrControl(App):
                             classes='source',
                             type='integer',
                             valid_empty=False)
-                # validate_on=['submitted'])
                 yield Button('Connect', id='connector', classes='sources connect', variant='success')
 
             yield Label('Tuning')

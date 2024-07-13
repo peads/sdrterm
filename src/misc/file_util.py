@@ -20,9 +20,8 @@
 from enum import Enum
 from struct import unpack
 from typing import Iterable
+
 from numpy import dtype
-
-
 
 from misc.mappable_enum import MappableEnum
 
@@ -61,12 +60,13 @@ class DataType(MappableEnum):
         return self.name
 
     @classmethod
-    def fromWav(cls, bits: int, aFormat: Enum, bFormat: Enum) -> dtype:
+    def fromWav(cls, bits: int, aFormat: Enum, bFormat: Enum, isRifx: bool) -> dtype:
         eight = {'S': cls.b, 'U': cls.B, 'None': cls.B}
         sixteen = {'S': cls.h, 'U': cls.H, 'None': cls.h}
         thirtytwo = {'S': cls.i, 'U': cls.I, 'None': cls.i}
 
         ret = None
+        splt = aFormat.name.split('_')
         if WaveFormat.WAVE_FORMAT_IEEE_FLOAT == aFormat:
             if 32 == bits:
                 ret = cls.f.value
@@ -74,7 +74,6 @@ class DataType(MappableEnum):
                 ret = cls.d.value
         elif WaveFormat.WAVE_FORMAT_PCM == aFormat or WaveFormat.WAVE_FORMAT_EXTENSIBLE == aFormat:
             istZahl = None
-            splt = aFormat.name.split('_')
 
             if bFormat is not None and bFormat in ExWaveFormat:
                 splt = bFormat.name.split('_')
@@ -87,18 +86,18 @@ class DataType(MappableEnum):
             elif 32 == bits:
                 ret = thirtytwo[str(istZahl)].value
 
-            if 'BE' != splt[2]:
-                ret = ret.newbyteorder('<')
-            else:
-                ret = ret.newbyteorder('>')
+        if ret is None:
+            raise ValueError(f'Unsupported format: {bits}: {aFormat}')
 
-        if ret is not None:
-            return ret
+        if not (isRifx or 'BE' == splt[2]):
+            ret = ret.newbyteorder('<')
+        else:
+            ret = ret.newbyteorder('>')
 
-        raise ValueError(f'Unsupported format: {bits}: {aFormat}')
+        return ret
 
 
-def parseRawType(file: str, fs: int, enc: str) -> dict:
+def parseRawType(file: str | None, fs: int, enc: str) -> dict:
     if fs is None or fs < 1 or enc is None:
         raise ValueError('Sampling rate, encoding type and bit-size are required for raw pcm input')
     fs = int(fs)
@@ -121,14 +120,23 @@ def zipRet(x: Iterable):
     return val
 
 
-def checkWavHeader(f: str, fs: int, enc: str) -> dict:
-    if not f or ':' in f:
+def checkWavHeader(f, fs: int, enc: str) -> dict:
+    if f is None or issubclass(type(f), str) and ':' in f:
         return parseRawType(f, fs, enc)
 
     with open(f, 'rb') as file:
         # derived from http://soundfile.sapp.org/doc/WaveFormat/ and https://bts.keep-cool.org/wiki/Specs/CodecsValues
-        if b'RIFF' != file.read(4):
+        headerStr = '<IHHIIHH'
+        if b'RIF' != file.read(3):
+            if '.wav' in f:
+                raise ValueError('Invalid: Expected raw pcm file, but got malformed RIFF header')
             return parseRawType(f, fs, enc)
+        else:
+            temp = file.read(1)
+            if not (b'F' == temp or b'X' == temp):
+                raise ValueError('Invalid: malformed RIFF header')
+            elif b'X' == temp:
+                headerStr = '>IHHIIHH'
         chunkSize, = unpack('<I', file.read(4))
         if b'WAVE' != file.read(4):
             raise ValueError('Invalid: not wave file')
@@ -144,7 +152,7 @@ def checkWavHeader(f: str, fs: int, enc: str) -> dict:
                blockAlign,      # 2
                bitsPerSample,   # 2
                                 # 20
-               ) = unpack('<IHHIIHH', file.read(20))
+               ) = unpack(headerStr, file.read(20))
         ret = zipRet(ret)
         subFormat = None
 
@@ -157,7 +165,8 @@ def checkWavHeader(f: str, fs: int, enc: str) -> dict:
                 raise ValueError('Invalid SubFormat GUID')
             subFormat = ExWaveFormat(subFormat)
 
-        ret['bitsPerSample'] = DataType.fromWav(bitsPerSample, WaveFormat(ret['audioFormat']), subFormat)
+        ret['bitsPerSample'] = DataType.fromWav(bitsPerSample, WaveFormat(ret['audioFormat']), subFormat,
+                                                '>' in headerStr)
         ret['bitRate'] = (bitsPerSample * byteRate * blockAlign) >> 3
 
         off = -1
@@ -168,7 +177,6 @@ def checkWavHeader(f: str, fs: int, enc: str) -> dict:
         off += temp
         file.seek(0)
         buf = file.read(off + 4)
-        if buf[-4:] != b'data':
-            raise ValueError('Invalid: could not find data section.')
+        assert b'data' == buf[-4:]
         ret['dataOffset'] = file.tell()
     return ret
