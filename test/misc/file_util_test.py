@@ -256,32 +256,32 @@ def test_checkBadHeader(badHeader):
 
 def test_checkBadHeader2(badHeader2):
     with pytest.raises(ValueError):
-        checkWavHeader(badHeader2, 8000, 'B')
+        checkWavHeader(badHeader2, 8001, 'B')
 
 
 def test_checkBadHeader3(badHeader3):
     with pytest.raises(ValueError):
-        checkWavHeader(badHeader3, 8000, 'B')
+        checkWavHeader(badHeader3, 8002, 'B')
 
 
 def test_checkBadHeader4(badHeader4):
     with pytest.raises(ValueError):
-        checkWavHeader("foo.wav", 8000, 'B')
+        checkWavHeader("foo.wav", 8003, 'B')
 
 
 def test_checkBadHeader5(badHeader5):
     with pytest.raises(ValueError):
-        checkWavHeader(badHeader5, 8000, 'B')
+        checkWavHeader(badHeader5, 8004, 'B')
 
 
 def test_checkBadHeader6(badHeader6):
     with pytest.raises(ValueError):
-        checkWavHeader(badHeader6, 8000, 'B')
+        checkWavHeader(badHeader6, 8005, 'B')
 
 
 def test_checkFloatBitRateHeader(badFloatBitRateHeader):
     with pytest.raises(ValueError):
-        checkWavHeader(badFloatBitRateHeader, 8000, 'B')
+        checkWavHeader(badFloatBitRateHeader, 8006, 'B')
         
 
 def test_checkAlawHeader(alawHeader):
