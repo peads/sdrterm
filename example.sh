@@ -21,7 +21,10 @@
 ####
 # Usage: ./example.sh <wave_file>
 ####
-SDRTERM_EXEC="python -m sdrterm";
+if [[ -z ${SDRTERM_EXEC} ]]; then
+  SDRTERM_EXEC="python -m sdrterm";
+fi
+
 if [[ -z ${DSD_CMD} ]]; then
   DSD_CMD="dsd -q -i - -o /dev/null -n";
 fi
