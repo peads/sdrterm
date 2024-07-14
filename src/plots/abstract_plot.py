@@ -117,7 +117,7 @@ class AbstractPlot(DataProcessor, ABC):
 
     @nyquistFs.setter
     def nyquistFs(self, value) -> None:
-        raise NotImplementedError('Setting the nyquistFs directly is not supported. Set fs instead')
+        raise TypeError('Setting the nyquistFs directly is not supported. Set fs instead')
 
     @property
     def dt(self) -> float:
@@ -125,7 +125,7 @@ class AbstractPlot(DataProcessor, ABC):
 
     @dt.setter
     def dt(self, value) -> None:
-        raise NotImplementedError('Setting the dt directly is not supported. Set fs instead')
+        raise TypeError('Setting the dt directly is not supported. Set fs instead')
 
     @check_halt_condition
     def receiveData(self) -> int | None:

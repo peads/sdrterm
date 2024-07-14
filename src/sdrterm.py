@@ -104,7 +104,7 @@ def main(fs: Annotated[int, Option('--fs', '-r',
          correct_iq: Annotated[bool, Option(help='Toggle iq correction')] = False,
          simo: Annotated[bool, Option(help='''
             Enable using sockets to output data processed from multiple channels specified by the vfos option.
-            N.B. unlike normal mode, which uses the system-default endianness for output, the sockets output 
+            N.B. unlike normal mode, which uses the system-default endianness for output, the sockets output
             network-default, big-endian doubles. [Implies: --vfos <csv>]''')] = False,
          verbose: Annotated[int, Option("--verbose", "-v",
                                         count=True,
@@ -185,12 +185,12 @@ def main(fs: Annotated[int, Option('--fs', '-r',
 def __setStartMethod():
     if 'spawn' in get_all_start_methods():
         try:
-            from multiprocessing import set_start_method, get_context
+            from multiprocessing import set_start_method
 
             set_start_method('spawn')
         except Exception as e:
             printException(e)
-            raise AttributeError(f'Setting start method to spawn failed')
+            raise NotImplementedError('Setting start method to spawn failed')
 
 
 def __generatePidFile(pid):
@@ -209,7 +209,7 @@ def __generatePidFile(pid):
     eprint(f'PID file is created: {pidfile.name}')
 
     def deletePidFile():
-        tprint(f'Attempting to delete PID file')
+        tprint('Attempting to delete PID file')
         try:
             unlink(tmpfile)
             vprint(f'PID file: {tmpfile} deleted')
@@ -221,9 +221,9 @@ def __generatePidFile(pid):
 
 
 def __stopProcessing():
-    tprint(f'Setting halt condition')
+    tprint('Setting halt condition')
     isDead.value = 1
-    tprint(f'Halt condition set')
+    tprint('Halt condition set')
     __deletePidFile()
 
 

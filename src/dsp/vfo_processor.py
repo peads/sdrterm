@@ -58,7 +58,7 @@ class VfoProcessor(DspProcessor):
 
     @clients.setter
     def clients(self, _):
-        raise NotImplemented('Setting queue is not allowed')
+        raise TypeError('Setting queue is not allowed')
 
     @clients.deleter
     def clients(self):
@@ -70,7 +70,7 @@ class VfoProcessor(DspProcessor):
 
     @event.setter
     def event(self, _):
-        raise NotImplemented('Setting queue is not allowed')
+        raise TypeError('Setting queue is not allowed')
 
     @event.deleter
     def event(self):
@@ -82,7 +82,7 @@ class VfoProcessor(DspProcessor):
 
     @queue.setter
     def queue(self, _):
-        raise NotImplemented('Setting queue is not allowed')
+        raise TypeError('Setting queue is not allowed')
 
     @queue.deleter
     def queue(self):
@@ -144,5 +144,5 @@ class VfoProcessor(DspProcessor):
                 with self.__queue.all_tasks_done:
                     self.__queue.all_tasks_done.notify_all()
                 st.join()
-                vprint(f'Multi-VFO writer halted')
+                vprint('Multi-VFO writer halted')
                 return

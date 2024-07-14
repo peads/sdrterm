@@ -61,7 +61,7 @@ class Receiver(ABC):
     @receiver.setter
     @prevent_out_of_context_execution
     def receiver(self, _):
-        raise NotImplemented('Setting receiver is not allowed')
+        raise TypeError('Setting receiver is not allowed')
 
     @receiver.deleter
     @prevent_out_of_context_execution

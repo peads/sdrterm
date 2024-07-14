@@ -124,7 +124,7 @@ def checkWavHeader(f, fs: int, enc: str) -> dict:
     if f is None or issubclass(type(f), str) and ':' in f:
         return parseRawType(f, fs, enc)
 
-    with open(f, 'rb') as file:
+    with (open(f, 'rb') as file):
         # derived from http://soundfile.sapp.org/doc/WaveFormat/ and https://bts.keep-cool.org/wiki/Specs/CodecsValues
         endianness = '<'
         if b'RIF' != file.read(3):
@@ -159,7 +159,8 @@ def checkWavHeader(f, fs: int, enc: str) -> dict:
         if WaveFormat.WAVE_FORMAT_EXTENSIBLE.value == ret['audioFormat']:
             extraParamSize, = unpack(endianness + 'H', file.read(2))
             subFormatOffset = extraParamSize - 16
-            extraParams = unpack(endianness + str(subFormatOffset) + 'B', file.read(subFormatOffset))
+            # extraParams =
+            unpack(endianness + str(subFormatOffset) + 'B', file.read(subFormatOffset))
             subFormat, = unpack(endianness + 'H', file.read(2))
             if b'\x00\x00\x00\x00\x10\x00\x80\x00\x00\xAA\x00\x38\x9B\x71' != file.read(14):
                 raise ValueError('Invalid: SubFormat GUID malformed')
