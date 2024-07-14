@@ -1,3 +1,5 @@
+![image](https://github.com/user-attachments/assets/994dfc96-bf75-410d-ac77-dd83ee1a87c0)
+
 # Installation
 `pip install sdrterm`
 
@@ -15,7 +17,7 @@ python -m venv .venv
 source .venv/bin/activate
 
 (either)
-pip install .
+pip install sdrterm
 (or to include optional graphing dependencies)
 pip install .[gui]
 
