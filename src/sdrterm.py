@@ -117,7 +117,7 @@ def main(fs: Annotated[int, Option('--fs', '-r',
          swap_input_endianness: Annotated[bool, Option('--swap-input-endianness', '-X',
                                                        help='Swap input endianness',
                                                        show_default='False => system-default, or as defined in RIFF header')] = False,
-         normalize_input: Annotated[bool, Option(help='Normalize input data.')] = False,):
+         normalize_input: Annotated[bool, Option(help='Normalize input data.')] = False, ):
     from misc.general_util import printException, eprint, tprint
     from misc.io_args import IOArgs
     from misc.read_file import readFile
