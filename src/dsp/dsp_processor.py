@@ -101,7 +101,7 @@ class DspProcessor(DataProcessor):
 
     @decimatedFs.setter
     def decimatedFs(self, _):
-        raise NotImplementedError('Setting the decimatedFs directly is not supported. Set fs instead')
+        raise TypeError('Setting the decimatedFs directly is not supported. Set fs instead')
 
     def demod(self, y: ndarray[any, dtype[complex64 | complex128]]) -> ndarray[any, dtype[float32 | float64]]:
         if y.ndim < 2:
@@ -153,7 +153,7 @@ class DspProcessor(DataProcessor):
         if self._shift is not None:
             '''
                 NOTE: apparently, numpy doesn't override the unary multiplication arithemetic assignment operator the
-                same way as the binary multiplication operator for ndarrays. So, this has to remain this way. 
+                same way as the binary multiplication operator for ndarrays. So, this has to remain this way.
             '''
             y = y * self._shift
         if self._decimationFactor > 1:
@@ -205,7 +205,7 @@ class DspProcessor(DataProcessor):
             finally:
                 buffer.close()
                 buffer.join_thread()
-                vprint(f'Standard writer halted')
+                vprint('Standard writer halted')
                 return
 
     def __repr__(self):

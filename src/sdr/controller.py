@@ -24,6 +24,7 @@ class UnrecognizedInputError(Exception):
     def __init__(self, msg: str, e: Exception):
         super().__init__(f'{msg}, {e}')
 
+
 class Controller(ABC):
     def __init__(self, connection):
         self.connection = connection

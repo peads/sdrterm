@@ -33,6 +33,7 @@ class RtlTcpSamplingRate(MappableEnum):
     def dict(cls):
         return {str(i.value): i.value for i in cls}
 
+
 # translated directly from rtl_tcp.c
 class RtlTcpCommands(MappableEnum):
     SET_FREQUENCY = 0x01
@@ -69,5 +70,6 @@ class RtlTcpCommands(MappableEnum):
 
     def __str__(self):
         return self.name
+
     def __repr__(self):
         return self.__str__()

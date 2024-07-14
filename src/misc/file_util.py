@@ -87,7 +87,7 @@ class DataType(MappableEnum):
                 ret = thirtytwo[str(istZahl)].value
 
         if ret is None:
-            raise ValueError(f'Unsupported format: {bits}: {aFormat}')
+            raise ValueError(f'Unsupported format: {aFormat} @ {bits} bits')
 
         if not (isRifx or 'BE' == splt[2]):
             ret = ret.newbyteorder('<')
@@ -99,7 +99,7 @@ class DataType(MappableEnum):
 
 def parseRawType(file: str | None, fs: int, enc: str) -> dict:
     if fs is None or fs < 1 or enc is None:
-        raise ValueError('Sampling rate, encoding type and bit-size are required for raw pcm input')
+        raise ValueError('Valid sampling rate, encoding type and bit-size are all required for raw pcm input')
     fs = int(fs)
     dataType = DataType[enc].value
     if file is not None and ':' in file:
@@ -124,9 +124,9 @@ def checkWavHeader(f, fs: int, enc: str) -> dict:
     if f is None or issubclass(type(f), str) and ':' in f:
         return parseRawType(f, fs, enc)
 
-    with open(f, 'rb') as file:
+    with (open(f, 'rb') as file):
         # derived from http://soundfile.sapp.org/doc/WaveFormat/ and https://bts.keep-cool.org/wiki/Specs/CodecsValues
-        headerStr = '<IHHIIHH'
+        endianness = '<'
         if b'RIF' != file.read(3):
             if '.wav' in f:
                 raise ValueError('Invalid: Expected raw pcm file, but got malformed RIFF header')
@@ -134,14 +134,14 @@ def checkWavHeader(f, fs: int, enc: str) -> dict:
         else:
             temp = file.read(1)
             if not (b'F' == temp or b'X' == temp):
-                raise ValueError('Invalid: malformed RIFF header')
+                raise ValueError('Invalid: Malformed RIFF/X header')
             elif b'X' == temp:
-                headerStr = '>IHHIIHH'
-        chunkSize, = unpack('<I', file.read(4))
+                endianness = '>'
+        chunkSize, = unpack(endianness + 'I', file.read(4))
         if b'WAVE' != file.read(4):
-            raise ValueError('Invalid: not wave file')
+            raise ValueError('Invalid: Expected a wave file')
         if b'fmt ' != file.read(4):  # 0x666D7420:  # fmt
-            raise ValueError('Invalid: format section not found')
+            raise ValueError('Invalid: Format section not found')
 
         #      name             bytes
         ret = (subchunk1Size,   # 4
@@ -152,21 +152,22 @@ def checkWavHeader(f, fs: int, enc: str) -> dict:
                blockAlign,      # 2
                bitsPerSample,   # 2
                                 # 20
-               ) = unpack(headerStr, file.read(20))
+               ) = unpack(endianness + 'IHHIIHH', file.read(20))
         ret = zipRet(ret)
         subFormat = None
 
         if WaveFormat.WAVE_FORMAT_EXTENSIBLE.value == ret['audioFormat']:
-            extraParamSize, = unpack('<H', file.read(2))
+            extraParamSize, = unpack(endianness + 'H', file.read(2))
             subFormatOffset = extraParamSize - 16
-            extraParams = unpack('<' + str(subFormatOffset) + 'B', file.read(subFormatOffset))
-            subFormat, = unpack('<H', file.read(2))
+            # extraParams =
+            unpack(endianness + str(subFormatOffset) + 'B', file.read(subFormatOffset))
+            subFormat, = unpack(endianness + 'H', file.read(2))
             if b'\x00\x00\x00\x00\x10\x00\x80\x00\x00\xAA\x00\x38\x9B\x71' != file.read(14):
-                raise ValueError('Invalid SubFormat GUID')
+                raise ValueError('Invalid: SubFormat GUID malformed')
             subFormat = ExWaveFormat(subFormat)
 
         ret['bitsPerSample'] = DataType.fromWav(bitsPerSample, WaveFormat(ret['audioFormat']), subFormat,
-                                                '>' in headerStr)
+                                                '>' == endianness)
         ret['bitRate'] = (bitsPerSample * byteRate * blockAlign) >> 3
 
         off = -1

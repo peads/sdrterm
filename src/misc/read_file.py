@@ -73,17 +73,19 @@ def readFile(bitsPerSample: dtype = None,
         doNormalize(x)
         for proc, client in zip(procs, clients):
             if proc.exitcode is None:
-                client.put(x)
+                client.put_nowait(x)
             else:
                 client.close()
                 clients.remove(client)
                 procs.remove(proc)
+
     def readData(reader: BufferedReader) -> None:
         length = readSize
         while not isDead.value and length == readSize:
             length = reader.readinto(buffer)
             y = frombuffer(buffer, dataType)
             feedBuffers(y)
+
     def readFd() -> None:
         isFile = inFile is not None
         with open(inFile if isFile else stdin.fileno(), 'rb', closefd=isFile) as file:
@@ -91,7 +93,7 @@ def readFile(bitsPerSample: dtype = None,
             if dataOffset and file.seekable():
                 file.seek(dataOffset)
             readData(reader)
-            
+
     def readSocket() -> None:
         from socket import socket, AF_INET, SOCK_STREAM, SO_KEEPALIVE, SO_REUSEADDR, SOL_SOCKET, gaierror
         from os import name as osName

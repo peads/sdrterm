@@ -17,7 +17,7 @@ python -m venv .venv
 source .venv/bin/activate
 
 (either)
-pip install sdrterm
+pip install .
 (or to include optional graphing dependencies)
 pip install .[gui]
 
