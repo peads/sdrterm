@@ -23,7 +23,7 @@ from signal import SIGTERM, SIGABRT, Signals, signal, getsignal, SIGINT
 from socket import socket, AF_INET, SOCK_STREAM, SOL_SOCKET, SO_REUSEADDR, SHUT_RDWR
 from sys import stderr
 from types import FrameType
-from typing import Callable, TextIO
+from typing import Callable, TextIO, Iterable
 
 
 class __VerbosePrint:
@@ -59,13 +59,17 @@ def printException(*args, **kwargs) -> None:
     print_exc(file=stderr)
 
 
-def __applyIgnoreException(*func: Callable[[], any]) -> list:
+def applyIgnoreException(func: Callable[[any], any], *args) -> any:
+    try:
+        return func(*args)
+    except Exception as e:
+        return e
+
+
+def __multiApplyIgnoreException(*func: Callable[[any], any], args: Iterable[tuple[any]] = None) -> list[any]:
     ret = []
-    for f in func:
-        try:
-            ret.append(f())
-        except Exception as e:
-            ret.append(e)
+    for f, arg in zip(func, args):
+        ret.append(applyIgnoreException(f, *arg))
     return ret
 
 
@@ -80,7 +84,7 @@ def traceOn() -> None:
 
 def shutdownSocket(*socks: socket) -> None:
     for sock in socks:
-        __applyIgnoreException(lambda: sock.send(b''), lambda: sock.shutdown(SHUT_RDWR))
+        __multiApplyIgnoreException(sock.send, sock.shutdown, args=((b'',), (SHUT_RDWR,)))
 
 
 # taken from https://stackoverflow.com/a/45690594
