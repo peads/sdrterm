@@ -18,9 +18,9 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
 from multiprocessing import Value, Process, Queue
+from typing import Iterable
 
 from numpy import dtype
-from typing import Iterable
 
 
 def readFile(bitsPerSample: dtype = None,
