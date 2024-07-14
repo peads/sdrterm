@@ -18,20 +18,15 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-from datetime import datetime
 from enum import Enum
-from multiprocessing import get_all_start_methods, Process, Queue, Value
-from os import path, getpid, unlink
-from re import sub
-from tempfile import gettempdir
+from multiprocessing import Value
+from os import getpid
 from typing import Annotated
-from uuid import uuid4
 
 from click import BadParameter
 from typer import run as typerRun, Option
 
 from misc.file_util import DataType
-from misc.general_util import eprint, setSignalHandlers, vprint, tprint, printException
 
 
 class DemodulationChoices(str, Enum):
@@ -118,9 +113,13 @@ def main(fs: Annotated[int, Option('--fs', '-r',
                                                        help='Swap input endianness',
                                                        show_default='False => system-default, or as defined in RIFF header')] = False,
          normalize_input: Annotated[bool, Option(help='Normalize input data.')] = False, ):
-    from misc.general_util import printException, eprint, tprint
+
     from misc.io_args import IOArgs
     from misc.read_file import readFile
+    from multiprocessing import Process, Queue
+    from os import getpid
+    from misc.general_util import eprint, vprint, tprint, printException
+
     processes: list[Process] = []
     buffers: list[Queue] = []
 
@@ -160,9 +159,6 @@ def main(fs: Annotated[int, Option('--fs', '-r',
             vprint(f'{proc.name} returned: {proc.exitcode}')
     except KeyboardInterrupt:
         pass
-    except ValueError as ex:
-        if 'is closed' not in str(ex):
-            printException(ex)
     except (BaseException, Exception) as ex:
         printException(ex)
     finally:
@@ -183,6 +179,9 @@ def main(fs: Annotated[int, Option('--fs', '-r',
 
 
 def __setStartMethod():
+    from multiprocessing import get_all_start_methods
+    from misc.general_util import printException
+
     if 'spawn' in get_all_start_methods():
         try:
             from multiprocessing import set_start_method
@@ -194,6 +193,13 @@ def __setStartMethod():
 
 
 def __generatePidFile(pid):
+    from datetime import datetime
+    from os import path, unlink
+    from re import sub
+    from tempfile import gettempdir
+    from uuid import uuid4
+    from misc.general_util import eprint, setSignalHandlers, vprint, tprint
+
     try:
         from datetime import UTC
 
@@ -221,6 +227,8 @@ def __generatePidFile(pid):
 
 
 def __stopProcessing():
+    from misc.general_util import tprint
+
     tprint('Setting halt condition')
     isDead.value = 1
     tprint('Halt condition set')

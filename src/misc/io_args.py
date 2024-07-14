@@ -17,12 +17,13 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-from multiprocessing import Process, Queue, Value
+from multiprocessing import Queue, Process
 
 from dsp.data_processor import DataProcessor
 
 
 class IOArgs:
+    from multiprocessing import Value
     strct = None
 
     def __init__(self, verbose: int = 0, **kwargs):

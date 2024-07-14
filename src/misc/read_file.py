@@ -17,16 +17,10 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-from array import array
-from io import BufferedReader
-from multiprocessing import Value, Queue, Process
-from sys import stdin
+from multiprocessing import Value, Process, Queue
+
+from numpy import dtype
 from typing import Iterable
-
-from numpy import frombuffer, dtype, ndarray, complex128, complex64, ix_, isfinite, invert
-
-from dsp.iq_correction import IQCorrection
-from misc.general_util import vprint, eprint, tprint
 
 
 def readFile(bitsPerSample: dtype = None,
@@ -41,6 +35,16 @@ def readFile(bitsPerSample: dtype = None,
              correctIq: bool = False,
              normalize: bool = False,
              **_) -> None:
+
+    from array import array
+    from io import BufferedReader
+    from sys import stdin
+
+    from numpy import frombuffer, ndarray, complex128, complex64, ix_, isfinite, invert
+
+    from dsp.iq_correction import IQCorrection
+    from misc.general_util import vprint, eprint, tprint, applyIgnoreException
+
     if fs is None:
         raise ValueError('fs is not specified')
 
@@ -72,12 +76,19 @@ def readFile(bitsPerSample: dtype = None,
         doCorrectIq(x)
         doNormalize(x)
         for proc, client in zip(procs, clients):
-            if proc.exitcode is None:
-                client.put_nowait(x)
-            else:
+            if proc.exitcode is not None:
+                tprint(f'Process : {proc.name} ended; removing {client} from queue')
                 client.close()
                 clients.remove(client)
                 procs.remove(proc)
+            else:
+                try:
+                    client.put_nowait(x)
+                except ValueError:
+                    tprint(f'Client : {client} closed; removing {proc.name} from queue')
+                    client.close()
+                    clients.remove(client)
+                    procs.remove(proc)
 
     def readData(reader: BufferedReader) -> None:
         length = readSize
@@ -95,6 +106,7 @@ def readFile(bitsPerSample: dtype = None,
             readData(reader)
 
     def readSocket() -> None:
+        from misc.general_util import shutdownSocket
         from socket import socket, AF_INET, SOCK_STREAM, SO_KEEPALIVE, SO_REUSEADDR, SOL_SOCKET, gaierror
         from os import name as osName
         MAX_RETRIES = 5
@@ -118,6 +130,8 @@ def readFile(bitsPerSample: dtype = None,
             except (TimeoutError, ConnectionError, gaierror) as e:
                 retries += 1
                 eprint(f'Connection failed: {e}. Retrying {retries} of {MAX_RETRIES} times')
+            finally:
+                shutdownSocket(sock)
 
     if inFile is not None and ':' in inFile:
         readSocket()
@@ -125,7 +139,7 @@ def readFile(bitsPerSample: dtype = None,
         readFd()
 
     for buffer in buffers:
-        buffer.put(b'')
+        applyIgnoreException(buffer.put_nowait, b'')
         buffer.close()
 
     vprint('File reader halted')
