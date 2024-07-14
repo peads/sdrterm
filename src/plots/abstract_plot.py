@@ -159,7 +159,7 @@ class AbstractPlot(DataProcessor, ABC):
         try:
             from pyqtgraph.Qt import QtWidgets
             spec = cls(fs=fs, buffer=buffer, isDead=isDead, *args, **kwargs)
-            spec.window.resize(800, 600)
+            spec.window.resize(640, 480)
             spec.window.show()
             spec.axis.setLabel("Frequency", units="Hz", unitPrefix="M")
             QtWidgets.QApplication.instance().exec()

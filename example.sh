@@ -43,9 +43,11 @@ function runStdinTest {
 }
 
 function runFileInTest {
+  fileName="${OUT_PATH}/out${2}.wav";
+  echo "$fileName";
   time ${SDRTERM_EXEC} -i ${1} -w5k ${3} 2>/dev/null \
     | sox -q -v0.8 -D -traw -ef -b64 -r24k - -traw -es -b16 -r48k - 2>/dev/null \
-    | ${DSD_CMD} -w "${OUT_PATH}/out${2}.wav" 2>&1 | grep "Total" - | grep -E --color=always '[0-9]+' -;
+    | ${DSD_CMD} -w "$fileName" 2>&1 | grep "Total" - | grep -E --color=always '[0-9]+' -;
   rm -f /tmp/tmp.wav;
 }
 
@@ -65,5 +67,8 @@ printf "END basic raw stdin test\n\n";
 echo "START basic wave file test";
 runFileInTest "$1" "i16"
 
-sox -q -D -twav ${1} -twav -eunsigned-int -r48k -b8 /tmp/tmp.wav 2>/dev/null;
+sox -q -D -twav ${1} -twav -eunsigned-int -b8 /tmp/tmp.wav 2>/dev/null;
 runFileInTest "/tmp/tmp.wav" "u8" "--correct-iq"
+
+sox -q -D -twav ${1} -twav -B /tmp/tmp.wav 2>/dev/null;
+runFileInTest "/tmp/tmp.wav" "i16X"
