@@ -35,4 +35,5 @@ jobs:
         flake8 src/ --count --exit-zero --max-complexity=22 --max-line-length=200 --statistics --ignore W503,E741,E731,F811,E126,E125
     - name: Test with pytest
       run: |
-        python -m pytest test
+        cd src/
+        python -m pytest ../test
