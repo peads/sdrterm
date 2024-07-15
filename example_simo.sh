@@ -132,9 +132,17 @@ for i in "${vfos[@]}"; do
   coprocName="SOCAT_${freq}";
   set -u;
   fileName="/tmp/log-${freq}-${ts}";
-  outFile="${OUT_PATH}/out-${freq}-${ts}.wav"
+## swap this out if you're not using the dsd code from: https://github.com/peads/dsd
+#  outFile="${OUT_PATH}/out-${freq}-${ts}.wav"
+#  set -u;
+#  cmd="socat TCP4:${host}:${port} - | sox -q -D -B -traw -b64 -ef -r${decimatedFs} - -traw -b16 -es -r48k - 2>/dev/null | ${DSD_CMD} -w ${outFile} 2>${fileName}"
+
+  outFile="${OUT_PATH}/out-${freq}-${ts}.mp3"
   set -u;
-  cmd="socat TCP4:${host}:${port} - | sox -q -D -B -traw -b64 -ef -r${decimatedFs} - -traw -b16 -es -r48k - 2>/dev/null | ${DSD_CMD} -w ${outFile} 2>${fileName}"
+  cmd="socat TCP4:${host}:${port} - |
+    sox -q -D -B -traw -b64 -ef -r${decimatedFs} - -traw -b16 -es -r48k - 2>/dev/null |
+    ${DSD_CMD} -w - 2>${fileName} |
+    lame -q0 --bitwidth 16 --signed -s8 -r -mm --preset medium - ${outFile}";
   set -u;
 
   log "${cmd}";
@@ -165,5 +173,6 @@ trap cleanup EXIT;
 
 log "Awaiting sdrterm";
 wait $SDRTERM_PID;
-log "sdrterm returned: ${?}";
+ret=$?;
+log "sdrterm returned: ${ret}";
 exit;

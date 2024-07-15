@@ -45,10 +45,7 @@ class DspProcessor(DataProcessor):
 
         self.bandwidth \
             = self.__fs \
-            = self.__dt \
-            = self.__decimatedFs \
-            = self.__decDt \
-            = self._aaFilter = None
+            = self.__decimatedFs = None
         self._outputFilters = []
         self._decimationFactor = dec
         self.fs = fs
@@ -69,16 +66,12 @@ class DspProcessor(DataProcessor):
     @fs.setter
     def fs(self, fs: int):
         self.__fs = fs
-        self.__dt = 1 / fs
         self.__decimatedFs = fs // self._decimationFactor
-        self.__decDt = self._decimationFactor * self.__dt
 
     @fs.deleter
     def fs(self):
         del self.__fs
-        del self.__dt
         del self.__decimatedFs
-        del self.__decDt
 
     @property
     def decimation(self):
@@ -101,7 +94,7 @@ class DspProcessor(DataProcessor):
 
     @decimatedFs.setter
     def decimatedFs(self, _):
-        raise TypeError('Setting the decimatedFs directly is not supported. Set fs instead')
+        raise TypeError('Setting the decimatedFs directly is not supported. Set fs, or decimation instead')
 
     def demod(self, y: ndarray[any, dtype[complex64 | complex128]]) -> ndarray[any, dtype[float32 | float64]]:
         if y.ndim < 2:
@@ -123,11 +116,12 @@ class DspProcessor(DataProcessor):
     def _demod(self, y: ndarray[any, dtype[complex64 | complex128]]) -> ndarray[any, dtype[float32 | float64]]:
         pass
 
-    def __setDemod(self, fun: Callable[
-        [ndarray[any, dtype[complex64 | complex128]]], ndarray[any, dtype[float32 | float64]]],
-                   *filters) -> Callable[
-        [ndarray[any, dtype[complex64 | complex128]]], ndarray[any, dtype[float32 | float64]]]:
-        if fun is not None and filters is not None and len(filters) > 0:
+    def _setDemod(self,
+                  fun: Callable[[ndarray[any, dtype[complex64 | complex128]]], ndarray[any, dtype[float32 | float64]]],
+                  *filters) \
+            -> Callable[[ndarray[any, dtype[complex64 | complex128]]], ndarray[any, dtype[float32 | float64]]]:
+
+        if fun is not None and len(filters):
             self._outputFilters.clear()
             self._outputFilters.extend(*filters)
             setattr(self, '_demod', fun)
@@ -137,17 +131,17 @@ class DspProcessor(DataProcessor):
     def selectOuputFm(self):
         vprint('NFM Selected')
         self.bandwidth = 12500
-        self.__setDemod(fmDemod, generateEllipFilter(self.__decimatedFs, self._FILTER_DEGREE, self.omegaOut, 'lowpass'))
+        self._setDemod(fmDemod, generateEllipFilter(self.__decimatedFs, self._FILTER_DEGREE, self.omegaOut, 'lowpass'))
 
     def selectOuputWfm(self):
         vprint('WFM Selected')
         self.bandwidth = 25000
-        self.__setDemod(fmDemod, generateEllipFilter(self.__decimatedFs, self._FILTER_DEGREE, 18000, 'lowpass'))
+        self._setDemod(fmDemod, generateEllipFilter(self.__decimatedFs, self._FILTER_DEGREE, self.omegaOut, 'lowpass'))
 
     def selectOuputAm(self):
         vprint('AM Selected')
         self.bandwidth = 10000
-        self.__setDemod(amDemod, generateEllipFilter(self.__decimatedFs, self._FILTER_DEGREE, 18000, 'lowpass'))
+        self._setDemod(amDemod, generateEllipFilter(self.__decimatedFs, self._FILTER_DEGREE, self.omegaOut, 'lowpass'))
 
     def _processChunk(self, y: ndarray) -> ndarray[any, dtype[float32 | float64]]:
         if self._shift is not None:
