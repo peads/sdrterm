@@ -55,8 +55,15 @@ def test_init(processor):
     processor.centerFreq = DEFAULT_CENTER
     assert processor.centerFreq == DEFAULT_CENTER
     processor._generateShift(DEFAULT_SHIFT_SIZE)
-    assert len(processor._shift)
+    assert len(processor._shift) == DEFAULT_SHIFT_SIZE
     for k in range(8):
         assert processor._shift[k] == np.pow(math.e, -2j * math.pi * (DEFAULT_CENTER / DEFAULT_FS) * k)
 
+    with pytest.raises(FileNotFoundError) as e:
+        processor.processData(None, None, '')
+    eprint(f'\n{e.type.__name__}: {e.value}')
+
+    with pytest.raises(AttributeError) as e:
+        processor.processData(None, None, None)
+    eprint(f'\n{e.type.__name__}: {e.value}')
     del processor
