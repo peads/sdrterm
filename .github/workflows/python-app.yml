@@ -26,7 +26,7 @@ jobs:
         WD=$(pwd);
         echo $WD;
         sudo apt-get update;
-        sudo apt-get install wget sox socat unzip git make cmake libitpp-dev libsndfile1-dev portaudio19-dev -y;
+        sudo apt-get install wget sox socat unzip git make cmake libitpp-dev libsndfile1-dev portaudio19-dev coreutils sed -y;
         cd /tmp;
         git clone https://github.com/szechyjs/mbelib.git
         cd mbelib && mkdir build && cd build && cmake .. && make -j$(nproc) && sudo make install;
@@ -48,3 +48,34 @@ jobs:
       run: |
         cd src/
         python -m pytest ../test
+        cd ..
+    - name: Run functionality tests
+      run: |
+        export OUT_PATH=/tmp;
+        export DSD_CMD="dsd -q -i - -o /dev/null -n";
+        export SDRTERM_EXEC="${WD}/src/sdrterm.py";
+
+        declare -A sums;
+        sums["${OUT_PATH}/outB.wav"]="ba12b0bddc0496c7926c21bd89574a0a";
+        sums["${OUT_PATH}/outd-B.wav"]="15232187d1e2edc76e9a3f6b4cf8288f";
+        sums["${OUT_PATH}/outd.wav"]="15232187d1e2edc76e9a3f6b4cf8288f";
+        sums["${OUT_PATH}/outf-B.wav"]="a1a2a4a87cc5c26882527f794b5879a3";
+        sums["${OUT_PATH}/outf.wav"]="a1a2a4a87cc5c26882527f794b5879a3";
+        sums["${OUT_PATH}/outh-B.wav"]="9617f6cf9e88cb291cf52416d32e1216";
+        sums["${OUT_PATH}/outh.wav"]="9617f6cf9e88cb291cf52416d32e1216";
+        sums["${OUT_PATH}/outi-B.wav"]="a1a2a4a87cc5c26882527f794b5879a3";
+        sums["${OUT_PATH}/outi.wav"]="a1a2a4a87cc5c26882527f794b5879a3";
+        sums["${OUT_PATH}/outi16.wav"]="b7b7a07c4d65f1b5c8020730480a6156";
+        sums["${OUT_PATH}/outu8.wav"]="a4344edc3f13c1036b347c1351923129";
+        sums["${OUT_PATH}/outi16X.wav"]="b7b7a07c4d65f1b5c8020730480a6156";
+
+        ./example.sh /mnt/d/SDRSharp_20160101_231914Z_12kHz_IQ.wav;
+        
+        declare -A z="( `sed -E "s/^((\d|\w)+)\s*((\d|\w|\/|\-|\.)+)$/[\3]=\1/g" <<< $(md5sum ${OUT_PATH}/*.wav)` )";
+        for i in "${!sums[@]}"; do
+          if [[ "${sums["$i"]}" == "${z["$i"]}" ]]; then
+            echo "checksum matched: ${i}"
+          else
+            printf "${setBlue}FAILED: ${i}\n\tEXPECTED: ${sums["$i"]}\n\tRECEIVED: ${z["$i"]}\n${setNormal}" 1>&2;
+          fi
+        done
