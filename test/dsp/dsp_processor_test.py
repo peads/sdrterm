@@ -1,24 +1,27 @@
 import math
 
-import dsp.dsp_processor as dsp
-import dsp.demodulation as dem
-import pytest
 import numpy as np
+import pytest
+
+import dsp.demodulation as dem
+import dsp.dsp_processor as dsp
 from misc.general_util import eprint
+
 DEFAULT_FS = 48000
+DEFAULT_CENTER = -1000
+DEFAULT_SHIFT_SIZE = 8
+DEFAULT_DECIMATION_FACTOR = 3
+
 
 @pytest.fixture
 def processor():
     return dsp.DspProcessor(DEFAULT_FS, omegaOut=250)
 
-@pytest.fixture
-def shiftProc():
-    return dsp.DspProcessor(DEFAULT_FS, omegaOut=2500, center=-1500)
 
 def test_init(processor):
     assert processor.fs == DEFAULT_FS
     assert processor.decimation == 2
-    assert processor.decimatedFs == DEFAULT_FS/2
+    assert processor.decimatedFs == DEFAULT_FS >> 1
     processor.selectOuputFm()
     assert processor._demod == dem.fmDemod
     processor.selectOuputWfm()
@@ -42,15 +45,18 @@ def test_init(processor):
         processor._setDemod("asdf", None)
     eprint(f'\n{e.type.__name__}: {e.value}')
 
-    processor.decimation = 3
-    assert processor.decimation == 3
-    assert processor.decimatedFs == DEFAULT_FS/3
+    processor.decimation = DEFAULT_DECIMATION_FACTOR
+    assert processor.decimation == DEFAULT_DECIMATION_FACTOR
+    assert processor.decimatedFs == DEFAULT_FS / DEFAULT_DECIMATION_FACTOR
 
-    processor.centerFreq = -1000
-    assert processor.centerFreq == -1000
+    processor._generateShift(DEFAULT_SHIFT_SIZE)
+    assert processor._shift is None
 
-def test_shift(shiftProc):
-    shiftProc._generateShift(8)
-    assert len(shiftProc._shift)
+    processor.centerFreq = DEFAULT_CENTER
+    assert processor.centerFreq == DEFAULT_CENTER
+    processor._generateShift(DEFAULT_SHIFT_SIZE)
+    assert len(processor._shift)
     for k in range(8):
-        assert shiftProc._shift[k] == np.pow(math.e, -2j * math.pi * (shiftProc.centerFreq / shiftProc.fs) * k)
+        assert processor._shift[k] == np.pow(math.e, -2j * math.pi * (DEFAULT_CENTER / DEFAULT_FS) * k)
+
+    del processor
