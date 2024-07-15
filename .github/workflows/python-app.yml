@@ -51,7 +51,7 @@ jobs:
         cd ..
     - name: Run functionality tests
       run: |
-        export OUT_PATH=/tmp;
+        export OUT_PATH=.;
         export DSD_CMD="dsd -q -i - -o /dev/null -n";
         export SDRTERM_EXEC="python -m sdrterm";
 
