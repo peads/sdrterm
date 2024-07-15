@@ -74,7 +74,7 @@ jobs:
         wget https://www.sigidwiki.com/images/f/f5/DMR.zip && unzip DMR.zip && rm DMR.zip;
         ./example.sh SDRSharp_20160101_231914Z_12kHz_IQ.wav;
         
-        cnt=0;
+        cnt=1;
         total="${#array[@]}";
         declare -A z="( `sed -E "s/^((\d|\w)+)\s*((\d|\w|\/|\-|\.)+)$/[\3]=\1/g" <<< $(md5sum ${OUT_PATH}/*.wav)` )";
         for i in "${!sums[@]}"; do
