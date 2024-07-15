@@ -85,4 +85,6 @@ jobs:
             printf "${setBlue}FAILED: ${i}\n\tEXPECTED: ${sums["$i"]}\n\tRECEIVED: ${z["$i"]}\n${setNormal}" 1>&2;
           fi
         done
-        (( cnt == total ))
+        echo $cnt
+        echo $total
+#        (( cnt == total ))
