@@ -43,7 +43,7 @@ function runStdinTest {
   time sox -q -D -twav ${1} -traw -b${2} -e${3} ${6} - 2>/dev/null \
     | ${SDRTERM_EXEC} -w5000 -e${4} -r48000 ${5} 2>/dev/null \
     | sox -q -D -v0.5 -traw -r24k -b64 -ef - -traw -r48k -b16 -es - 2>/dev/null \
-    | ${DSD_CMD} -w "$fileName" 2>&1 | grep "Total" - | grep -E --color=always '[0-9]+' -;
+    | ${DSD_CMD} -w "$fileName";# 2>&1 | grep "Total" - | grep -E --color=always '[0-9]+' -;
 }
 
 function runFileInTest {
@@ -51,7 +51,7 @@ function runFileInTest {
   echo "$fileName";
   time ${SDRTERM_EXEC} -i ${1} -w5k ${3} 2>/dev/null \
     | sox -q -v0.8 -D -traw -ef -b64 -r24k - -traw -es -b16 -r48k - 2>/dev/null \
-    | ${DSD_CMD} -w "$fileName" 2>&1 | grep "Total" - | grep -E --color=always '[0-9]+' -;
+    | ${DSD_CMD} -w "$fileName";# 2>&1 | grep "Total" - | grep -E --color=always '[0-9]+' -;
   rm -f /tmp/tmp.wav;
 }
 
