@@ -34,10 +34,10 @@ jobs:
         git clone https://github.com/szechyjs/dsd.git;
         cd dsd && mkdir build && cd build && cmake .. && make -j$(nproc) && sudo make install;
         cd $WD;
-        wget https://www.sigidwiki.com/images/f/f5/DMR.zip && unzip DMR.zip && rm DMR.zip;
         python -m pip install --upgrade pip
         PIP_NO_BINARY="" pip install . --upgrade
         pip install flake8 pytest --upgrade
+        chmod +x example.sh;
     - name: Lint with flake8
       run: |
         # stop the build if there are Python syntax errors or undefined names
@@ -69,7 +69,8 @@ jobs:
         sums["${OUT_PATH}/outu8.wav"]="a4344edc3f13c1036b347c1351923129";
         sums["${OUT_PATH}/outi16X.wav"]="b7b7a07c4d65f1b5c8020730480a6156";
 
-        ./example.sh /mnt/d/SDRSharp_20160101_231914Z_12kHz_IQ.wav;
+        wget https://www.sigidwiki.com/images/f/f5/DMR.zip && unzip DMR.zip && rm DMR.zip;
+        ./example.sh SDRSharp_20160101_231914Z_12kHz_IQ.wav;
         
         declare -A z="( `sed -E "s/^((\d|\w)+)\s*((\d|\w|\/|\-|\.)+)$/[\3]=\1/g" <<< $(md5sum ${OUT_PATH}/*.wav)` )";
         for i in "${!sums[@]}"; do
