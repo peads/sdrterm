@@ -33,7 +33,7 @@ def test_init(processor):
         processor.decimation = 1
     eprint(f'\n{e.type.__name__}: {e.value}')
 
-    with pytest.raises(TypeError) as e:
+    with pytest.raises(AttributeError) as e:
         processor.decimatedFs = 1
     eprint(f'\n{e.type.__name__}: {e.value}')
 
@@ -66,4 +66,7 @@ def test_init(processor):
     with pytest.raises(AttributeError) as e:
         processor.processData(None, None, None)
     eprint(f'\n{e.type.__name__}: {e.value}')
+
+    assert locals().get('processor') is not None
     del processor
+    assert locals().get('processor') is None

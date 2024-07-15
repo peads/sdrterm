@@ -63,7 +63,18 @@ class IOArgs:
                                    **kwargs) -> None:
         import os
         from misc.general_util import eprint
-        from plots.util import selectDemodulation, selectPlotType
+        from plots.util import selectPlotType
+        from typing import Callable
+
+        def selectDemodulation(demodType: str, processor) -> Callable:
+            if demodType == 'fm' or demodType == 'nfm':
+                return processor.selectOuputFm
+            elif demodType == 'wfm':
+                return processor.selectOuputWfm
+            elif demodType == 'am':
+                raise processor.selectOuputAm
+            else:
+                raise ValueError(f'Invalid demod type {demodType}')
 
         if not simo:
             from dsp.dsp_processor import DspProcessor

@@ -19,24 +19,11 @@
 #
 import string
 from importlib.resources import files
-from typing import Callable
 
-from dsp.dsp_processor import DspProcessor
 from misc.general_util import eprint, printException
 from plots.multi_spectrum_analyzer_plot import MultiSpectrumAnalyzerPlot
 from plots.spectrum_analyzer_plot import SpectrumAnalyzerPlot
 from plots.waterfall_plot import WaterfallPlot
-
-
-def selectDemodulation(demodType: str, processor: DspProcessor) -> Callable:
-    if demodType == 'fm' or demodType == 'nfm':
-        return processor.selectOuputFm
-    elif demodType == 'wfm':
-        return processor.selectOuputWfm
-    elif demodType == 'am':
-        raise processor.selectOuputAm
-    else:
-        raise ValueError(f'Invalid demod type {demodType}')
 
 
 def selectPlotType(plotType: string):

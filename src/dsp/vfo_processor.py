@@ -56,37 +56,13 @@ class VfoProcessor(DspProcessor):
     def clients(self) -> dict[str, RawIOBase]:
         return self.__clients
 
-    @clients.setter
-    def clients(self, _):
-        raise TypeError('Setting queue is not allowed')
-
-    @clients.deleter
-    def clients(self):
-        del self.__clients
-
     @property
     def event(self) -> Event:
         return self.__event
 
-    @event.setter
-    def event(self, _):
-        raise TypeError('Setting queue is not allowed')
-
-    @event.deleter
-    def event(self):
-        del self.__event
-
     @property
     def queue(self) -> Queue[str]:
         return self.__queue
-
-    @queue.setter
-    def queue(self, _):
-        raise TypeError('Setting queue is not allowed')
-
-    @queue.deleter
-    def queue(self):
-        del self.__queue
 
     def _generateShift(self, c: int) -> None:
         self._shift = ones(shape=(self._nFreq, c), dtype=complex128)
