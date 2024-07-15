@@ -33,6 +33,10 @@ if [[ -z ${OUT_PATH} ]]; then
   OUT_PATH=/mnt/d/simo;
 fi
 
+echo $SDRTERM_EXEC;
+echo $DSD_CMD;
+echo $OUT_PATH;
+
 function runStdinTest {
   fileName="${OUT_PATH}/out${4}${6}.wav";
   echo "$fileName";
