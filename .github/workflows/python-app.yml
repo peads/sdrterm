@@ -53,7 +53,7 @@ jobs:
       run: |
         export OUT_PATH=/tmp;
         export DSD_CMD="dsd -q -i - -o /dev/null -n";
-        export SDRTERM_EXEC="${WD}/src/sdrterm.py";
+        export SDRTERM_EXEC="python -m sdrterm";
 
         declare -A sums;
         sums["${OUT_PATH}/outB.wav"]="ba12b0bddc0496c7926c21bd89574a0a";
