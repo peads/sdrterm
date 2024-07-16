@@ -17,17 +17,31 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
+from enum import Enum
 from multiprocessing import Queue, Process
 from typing import Callable
 
 
-def selectDemodulation(demodType: str, processor) -> Callable:
-    if demodType == 'fm' or demodType == 'nfm':
-        return processor.selectOuputFm
-    elif demodType == 'am':
-        return processor.selectOuputAm
-    else:
-        raise ValueError(f'Invalid demod type {demodType}')
+class DemodulationChoices(str, Enum):
+    FM = "fm"
+    AM = "am"
+    REAL = "re"
+    IMAG = "im"
+
+    def __str__(self):
+        return self.value
+
+
+def selectDemodulation(demodType: DemodulationChoices, processor) -> Callable:
+    if 'fm' == demodType or 'nfm' == demodType:
+        return processor.selectOutputFm
+    elif 'am' == demodType:
+        return processor.selectOutputAm
+    elif 're' == demodType:
+        return processor.selectOutputReal
+    elif 'im' == demodType:
+        return processor.selectOutputImag
+    raise ValueError(f'Invalid demod type {demodType}')
 
 
 def selectPlotType(plotType: str):

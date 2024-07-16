@@ -35,7 +35,6 @@ def readFile(bitsPerSample: dtype = None,
              correctIq: bool = False,
              normalize: bool = False,
              **_) -> None:
-
     from array import array
     from io import BufferedReader
     from sys import stdin

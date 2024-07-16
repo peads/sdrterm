@@ -18,7 +18,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-from enum import Enum
 from multiprocessing import Value
 from os import getpid
 from typing import Annotated
@@ -27,16 +26,7 @@ from click import BadParameter
 from typer import run as typerRun, Option
 
 from misc.file_util import DataType
-
-
-class DemodulationChoices(str, Enum):
-    FM = "fm"
-    AM = "am"
-    REAL = "re"
-    IMAG = "im"
-
-    def __str__(self):
-        return self.value
+from misc.io_args import DemodulationChoices
 
 
 def parseStrDataType(value: str) -> str:
@@ -111,7 +101,6 @@ def main(fs: Annotated[int, Option('--fs', '-r',
                                                        help='Swap input endianness',
                                                        show_default='False => system-default, or as defined in RIFF header')] = False,
          normalize_input: Annotated[bool, Option(help='Normalize input data.')] = False, ):
-
     from misc.io_args import IOArgs
     from misc.read_file import readFile
     from multiprocessing import Process, Queue
