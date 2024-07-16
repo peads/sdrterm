@@ -39,7 +39,7 @@ if [[ -z ${DSD_CMD} ]]; then
 fi
 
 if [[ -z ${OUT_PATH} ]]; then
-  OUT_PATH=/mnt/d/simo;
+  OUT_PATH=/tmp;
 fi
 
 declare -A pids;

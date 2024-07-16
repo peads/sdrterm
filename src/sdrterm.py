@@ -36,9 +36,11 @@ def parseStrDataType(value: str) -> str:
         raise BadParameter(str(ex))
 
 
-def parseIntString(value: str) -> int:
+def parseIntString(value: str | int) -> int:
     if value is None:
         raise BadParameter('Value cannot be None')
+    elif isinstance(value, int):
+        return value
     elif 'k' in value:
         return int(float(value.replace('k', '')) * 10E+2)
     elif 'M' in value:
@@ -57,7 +59,7 @@ def main(fs: Annotated[int, Option('--fs', '-r',
          center: Annotated[int, Option('--center-frequency', '-c',
                                        metavar='NUMBER',
                                        parser=parseIntString,
-                                       help='Offset from tuned frequency in k/M/Hz')] = '0',
+                                       help='Offset from tuned frequency in k/M/Hz')] = 0,
          inFile: Annotated[str, Option('--input', '-i',
                                        show_default='stdin',
                                        help='Input device')] = None,
@@ -83,7 +85,7 @@ def main(fs: Annotated[int, Option('--fs', '-r',
          omegaOut: Annotated[int, Option('--omega-out', '-w',
                                          metavar='NUMBER',
                                          parser=parseIntString,
-                                         help='Output cutoff frequency in k/M/Hz')] = '12500',
+                                         help='Output cutoff frequency in k/M/Hz')] = 12500,
          correct_iq: Annotated[bool, Option(help='Toggle iq correction')] = False,
          simo: Annotated[bool, Option(help='''
             Enable using sockets to output data processed from multiple channels specified by the vfos option.

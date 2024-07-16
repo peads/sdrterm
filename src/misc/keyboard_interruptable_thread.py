@@ -30,9 +30,6 @@ class KeyboardInterruptableThread(Thread):
         import threading
         threading.excepthook = self.handleException
 
-    def _handleException(self):
-        pass
-
     def handleException(self, e):
         from misc.general_util import tprint
         from sys import __excepthook__

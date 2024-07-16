@@ -56,6 +56,7 @@ class DspProcessor(DataProcessor):
                  fileInfo: dict = None,
                  **kwargs):
 
+        self._demod = None
         self._pool = None
         self._shift = None
         self.bandwidth \
@@ -130,9 +131,6 @@ class DspProcessor(DataProcessor):
 
             setattr(self, 'demod', demod)
             return ret
-
-    def _demod(self, y: ndarray[any, dtype[complex64 | complex128]]) -> ndarray[any, dtype[float32 | float64]]:
-        pass
 
     def _setDemod(self,
                   fun: Callable[[ndarray[any, dtype[complex64 | complex128]]], ndarray[any, dtype[float32 | float64]]],

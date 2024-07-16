@@ -55,9 +55,6 @@ jobs:
         export DSD_CMD="dsd -q -i - -o /dev/null -n";
         export SDRTERM_EXEC="python -m sdrterm";
 
-        setRed=$(tput setaf 1);
-        setNormal=$(tput sgr0);
-
         declare -A sums;
         sums["${OUT_PATH}/outB.wav"]="b8058749ff0e25eab70f92dda86c2507";
         sums["${OUT_PATH}/outd.wav"]="d51e36787d2cf8a10be87a1e123bb976";
@@ -85,7 +82,7 @@ jobs:
             echo "checksum matched: ${i}"
             cnt=$(( cnt + 1 ));
           else
-            printf "${setRed}FAILED: ${i}\n\tEXPECTED: ${sums["$i"]}\n\tRECEIVED: ${z["$i"]}\n${setNormal}" 1>&2;
+            printf "\033[31mFAILED: ${i}\n\tEXPECTED: ${sums["$i"]}\n\tRECEIVED: ${z["$i"]}\n\033[31m" 1>&2;
           fi
         done
         (( cnt == total ))
