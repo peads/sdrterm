@@ -6,7 +6,6 @@ import pytest
 from numpy import dtype
 
 from misc.file_util import checkWavHeader, DataType
-from misc.general_util import eprint
 
 builtinsOpen = builtins.open
 
@@ -238,66 +237,66 @@ def test_checkRawUnhappyPath():
         prepend = '\n' if i < 1 else ''
         with pytest.raises(FileNotFoundError) as e:
             checkWavHeader(f, 8000, 'B')
-        eprint(f'{prepend}{e.value}')
+        print(f'{prepend}{e.value}')
 
     for ch in tuple(filter(lambda i: i not in ('b', 'B', 'h', 'H', 'i', 'I', 'f', 'd'), {*ascii_letters})):
         with pytest.raises(KeyError) as e:
             checkWavHeader(None, 8000, ch)
-        eprint(f'{e.type.__name__}: {e.value}')
+        print(f'{e.type.__name__}: {e.value}')
 
     for fs in (-1, 0, None):
         with pytest.raises(ValueError) as e:
             checkWavHeader(None, fs, 'B')
-        eprint(f'{e.value}')
+        print(f'{e.value}')
 
     with pytest.raises(TypeError) as e:
         checkWavHeader(None, '2', 'B')
-    eprint(f'{e.value}')
+    print(f'{e.value}')
 
 
 def test_checkBadHeader(badHeader):
     with pytest.raises(ValueError) as e:
         checkWavHeader(badHeader, 8000, 'B')
-    eprint(f'\n{e.value}')
+    print(f'\n{e.value}')
 
 
 def test_checkBadHeader2(badHeader2):
     with pytest.raises(ValueError) as e:
         checkWavHeader(badHeader2, 8001, 'B')
-    eprint(f'\n{e.value}')
+    print(f'\n{e.value}')
 
 
 def test_checkBadHeader3(badHeader3):
     with pytest.raises(ValueError) as e:
         checkWavHeader(badHeader3, 8002, 'B')
-    eprint(f'\n{e.value}')
+    print(f'\n{e.value}')
 
 
 def test_checkBadHeader4(badHeader4):
     with pytest.raises(ValueError) as e:
         checkWavHeader("foo.wav", 8003, 'B')
-    eprint(f'\n{e.value}')
+    print(f'\n{e.value}')
 
 
 def test_checkBadHeader5(badHeader5):
     with pytest.raises(ValueError) as e:
         checkWavHeader(badHeader5, 8004, 'B')
-    eprint(f'\n{e.value}')
+    print(f'\n{e.value}')
 
 
 def test_checkBadHeader6(badHeader6):
     with pytest.raises(ValueError) as e:
         checkWavHeader(badHeader6, 8005, 'B')
-    eprint(f'\n{e.value}')
+    print(f'\n{e.value}')
 
 
 def test_checkFloatBitRateHeader(badFloatBitRateHeader):
     with pytest.raises(ValueError) as e:
         checkWavHeader(badFloatBitRateHeader, 8006, 'B')
-    eprint(f'\n{e.value}')
+    print(f'\n{e.value}')
 
 
 def test_checkAlawHeader(alawHeader):
     with pytest.raises(ValueError) as e:
         checkWavHeader(alawHeader, 8000, 'B')
-    eprint(f'\n{e.value}')
+    print(f'\n{e.value}')

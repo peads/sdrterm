@@ -31,11 +31,9 @@ from misc.file_util import DataType
 
 class DemodulationChoices(str, Enum):
     FM = "fm"
-    WFM = "wfm"
     AM = "am"
     REAL = "re"
     IMAG = "im"
-    FFT = "fft"
 
     def __str__(self):
         return self.value

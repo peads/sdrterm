@@ -25,7 +25,12 @@ class IQCorrection:
     def __init__(self, sampRate: int, impedance: int = 50):
         self.__sampRate = sampRate
         self.__inductance = impedance / sampRate
-        self.__off = 0 + 0j
+        self._off = 0j
+
+    def __del__(self):
+        del self.__inductance
+        del self.__sampRate
+        del self._off
 
     @property
     def sampleRate(self):
@@ -36,11 +41,7 @@ class IQCorrection:
         self.__inductance = self.__inductance * self.__sampRate
         self.__sampRate = sampRate
         self.__inductance /= self.__sampRate
-        self.__off = 0j
-
-    @sampleRate.deleter
-    def sampleRate(self):
-        del self.__sampRate
+        self._off = 0j
 
     @property
     def inductance(self):
@@ -49,13 +50,9 @@ class IQCorrection:
     @inductance.setter
     def inductance(self, impedance: int):
         self.__inductance = impedance / self.__sampRate
-        self.__off = 0j
-
-    @inductance.deleter
-    def inductance(self):
-        del self.__inductance
+        self._off = 0j
 
     def correctIq(self, data: ndarray[any, dtype[complex64 | complex128]]) -> None:
         for i in range(len(data)):
-            data[i] -= self.__off
-            self.__off += data[i] * self.__inductance
+            data[i] -= self._off
+            self._off += data[i] * self.__inductance

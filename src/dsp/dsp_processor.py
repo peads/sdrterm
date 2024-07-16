@@ -19,15 +19,28 @@
 #
 from multiprocessing import Value, Queue
 from sys import stdout
-from typing import Callable
+from typing import Callable, Iterable
 
 from numpy import ndarray, dtype, complex64, complex128, float32, float64, pad, exp, arange, pi, array
-from scipy.signal import decimate, dlti, savgol_filter
+from scipy.signal import decimate, dlti, savgol_filter, sosfilt, ellip
 
 from dsp.data_processor import DataProcessor
 from dsp.demodulation import amDemod, fmDemod
-from dsp.util import applyFilters, generateEllipFilter
 from misc.general_util import vprint
+
+
+def applyFilters(y: ndarray | Iterable, *filters) -> ndarray[any, dtype[float32 | float64 | complex64 | complex128]]:
+    for sos in filters:
+        y = sosfilt(sos, y)
+    return y
+
+
+def generateEllipFilter(fs: int, deg: int, Wn: float | Iterable[float], btype: str) -> tuple[any, float, any]:
+    return ellip(deg, 1, 30, Wn,
+                 btype=btype,
+                 analog=False,
+                 output='sos',
+                 fs=fs)
 
 
 class DspProcessor(DataProcessor):
@@ -43,24 +56,39 @@ class DspProcessor(DataProcessor):
                  fileInfo: dict = None,
                  **kwargs):
 
+        self._pool = None
+        self._shift = None
         self.bandwidth \
             = self.__fs \
-            = self.__dt \
-            = self.__decimatedFs \
-            = self.__decDt \
-            = self._aaFilter = None
+            = self.__decimatedFs = None
+        self._isDead = False
+        self.__xSize = -1
         self._outputFilters = []
+
         self._decimationFactor = dec
         self.fs = fs
         self.centerFreq = center
         self.tunedFreq = tuned
         self.omegaOut = omegaOut
         self.smooth = smooth
-        self._shift = None
-        self._isDead = False
         self.__fileInfo = fileInfo
-        self.__xSize = -1
-        self._pool = None
+
+    def __del__(self):
+        del self._pool
+        del self._shift
+        del self._isDead
+        del self.bandwidth
+        del self.__fs
+        del self.__decimatedFs
+        del self.__xSize
+        del self._outputFilters
+
+        del self._decimationFactor
+        del self.centerFreq
+        del self.tunedFreq
+        del self.omegaOut
+        del self.smooth
+        del self.__fileInfo
 
     @property
     def fs(self):
@@ -69,24 +97,11 @@ class DspProcessor(DataProcessor):
     @fs.setter
     def fs(self, fs: int):
         self.__fs = fs
-        self.__dt = 1 / fs
         self.__decimatedFs = fs // self._decimationFactor
-        self.__decDt = self._decimationFactor * self.__dt
-
-    @fs.deleter
-    def fs(self):
-        del self.__fs
-        del self.__dt
-        del self.__decimatedFs
-        del self.__decDt
 
     @property
     def decimation(self):
         return self._decimationFactor
-
-    @decimation.deleter
-    def decimation(self):
-        del self._decimationFactor
 
     @decimation.setter
     def decimation(self, decimation: int):
@@ -98,10 +113,6 @@ class DspProcessor(DataProcessor):
     @property
     def decimatedFs(self):
         return self.__decimatedFs
-
-    @decimatedFs.setter
-    def decimatedFs(self, _):
-        raise TypeError('Setting the decimatedFs directly is not supported. Set fs instead')
 
     def demod(self, y: ndarray[any, dtype[complex64 | complex128]]) -> ndarray[any, dtype[float32 | float64]]:
         if y.ndim < 2:
@@ -123,11 +134,12 @@ class DspProcessor(DataProcessor):
     def _demod(self, y: ndarray[any, dtype[complex64 | complex128]]) -> ndarray[any, dtype[float32 | float64]]:
         pass
 
-    def __setDemod(self, fun: Callable[
-        [ndarray[any, dtype[complex64 | complex128]]], ndarray[any, dtype[float32 | float64]]],
-                   *filters) -> Callable[
-        [ndarray[any, dtype[complex64 | complex128]]], ndarray[any, dtype[float32 | float64]]]:
-        if fun is not None and filters is not None and len(filters) > 0:
+    def _setDemod(self,
+                  fun: Callable[[ndarray[any, dtype[complex64 | complex128]]], ndarray[any, dtype[float32 | float64]]],
+                  *filters) \
+            -> Callable[[ndarray[any, dtype[complex64 | complex128]]], ndarray[any, dtype[float32 | float64]]]:
+
+        if fun is not None and len(filters):
             self._outputFilters.clear()
             self._outputFilters.extend(*filters)
             setattr(self, '_demod', fun)
@@ -137,17 +149,17 @@ class DspProcessor(DataProcessor):
     def selectOuputFm(self):
         vprint('NFM Selected')
         self.bandwidth = 12500
-        self.__setDemod(fmDemod, generateEllipFilter(self.__decimatedFs, self._FILTER_DEGREE, self.omegaOut, 'lowpass'))
+        self._setDemod(fmDemod, generateEllipFilter(self.__decimatedFs, self._FILTER_DEGREE, self.omegaOut, 'lowpass'))
 
     def selectOuputWfm(self):
         vprint('WFM Selected')
         self.bandwidth = 25000
-        self.__setDemod(fmDemod, generateEllipFilter(self.__decimatedFs, self._FILTER_DEGREE, 18000, 'lowpass'))
+        self._setDemod(fmDemod, generateEllipFilter(self.__decimatedFs, self._FILTER_DEGREE, self.omegaOut, 'lowpass'))
 
     def selectOuputAm(self):
         vprint('AM Selected')
         self.bandwidth = 10000
-        self.__setDemod(amDemod, generateEllipFilter(self.__decimatedFs, self._FILTER_DEGREE, 18000, 'lowpass'))
+        self._setDemod(amDemod, generateEllipFilter(self.__decimatedFs, self._FILTER_DEGREE, self.omegaOut, 'lowpass'))
 
     def _processChunk(self, y: ndarray) -> ndarray[any, dtype[float32 | float64]]:
         if self._shift is not None:
@@ -223,3 +235,56 @@ class DspProcessor(DataProcessor):
 
     def __str__(self):
         return self.__class__.__name__
+
+# def generateDeemphFilter(fs: float, f: float = 7.5e-5) -> ndarray[any, dtype[float32 | float64]]:
+#     alpha = 1 / (1 - exp(-26666.7 / (f * fs)))
+#     B = [alpha, 1]
+#     A = [1]
+#     return tf2sos(B, A)
+
+# def generateDcBlock():
+#     return tf2sos([1, 0, 0, 0, 0, 1], [1, 0, 0, 0, 0, .95], analog=False)
+
+
+# def normalize(x: ndarray | list[Number]) -> ndarray[number] | list[Number]:
+#     if x is None:
+#         raise ValueError('x is None')
+#
+#     x = array(x)
+#
+#     # def f(a, b):
+#     #     return (b - a) * (x - xmin) / (xmax - xmin) + a
+#
+#     # return f(-0.5, 0.5)
+#     return (x - x.min()) / (x.max() - x.min()) - 0.5
+
+# def rms(inp):
+#     def func(a):
+#         return sqrt(-square(sum(a)) + len(a) * sum(a * a)) / len(a)
+#
+#     ret = apply_along_axis(func, -1, inp)
+#     return ret
+
+
+# def generateDomain(dataType: str):
+#     xmin, xmax = None, None
+#     match dataType:
+#         case 'B':
+#             xmin, xmax = 0, 255
+#         case 'b':
+#             xmin, xmax = -128, 127
+#         case 'H':
+#             xmin, xmax = 0, 65536
+#         case 'h':
+#             xmin, xmax = -32768, 32767
+#         case 'I':
+#             xmin, xmax = 0, 4294967295
+#         case 'i':
+#             xmin, xmax = -2147483648, 2147483647
+#         case 'L':
+#             xmin, xmax = 0, 18446744073709551615
+#         case 'l':
+#             xmin, xmax = -9223372036854775808, 9223372036854775807
+#         case _:
+#             pass
+#     return xmin, xmax

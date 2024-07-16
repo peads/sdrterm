@@ -6,6 +6,11 @@ build*/
 *.wav
 *.dat
 *.raw
+*.zip
+*.7z
+*.tar
+*.tar.*
+*.rar
 .DS_Store
 CMakeFiles
 junk/

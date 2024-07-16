@@ -9,3 +9,8 @@
 *.mp3 binary
 *.dat binary
 *.raw binary
+*.zip binary
+*.tar binary
+*.tar.* binary
+*.7z binary
+*.rar binary

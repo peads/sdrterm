@@ -18,7 +18,6 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
 from numpy import angle, ndarray, conj, abs, real, imag, dtype, complex64, complex128, float32, float64
-from scipy.fft import fft
 from scipy.signal import resample
 
 
@@ -40,6 +39,5 @@ def realOutput(data: ndarray[any, dtype[complex64 | complex128]]) -> ndarray[any
 def imagOutput(data: ndarray[any, dtype[complex64 | complex128]]) -> ndarray[any, dtype[float32 | float64]]:
     return imag(data)
 
-
-def spectrumOutput(data: ndarray[any, dtype[complex64 | complex128]]) -> ndarray[any, dtype[float32 | float64]]:
-    return abs(fft(data))
+# def spectrumOutput(data: ndarray[any, dtype[complex64 | complex128]]) -> ndarray[any, dtype[float32 | float64]]:
+#     return abs(fft(data))

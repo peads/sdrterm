@@ -23,7 +23,7 @@ from typing import Annotated
 
 from typer import run as typerRun, Argument, Option
 
-from misc.general_util import vprint, printException
+from misc.general_util import vprint, printException, traceOn, verboseOn
 from sdr.control_rtl_tcp import ControlRtlTcp
 from sdr.controller import UnrecognizedInputError
 from sdr.output_server import OutputServer
@@ -33,9 +33,19 @@ from sdr.socket_receiver import SocketReceiver
 
 def main(host: Annotated[str, Argument(help='Address of remote rtl_tcp server')],
          port: Annotated[int, Argument(help='Port of remote rtl_tcp server')],
-         server_host: Annotated[str, Option(help='Port of local distribution server')] = 'localhost') -> None:
+         server_host: Annotated[str, Option(help='Port of local distribution server')] = 'localhost',
+         verbose:
+         Annotated[int, Option("--verbose", "-v",
+                               count=True,
+                               help='Toggle verbose output. Repetition increases verbosity (e.g. -vv, or -v -v)')] = 0,
+         ) -> None:
     isDead = Value('b', 0)
     isDead.value = 0
+
+    if verbose > 1:
+        traceOn()
+    elif verbose > 0:
+        verboseOn()
 
     with SocketReceiver(isDead=isDead, host=host, port=port) as receiver:
         with OutputServer(receiver, server_host) as server:
@@ -69,7 +79,7 @@ def main(host: Annotated[str, Argument(help='Address of remote rtl_tcp server')]
                                 cmdr.setParam(numCmd, param)
                     except (UnrecognizedInputError, ValueError, KeyError) as ex:
                         print(f'ERROR: Input invalid: {ex}. Please try again')
-            except (KeyboardInterrupt, EOFError):
+            except KeyboardInterrupt:
                 pass
             except Exception as e:
                 printException(e)
