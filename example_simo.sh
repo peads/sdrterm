@@ -142,7 +142,7 @@ for i in "${vfos[@]}"; do
   cmd="socat TCP4:${host}:${port} - |
     sox -q -D -B -traw -b64 -ef -r${decimatedFs} - -traw -b16 -es -r48k - 2>/dev/null |
     ${DSD_CMD} -w - 2>${fileName} |
-    lame -q0 --bitwidth 16 --signed -s8 -r -mm --preset medium - ${outFile}";
+    lame -q0 --bitwidth 16 --signed -s8 -r -mm --preset medium - ${outFile} 2>&1 > /dev/null";
   set -u;
 
   log "${cmd}";
