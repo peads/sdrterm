@@ -18,8 +18,38 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
 from multiprocessing import Queue, Process
+from typing import Callable
 
-from dsp.data_processor import DataProcessor
+
+def selectDemodulation(demodType: str, processor) -> Callable:
+    if demodType == 'fm' or demodType == 'nfm':
+        return processor.selectOuputFm
+    elif demodType == 'wfm':
+        return processor.selectOuputWfm
+    elif demodType == 'am':
+        raise processor.selectOuputAm
+    else:
+        raise ValueError(f'Invalid demod type {demodType}')
+
+
+def selectPlotType(plotType: str):
+    from misc.general_util import printException
+    from plots.multi_spectrum_analyzer_plot import MultiSpectrumAnalyzerPlot
+    from plots.spectrum_analyzer_plot import SpectrumAnalyzerPlot
+    from plots.waterfall_plot import WaterfallPlot
+    from importlib.resources import files
+
+    try:
+        files('pyqtgraph')
+        if plotType == 'ps' or plotType == 'spec':
+            return SpectrumAnalyzerPlot
+        elif plotType == 'vfos' or plotType == 'vfo':
+            return MultiSpectrumAnalyzerPlot
+        elif plotType == 'water' or plotType == 'waterfall':
+            return WaterfallPlot
+    except ModuleNotFoundError as e:
+        printException(e)
+    raise ValueError(f'Invalid plot type {plotType}')
 
 
 class IOArgs:
@@ -41,7 +71,7 @@ class IOArgs:
         kwargs['isDead'].value = 0
 
     @classmethod
-    def __initializeProcess(cls, isDead: Value, processor: DataProcessor, *args,
+    def __initializeProcess(cls, isDead: Value, processor, *args,
                             name: str = 'Process', **kwargs) -> tuple[Queue, Process]:
         if processor is None:
             raise ValueError('Processor must be provided')
@@ -63,18 +93,6 @@ class IOArgs:
                                    **kwargs) -> None:
         import os
         from misc.general_util import eprint
-        from plots.util import selectPlotType
-        from typing import Callable
-
-        def selectDemodulation(demodType: str, processor) -> Callable:
-            if demodType == 'fm' or demodType == 'nfm':
-                return processor.selectOuputFm
-            elif demodType == 'wfm':
-                return processor.selectOuputWfm
-            elif demodType == 'am':
-                raise processor.selectOuputAm
-            else:
-                raise ValueError(f'Invalid demod type {demodType}')
 
         if not simo:
             from dsp.dsp_processor import DspProcessor

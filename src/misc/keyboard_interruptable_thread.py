@@ -20,31 +20,32 @@
 from threading import Thread
 from typing import Callable
 
-from misc.general_util import printException
-
 
 class KeyboardInterruptableThread(Thread):
     def __init__(self, func: Callable[[], None], target: Callable, group=None, name=None, args=(), daemon=None):
         if func is None:
             raise ValueError("func cannot be None")
         super().__init__(group=group, target=target, name=name, args=args, daemon=daemon)
-        setattr(self, '__handleException', func)
+        setattr(self, '_handleException', func)
         import threading
         threading.excepthook = self.handleException
 
-    def __handleException(self):
+    def _handleException(self):
         pass
 
-    def handleException(self, e, *args):
+    def handleException(self, e):
+        from misc.general_util import tprint
         from sys import __excepthook__
 
         try:
-            self.__handleException()
+            self._handleException()
         except Exception as ex:
-            printException(ex)
+            tprint(ex)
+        except BaseException as ex:
+            __excepthook__(type(ex), ex, ex.__traceback__)
 
-        if not issubclass(type(e), KeyboardInterrupt):
-            printException(e)
+        if issubclass(e.exc_type, KeyboardInterrupt):
+            __excepthook__(e.exc_type, e.exc_value, e.exc_traceback)
         else:
-            __excepthook__(e, *args)
+            tprint(e.exc_value)
         return
