@@ -24,10 +24,8 @@ from typing import Callable
 def selectDemodulation(demodType: str, processor) -> Callable:
     if demodType == 'fm' or demodType == 'nfm':
         return processor.selectOuputFm
-    elif demodType == 'wfm':
-        return processor.selectOuputWfm
     elif demodType == 'am':
-        raise processor.selectOuputAm
+        return processor.selectOuputAm
     else:
         raise ValueError(f'Invalid demod type {demodType}')
 
