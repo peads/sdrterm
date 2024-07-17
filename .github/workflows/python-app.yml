@@ -82,7 +82,7 @@ jobs:
             echo "checksum matched: ${i}"
             cnt=$(( cnt + 1 ));
           else
-            printf "${setBlue}FAILED: ${i}\n\tEXPECTED: ${sums["$i"]}\n\tRECEIVED: ${z["$i"]}\n${setNormal}" 1>&2;
+            printf "\033[31mFAILED: ${i}\n\tEXPECTED: ${sums["$i"]}\n\tRECEIVED: ${z["$i"]}\n\033[31m" 1>&2;
           fi
         done
         (( cnt == total ))

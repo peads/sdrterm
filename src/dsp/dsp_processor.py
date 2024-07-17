@@ -25,7 +25,7 @@ from numpy import ndarray, dtype, complex64, complex128, float32, float64, pad, 
 from scipy.signal import decimate, dlti, savgol_filter, sosfilt, ellip
 
 from dsp.data_processor import DataProcessor
-from dsp.demodulation import amDemod, fmDemod
+from dsp.demodulation import amDemod, fmDemod, realOutput, imagOutput
 from misc.general_util import vprint
 
 
@@ -56,6 +56,7 @@ class DspProcessor(DataProcessor):
                  fileInfo: dict = None,
                  **kwargs):
 
+        self._demod = None
         self._pool = None
         self._shift = None
         self.bandwidth \
@@ -131,35 +132,38 @@ class DspProcessor(DataProcessor):
             setattr(self, 'demod', demod)
             return ret
 
-    def _demod(self, y: ndarray[any, dtype[complex64 | complex128]]) -> ndarray[any, dtype[float32 | float64]]:
-        pass
-
     def _setDemod(self,
                   fun: Callable[[ndarray[any, dtype[complex64 | complex128]]], ndarray[any, dtype[float32 | float64]]],
                   *filters) \
             -> Callable[[ndarray[any, dtype[complex64 | complex128]]], ndarray[any, dtype[float32 | float64]]]:
 
-        if fun is not None and len(filters):
+        if fun is not None:
             self._outputFilters.clear()
-            self._outputFilters.extend(*filters)
+            if len(filters):
+                self._outputFilters.extend(*filters)
             setattr(self, '_demod', fun)
             return self.demod
         raise ValueError("Demodulation function, or filters not defined")
 
-    def selectOuputFm(self):
+    def selectOutputFm(self):
         vprint('NFM Selected')
         self.bandwidth = 12500
         self._setDemod(fmDemod, generateEllipFilter(self.__decimatedFs, self._FILTER_DEGREE, self.omegaOut, 'lowpass'))
 
-    def selectOuputWfm(self):
-        vprint('WFM Selected')
-        self.bandwidth = 25000
-        self._setDemod(fmDemod, generateEllipFilter(self.__decimatedFs, self._FILTER_DEGREE, self.omegaOut, 'lowpass'))
-
-    def selectOuputAm(self):
+    def selectOutputAm(self):
         vprint('AM Selected')
         self.bandwidth = 10000
         self._setDemod(amDemod, generateEllipFilter(self.__decimatedFs, self._FILTER_DEGREE, self.omegaOut, 'lowpass'))
+
+    def selectOutputReal(self):
+        vprint('I output Selected')
+        self.bandwidth = self.decimatedFs
+        self._setDemod(realOutput)
+
+    def selectOutputImag(self):
+        vprint('Q output Selected')
+        self.bandwidth = self.decimatedFs
+        self._setDemod(imagOutput)
 
     def _processChunk(self, y: ndarray) -> ndarray[any, dtype[float32 | float64]]:
         if self._shift is not None:

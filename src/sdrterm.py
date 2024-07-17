@@ -18,7 +18,6 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-from enum import Enum
 from multiprocessing import Value
 from os import getpid
 from typing import Annotated
@@ -27,16 +26,7 @@ from click import BadParameter
 from typer import run as typerRun, Option
 
 from misc.file_util import DataType
-
-
-class DemodulationChoices(str, Enum):
-    FM = "fm"
-    AM = "am"
-    REAL = "re"
-    IMAG = "im"
-
-    def __str__(self):
-        return self.value
+from misc.io_args import DemodulationChoices
 
 
 def parseStrDataType(value: str) -> str:
@@ -46,9 +36,11 @@ def parseStrDataType(value: str) -> str:
         raise BadParameter(str(ex))
 
 
-def parseIntString(value: str) -> int:
+def parseIntString(value: str | int) -> int:
     if value is None:
         raise BadParameter('Value cannot be None')
+    elif isinstance(value, int):
+        return value
     elif 'k' in value:
         return int(float(value.replace('k', '')) * 10E+2)
     elif 'M' in value:
@@ -67,7 +59,7 @@ def main(fs: Annotated[int, Option('--fs', '-r',
          center: Annotated[int, Option('--center-frequency', '-c',
                                        metavar='NUMBER',
                                        parser=parseIntString,
-                                       help='Offset from tuned frequency in k/M/Hz')] = '0',
+                                       help='Offset from tuned frequency in k/M/Hz')] = 0,
          inFile: Annotated[str, Option('--input', '-i',
                                        show_default='stdin',
                                        help='Input device')] = None,
@@ -93,7 +85,7 @@ def main(fs: Annotated[int, Option('--fs', '-r',
          omegaOut: Annotated[int, Option('--omega-out', '-w',
                                          metavar='NUMBER',
                                          parser=parseIntString,
-                                         help='Output cutoff frequency in k/M/Hz')] = '12500',
+                                         help='Output cutoff frequency in k/M/Hz')] = 12500,
          correct_iq: Annotated[bool, Option(help='Toggle iq correction')] = False,
          simo: Annotated[bool, Option(help='''
             Enable using sockets to output data processed from multiple channels specified by the vfos option.
@@ -111,7 +103,6 @@ def main(fs: Annotated[int, Option('--fs', '-r',
                                                        help='Swap input endianness',
                                                        show_default='False => system-default, or as defined in RIFF header')] = False,
          normalize_input: Annotated[bool, Option(help='Normalize input data.')] = False, ):
-
     from misc.io_args import IOArgs
     from misc.read_file import readFile
     from multiprocessing import Process, Queue
@@ -181,13 +172,12 @@ def __setStartMethod():
     from misc.general_util import printException
 
     if 'spawn' in get_all_start_methods():
+        from multiprocessing import set_start_method
         try:
-            from multiprocessing import set_start_method
-
             set_start_method('spawn')
         except Exception as e:
             printException(e)
-            raise NotImplementedError('Setting start method to spawn failed')
+            set_start_method('spawn', True)
 
 
 def __generatePidFile(pid):

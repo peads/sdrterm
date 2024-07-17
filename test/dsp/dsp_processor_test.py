@@ -5,7 +5,7 @@ import pytest
 
 import dsp.demodulation as dem
 import dsp.dsp_processor as dsp
-from misc.general_util import eprint
+from dsp.data_processor import DataProcessor
 
 DEFAULT_FS = 48000
 DEFAULT_CENTER = -1000
@@ -22,28 +22,26 @@ def test_init(processor):
     assert processor.fs == DEFAULT_FS
     assert processor.decimation == 2
     assert processor.decimatedFs == DEFAULT_FS >> 1
-    processor.selectOuputFm()
+    processor.selectOutputFm()
     assert processor._demod == dem.fmDemod
-    processor.selectOuputWfm()
-    assert processor._demod == dem.fmDemod
-    processor.selectOuputAm()
+    processor.selectOutputAm()
     assert processor._demod == dem.amDemod
 
     with pytest.raises(ValueError) as e:
         processor.decimation = 1
-    eprint(f'\n{e.type.__name__}: {e.value}')
+    print(f'\n{e.type.__name__}: {e.value}')
 
     with pytest.raises(AttributeError) as e:
         processor.decimatedFs = 1
-    eprint(f'\n{e.type.__name__}: {e.value}')
+    print(f'\n{e.type.__name__}: {e.value}')
 
     with pytest.raises(ValueError) as e:
         processor._setDemod(None, ())
-    eprint(f'\n{e.type.__name__}: {e.value}')
+    print(f'\n{e.type.__name__}: {e.value}')
 
     with pytest.raises(TypeError) as e:
         processor._setDemod("asdf", None)
-    eprint(f'\n{e.type.__name__}: {e.value}')
+    print(f'\n{e.type.__name__}: {e.value}')
 
     processor.decimation = DEFAULT_DECIMATION_FACTOR
     assert processor.decimation == DEFAULT_DECIMATION_FACTOR
@@ -61,12 +59,17 @@ def test_init(processor):
 
     with pytest.raises(FileNotFoundError) as e:
         processor.processData(None, None, '')
-    eprint(f'\n{e.type.__name__}: {e.value}')
+    print(f'\n{e.type.__name__}: {e.value}')
 
     with pytest.raises(AttributeError) as e:
         processor.processData(None, None, None)
-    eprint(f'\n{e.type.__name__}: {e.value}')
+    print(f'\n{e.type.__name__}: {e.value}')
 
     assert locals().get('processor') is not None
     del processor
     assert locals().get('processor') is None
+
+    with pytest.raises(TypeError) as e:
+        DataProcessor()
+    print(f'\n{e.type.__name__}: {e.value}')
+    DataProcessor.processData(None)

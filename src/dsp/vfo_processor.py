@@ -46,8 +46,12 @@ class VfoProcessor(DspProcessor):
         self.vfos = array(self.vfos)
         self._nFreq = len(self.vfos)
         self.__omega = -2j * pi * (self.vfos / self.fs)
-        self.host = vfoHost
-
+        if ':' in vfoHost:
+            self.host, self.port = vfoHost.split(':')
+            self.port = int(self.port)
+        else:
+            self.host = vfoHost
+            self.port = findPort(self.host)
         self.__queue: Queue[str] | None = None
         self.__clients: dict[str, RawIOBase] | None = None
         self.__event: Event | None = None
@@ -98,7 +102,7 @@ class VfoProcessor(DspProcessor):
                     self.outer_self.queue.task_done()
                     self.outer_self.event.wait()
 
-        with ThreadedTCPServer((self.host, findPort(self.host)), ThreadedTCPRequestHandler) as server:
+        with ThreadedTCPServer((self.host, self.port), ThreadedTCPRequestHandler) as server:
             st = Thread(target=server.serve_forever)
 
             try:
@@ -120,5 +124,6 @@ class VfoProcessor(DspProcessor):
                 with self.__queue.all_tasks_done:
                     self.__queue.all_tasks_done.notify_all()
                 st.join()
+                self._pool.shutdown(wait=False, cancel_futures=True)
                 vprint('Multi-VFO writer halted')
                 return
