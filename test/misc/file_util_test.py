@@ -300,3 +300,8 @@ def test_checkAlawHeader(alawHeader):
     with pytest.raises(ValueError) as e:
         checkWavHeader(alawHeader, 8000, 'B')
     print(f'\n{e.value}')
+
+def test_enum():
+    for x,(k,v) in zip(DataType, DataType.tuples()):
+        assert x.name == k
+        assert x.value == v

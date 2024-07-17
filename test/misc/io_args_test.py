@@ -7,7 +7,7 @@ from misc.io_args import IOArgs, DemodulationChoices
 
 @pytest.fixture(scope='function')
 def osEnv():
-    ret = os.environ.pop('DISPLAY')
+    ret = os.environ.pop('DISPLAY') if 'DISPLAY' in os.environ else None
     yield ret
 
 
@@ -30,7 +30,9 @@ def test_ioargs(osEnv):
                                      processes=[],
                                      buffers=[],
                                      **kwargs)
-    os.environ['DISPLAY'] = osEnv
+    if osEnv is not None:
+        os.environ['DISPLAY'] = osEnv
+    # TODO more tests
     # os.environ.pop('DISPLAY')
     # IOArgs._initializeOutputHandlers(fs=1024000,
     #                                  dm=DemodulationChoices.FM,
