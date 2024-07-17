@@ -21,6 +21,8 @@ from enum import Enum
 from multiprocessing import Queue, Process
 from typing import Callable
 
+from misc.general_util import tprint
+
 
 class DemodulationChoices(str, Enum):
     FM = "fm"
@@ -33,6 +35,7 @@ class DemodulationChoices(str, Enum):
 
 
 def selectDemodulation(demodType: DemodulationChoices, processor) -> Callable:
+    tprint(f'{demodType} requested')
     if 'fm' == demodType or 'nfm' == demodType:
         return processor.selectOutputFm
     elif 'am' == demodType:
@@ -96,7 +99,7 @@ class IOArgs:
     def __initializeOutputHandlers(cls,
                                    isDead: Value = None,
                                    fs: int = 0,
-                                   dm: str = None,
+                                   dm: DemodulationChoices | str = None,
                                    outFile: str = None,
                                    simo: bool = False,
                                    pl: str = None,
@@ -121,14 +124,13 @@ class IOArgs:
             else:
                 for p in pl.split(','):
                     psplot = selectPlotType(p)
-                    if psplot is not None:
-                        kwargs['bandwidth'] = cls.strct['processor'].bandwidth
-                        buffer, proc = cls.__initializeProcess(isDead,
-                                                               psplot,
-                                                               fs, name="Plotter-",
-                                                               **kwargs)
-                        processes.append(proc)
-                        buffers.append(buffer)
+                    kwargs['bandwidth'] = cls.strct['processor'].bandwidth
+                    buffer, proc = cls.__initializeProcess(isDead,
+                                                           psplot,
+                                                           fs, name="Plotter-",
+                                                           **kwargs)
+                    processes.append(proc)
+                    buffers.append(buffer)
 
         buffer, proc = cls.__initializeProcess(isDead,
                                                cls.strct['processor'],
