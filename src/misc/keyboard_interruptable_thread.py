@@ -23,6 +23,7 @@ from typing import Callable
 
 class KeyboardInterruptableThread(Thread):
     def __init__(self, func: Callable[[], None], target: Callable, group=None, name=None, args=(), daemon=None):
+        self._handleException = None
         if func is None:
             raise ValueError("func cannot be None")
         super().__init__(group=group, target=target, name=name, args=args, daemon=daemon)
