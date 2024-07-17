@@ -172,13 +172,12 @@ def __setStartMethod():
     from misc.general_util import printException
 
     if 'spawn' in get_all_start_methods():
+        from multiprocessing import set_start_method
         try:
-            from multiprocessing import set_start_method
-
             set_start_method('spawn')
         except Exception as e:
             printException(e)
-            raise NotImplementedError('Setting start method to spawn failed')
+            set_start_method('spawn', True)
 
 
 def __generatePidFile(pid):
