@@ -1,9 +1,17 @@
-import pytest
 import os
+
+import pytest
+
 from misc.io_args import IOArgs, DemodulationChoices
 
 
-def test_ioargs():
+@pytest.fixture(scope='function')
+def osEnv():
+    ret = os.environ.pop('DISPLAY')
+    yield ret
+
+
+def test_ioargs(osEnv):
     with pytest.raises(ValueError):
         IOArgs._initializeProcess(None, None, name='p008')
 
@@ -16,13 +24,13 @@ def test_ioargs():
                              'center': -350000,
                              'vfos': "0",
                              }
-    os.environ.pop('DISPLAY')
     IOArgs._initializeOutputHandlers(fs=1024000,
                                      dm=DemodulationChoices.FM,
+                                     pl='ps',
                                      processes=[],
                                      buffers=[],
                                      **kwargs)
-
+    os.environ['DISPLAY'] = osEnv
     # os.environ.pop('DISPLAY')
     # IOArgs._initializeOutputHandlers(fs=1024000,
     #                                  dm=DemodulationChoices.FM,

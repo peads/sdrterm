@@ -2,14 +2,17 @@ import numpy as np
 import pytest
 
 from dsp.iq_correction import IQCorrection
+
 DEFAULT_SAMPLE_RATE = 2000
 DEFAULT_IMPEDANCE = 50
 NEXT_SAMPLE_RATE = 3750
 NEXT_IMPEDANCE = 75
 
+
 @pytest.fixture
 def corrector():
     return IQCorrection(DEFAULT_SAMPLE_RATE)
+
 
 def test_iqCorrection(corrector):
     assert corrector.sampleRate == DEFAULT_SAMPLE_RATE
@@ -33,7 +36,7 @@ def test_iqCorrection(corrector):
     corrector.correctIq(someData)
     assert someData.size == size
     assert someCorrectedData.size == size
-    for x,y in zip(someData, someCorrectedData):
+    for x, y in zip(someData, someCorrectedData):
         assert x == y
 
     assert locals().get('corrector') is not None

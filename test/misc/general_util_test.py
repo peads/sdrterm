@@ -1,6 +1,5 @@
 import os
 import signal
-import time
 from multiprocessing import get_context, Value, Event
 
 import pytest
@@ -30,7 +29,7 @@ def context():
 def test_general_util(context):
     print('\n')
     ctx, value, event, pid = context
-    for x in [signal.SIGINT, signal.SIGQUIT, signal.SIGHUP, signal.SIGTERM, signal.SIGXCPU, signal.SIGABRT,]:
+    for x in [signal.SIGINT, signal.SIGQUIT, signal.SIGHUP, signal.SIGTERM, signal.SIGXCPU, signal.SIGABRT, ]:
         thread = ctx.Process(target=target, args=(pid, event, value,))
         thread.start()
         event.wait()
@@ -43,6 +42,7 @@ def test_general_util(context):
         del thread
         event.clear()
         value.value = 0
+
 
 def test_general_util2(context):
     print('\n')

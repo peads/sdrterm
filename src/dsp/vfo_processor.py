@@ -124,5 +124,6 @@ class VfoProcessor(DspProcessor):
                 with self.__queue.all_tasks_done:
                     self.__queue.all_tasks_done.notify_all()
                 st.join()
+                self._pool.shutdown(wait=False, cancel_futures=True)
                 vprint('Multi-VFO writer halted')
                 return
