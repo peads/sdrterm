@@ -82,12 +82,12 @@ class IOArgs:
         kwargs['fileInfo'] = checkWavHeader(kwargs['inFile'], kwargs['fs'], kwargs['enc'])
         kwargs['fs'] = kwargs['fileInfo']['sampRate']
 
-        IOArgs.__initializeOutputHandlers(**kwargs)
+        IOArgs._initializeOutputHandlers(**kwargs)
         kwargs['isDead'].value = 0
 
     @classmethod
-    def __initializeProcess(cls, isDead: Value, processor, *args,
-                            name: str = 'Process', **kwargs) -> tuple[Queue, Process]:
+    def _initializeProcess(cls, isDead: Value, processor, *args,
+                           name: str = 'Process', **kwargs) -> tuple[Queue, Process]:
         if processor is None:
             raise ValueError('Processor must be provided')
         buffer = Queue()
@@ -96,16 +96,16 @@ class IOArgs:
         return buffer, proc
 
     @classmethod
-    def __initializeOutputHandlers(cls,
-                                   isDead: Value = None,
-                                   fs: int = 0,
-                                   dm: DemodulationChoices | str = None,
-                                   outFile: str = None,
-                                   simo: bool = False,
-                                   pl: str = None,
-                                   processes: list[Process] = None,
-                                   buffers: list[Queue] = None,
-                                   **kwargs) -> None:
+    def _initializeOutputHandlers(cls,
+                                  isDead: Value = None,
+                                  fs: int = 0,
+                                  dm: DemodulationChoices | str = None,
+                                  outFile: str = None,
+                                  simo: bool = False,
+                                  pl: str = None,
+                                  processes: list[Process] = None,
+                                  buffers: list[Queue] = None,
+                                  **kwargs) -> None:
         import os
         from misc.general_util import eprint
 
@@ -125,17 +125,17 @@ class IOArgs:
                 for p in pl.split(','):
                     psplot = selectPlotType(p)
                     kwargs['bandwidth'] = cls.strct['processor'].bandwidth
-                    buffer, proc = cls.__initializeProcess(isDead,
-                                                           psplot,
-                                                           fs, name="Plotter-",
-                                                           **kwargs)
+                    buffer, proc = cls._initializeProcess(isDead,
+                                                          psplot,
+                                                          fs, name="Plotter-",
+                                                          **kwargs)
                     processes.append(proc)
                     buffers.append(buffer)
 
-        buffer, proc = cls.__initializeProcess(isDead,
-                                               cls.strct['processor'],
-                                               outFile,
-                                               name="File writer-",
-                                               **kwargs)
+        buffer, proc = cls._initializeProcess(isDead,
+                                              cls.strct['processor'],
+                                              outFile,
+                                              name="File writer-",
+                                              **kwargs)
         processes.append(proc)
         buffers.append(buffer)
