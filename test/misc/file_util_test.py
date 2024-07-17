@@ -301,7 +301,9 @@ def test_checkAlawHeader(alawHeader):
         checkWavHeader(alawHeader, 8000, 'B')
     print(f'\n{e.value}')
 
+
 def test_enum():
-    for x,(k,v) in zip(DataType, DataType.tuples()):
+    for x, y in zip(DataType, DataType.tuples()):
+        k, v = y
         assert x.name == k
         assert x.value == v
