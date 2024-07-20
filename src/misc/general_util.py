@@ -18,8 +18,8 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
 from contextlib import closing
-from os import name as osName
-from signal import SIGTERM, SIGABRT, Signals, signal, getsignal, SIGINT
+from os import name as osName, getpid
+from signal import SIGTERM, Signals, signal, SIGINT
 from socket import socket, AF_INET, SOCK_STREAM, SOL_SOCKET, SO_REUSEADDR, SHUT_RDWR
 from sys import stderr
 from types import FrameType
@@ -110,9 +110,9 @@ def findMtu(sock: socket) -> int:
         return min((filtered_stats[k] for k in filtered_addrs.keys()))
 
 
-def killChildren(pid, sig):
+def killChildren(_, sig):
     from psutil import Process, NoSuchProcess
-    parent = Process(pid)
+    parent = Process(getpid())
     children = parent.children(recursive=True)
     for child in children:
         try:
@@ -122,56 +122,31 @@ def killChildren(pid, sig):
             pass
 
 
-def __iAlreadyAxedYouOnce(pid: int, handlers: dict) -> Callable[[int, FrameType | None], None]:
-    def handleSignal(sig: int, frame: FrameType) -> None:
-        tprint(f'Frame: {frame}')
-        vprint(f'pid {pid} caught: {Signals(sig).name}')
-        if sig in handlers.keys():
-            newHandler = handlers.pop(sig)
-            signal(sig, newHandler)
-            tprint(f'Reset signal handler from {handleSignal} back to {newHandler}')
-
-        isPosix = 'posix' in osName
-        killChildren(pid, sig if isPosix or sig != SIGINT else SIGTERM)
-        if isPosix:
-            from os import getpgid, killpg
-            pgid = getpgid(pid)
-            tprint(f'Re-throwing {Signals(sig).name} to pgid: {pgid}')
-            killpg(pgid, sig)
-
-    return handleSignal
-
-
-def __extendSignalHandlers(pid: int, handlers: dict, handlePostSignal: Callable[[], None]) \
+def __extendSignalHandlers(pid: int, sigs: tuple, handlePostSignal: Callable[[], None]) \
         -> Callable[[int, FrameType | None], None]:
     def handleSignal(sig: int, frame: FrameType) -> None:
         tprint(f'Frame: {frame}')
-        vprint(f'pid {pid} caught: {Signals(sig).name}')
-        signal(sig, __iAlreadyAxedYouOnce(pid, handlers))
-        tprint(f'Handlers after processing: {handlers}')
+        eprint(f'pid {pid} caught: {Signals(sig).name}')
         handlePostSignal()
+        tprint(f'Handlers after processing: {[signal(s, killChildren) for s in sigs]}')
 
     return handleSignal
 
 
 def setSignalHandlers(pid: int, func: Callable[[], None]):
-    signals = [SIGTERM, SIGABRT, SIGINT]
-    handlers = {}
+    signals = [SIGTERM, SIGINT]
     if 'nt' in osName:
         from signal import SIGBREAK
         signals.append(SIGBREAK)
     elif 'posix' in osName:
-        from signal import SIGQUIT, SIGTSTP, SIGHUP, SIGTTIN, SIGTTOU, SIGXCPU
-        signals.append(SIGQUIT)
-        signals.append(SIGHUP)
-        signals.append(SIGXCPU)
+        from signal import SIGABRT, SIGQUIT, SIGTSTP, SIGHUP, SIGTTIN, SIGTTOU, SIGXCPU
+        signals.extend([SIGQUIT, SIGABRT, SIGHUP, SIGXCPU])
 
         # disallow backgrounding from keyboard, except--obviously--if the terminal implements it as SIGSTOP
         def ignore(s: int, _):
-            tprint(f'Ignored signal {Signals(s).name}')
+            vprint(f'Ignored signal {Signals(s).name}')
 
-        [signal(x, ignore) for x in [SIGTSTP, SIGTTIN, SIGTTOU]]
+        [signal(x, ignore) for x in (SIGTSTP, SIGTTIN, SIGTTOU)]
 
     for sig in signals:
-        handlers[sig] = getsignal(sig)
-        signal(sig, __extendSignalHandlers(pid, handlers, func))
+        signal(sig, __extendSignalHandlers(pid, tuple(signals), func))

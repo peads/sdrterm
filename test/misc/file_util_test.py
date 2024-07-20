@@ -6,6 +6,7 @@ import pytest
 from numpy import dtype
 
 from misc.file_util import checkWavHeader, DataType
+from misc.mappable_enum import MappableEnum
 
 builtinsOpen = builtins.open
 
@@ -307,3 +308,5 @@ def test_enum():
         k, v = y
         assert x.name == k
         assert x.value == v
+    assert not len(MappableEnum.tuples())
+    assert not len(MappableEnum.dict())
