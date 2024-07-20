@@ -64,6 +64,7 @@ def selectPlotType(plotType: str):
             return WaterfallPlot
     except ModuleNotFoundError as e:
         printException(e)
+        return None
     raise ValueError(f'Invalid plot type {plotType}')
 
 
@@ -125,12 +126,13 @@ class IOArgs:
                 for p in pl.split(','):
                     psplot = selectPlotType(p)
                     kwargs['bandwidth'] = cls.strct['processor'].bandwidth
-                    buffer, proc = cls._initializeProcess(isDead,
-                                                          psplot,
-                                                          fs, name="Plotter-",
-                                                          **kwargs)
-                    processes.append(proc)
-                    buffers.append(buffer)
+                    if psplot is not None:
+                        buffer, proc = cls._initializeProcess(isDead,
+                                                              psplot,
+                                                              fs, name="Plotter-",
+                                                              **kwargs)
+                        processes.append(proc)
+                        buffers.append(buffer)
 
         buffer, proc = cls._initializeProcess(isDead,
                                               cls.strct['processor'],
