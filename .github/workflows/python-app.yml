@@ -36,7 +36,7 @@ jobs:
         cd $WD;
         python -m pip install --upgrade pip
         PIP_NO_BINARY="" pip install . --upgrade
-        pip install flake8 pytest --upgrade
+        pip install flake8 pytest pytest-cov --upgrade
         chmod +x example.sh;
     - name: Lint with flake8
       run: |
