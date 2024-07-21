@@ -39,7 +39,6 @@ def signals():
         ignoredSignals = (signal.SIGTSTP, signal.SIGTTIN, signal.SIGTTOU)
     return ret, ignoredSignals
 
-
 def test_general_util(context, signals):
     print('\n')
     ctx, isDead, event, pid = context

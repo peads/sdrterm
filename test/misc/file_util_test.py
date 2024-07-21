@@ -304,9 +304,15 @@ def test_checkAlawHeader(alawHeader):
 
 
 def test_enum():
+    assert not len(MappableEnum.tuples())
+    assert not len(MappableEnum.dict())
+    for x, y in zip(DataType, DataType.dict().items()):
+        k, v = y
+        assert x.name == k
+        assert x.value == v
+        print(f'Matched {k}: {v}')
     for x, y in zip(DataType, DataType.tuples()):
         k, v = y
         assert x.name == k
         assert x.value == v
-    assert not len(MappableEnum.tuples())
-    assert not len(MappableEnum.dict())
+        print(f'Matched {k}: {v}')
