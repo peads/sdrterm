@@ -6,6 +6,7 @@ import pytest
 from numpy import dtype
 
 from misc.file_util import checkWavHeader, DataType
+from misc.mappable_enum import MappableEnum
 
 builtinsOpen = builtins.open
 
@@ -303,7 +304,15 @@ def test_checkAlawHeader(alawHeader):
 
 
 def test_enum():
+    assert not len(MappableEnum.tuples())
+    assert not len(MappableEnum.dict())
+    for x, y in zip(DataType, DataType.dict().items()):
+        k, v = y
+        assert x.name == k
+        assert x.value == v
+        print(f'Matched {k}: {v}')
     for x, y in zip(DataType, DataType.tuples()):
         k, v = y
         assert x.name == k
         assert x.value == v
+        print(f'Matched {k}: {v}')
