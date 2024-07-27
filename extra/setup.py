@@ -24,14 +24,14 @@ from Cython.Build import cythonize
 from Cython.Distutils import Extension
 from setuptools import setup
 
+extraLinkArgs = []
 if 'posix' in os.name:
-    extraCompileArgs = ['-Ofast', '-flto=auto', '-fuse-linker-plugin', '-fopenmp',
+    extraCompileArgs = ['-Ofast', '-flto=auto', '-fuse-linker-plugin', #'-fopenmp',
                         '-DNPY_NO_DEPRECATED_API']
-    extraLinkArgs = ['-fopenmp']
+    # extraLinkArgs = ['-fopenmp']
 else:
-    extraCompileArgs = ['/DNPY_NO_DEPRECATED_API', '/O2', '/Oiy', '/Ob3', '/favor:INTEL64', '/options:strict',
-                        '/fp:fast', '/fp:except-', '/GL', '/Gw', '/jumptablerdata', '/MP', '/Qpar', '/openmp']
-    extraLinkArgs = []
+    extraCompileArgs = ['/DNPY_NO_DEPRECATED_API', '/O2', '/Oiy', '/Ob3', '/favor:INTEL64', '/options:strict',# '/openmp',
+                        '/fp:fast', '/fp:except-', '/GL', '/Gw', '/jumptablerdata', '/MP', '/Qpar']
 
 setup(ext_modules=cythonize([
     Extension('iq_corrector',

@@ -33,11 +33,11 @@ class IQCorrection:
         self._off = 0j
 
     @property
-    def sampleRate(self):
+    def fs(self):
         return self._sampRate
 
-    @sampleRate.setter
-    def sampleRate(self, sampRate: int):
+    @fs.setter
+    def fs(self, sampRate: int):
         self._inductance = self._inductance * self._sampRate
         self._sampRate = sampRate
         self._inductance /= self._sampRate
@@ -47,8 +47,12 @@ class IQCorrection:
     def inductance(self):
         return self._inductance
 
-    @inductance.setter
-    def inductance(self, impedance: int):
+    @property
+    def impedance(self):
+        return self.inductance * self._sampRate
+
+    @impedance.setter
+    def impedance(self, impedance: int):
         self._inductance = impedance / self._sampRate
         self._off = 0j
 

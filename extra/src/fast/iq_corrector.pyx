@@ -30,29 +30,26 @@
 cimport cython
 cimport numpy as np; np.import_array()
 from numpy cimport ndarray
-from cython.parallel import prange
 
 cdef class IQCorrector:
     cdef unsigned long _fs
-    cdef double inductance
-    cdef unsigned short _impedance
-    cdef double complex off
+    cdef readonly double inductance
+    cdef double complex _off
 
     def __cinit__(self, const unsigned long fs, const unsigned short impedance = 50):
         self._fs = fs
-        self._impedance = impedance
         self.inductance = impedance / fs
-        self.off = 0j
+        self._off = 0j
 
     @cython.cdivision(True)
     cpdef void correctIq(self, ndarray[np.complex128_t] data):
         cdef Py_ssize_t i
         cdef Py_ssize_t size = data.size
-        for i in prange(size, nogil=True):
-        # with nogil:
-        #     for i in range(size):
-                data[i] = data[i] - self.off # *SIGH* VS bitches about the unary operator, bc ofc it does
-                self.off += data[i] * self.inductance
+        # for i in prange(size, nogil=True):
+        with nogil:
+            for i in range(size):
+                data[i] = data[i] - self._off # *SIGH* VS bitches about the unary operator, bc ofc it does
+                self._off += data[i] * self.inductance
 
     @property
     def fs(self):
@@ -60,14 +57,15 @@ cdef class IQCorrector:
 
     @fs.setter
     def fs(self, unsigned long fs):
+        self.inductance = self.impedance
         self._fs = fs
-        self.inductance = self._impedance / self._fs
+        self.inductance = self.inductance / fs
 
     @property
     def impedance(self):
-        return self._impedance
+        return self.inductance * self._fs
 
     @impedance.setter
     def impedance(self, const unsigned short impedance):
-        self._impedance = impedance
-        self.inductance = self._impedance / self._fs
+        self.inductance = impedance / self._fs
+        self._off = 0j
