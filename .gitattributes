@@ -1,6 +1,7 @@
 *.c text
 *.h text
 *.py text
+*.pyx text
 
 *.png binary
 *.jpg binary
@@ -14,3 +15,6 @@
 *.tar.* binary
 *.7z binary
 *.rar binary
+*.o binary
+*.so binary
+

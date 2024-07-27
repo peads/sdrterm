@@ -113,9 +113,9 @@ class VfoProcessor(DspProcessor):
                     self._processData(isDead, buffer, None)
             except KeyboardInterrupt:
                 pass
-            # except Exception as e:
-            #     from misc.general_util import printException
-            #     printException(e)
+            except BaseException as e:
+                from misc.general_util import printException
+                printException(e)
             finally:
                 self.__event.set()
                 self._isDead = True

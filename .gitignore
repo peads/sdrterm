@@ -21,3 +21,7 @@ build
 *egg-info*
 *wenv*
 dist/
+*.html
+__pycache__
+*.o
+*.so

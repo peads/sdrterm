@@ -40,5 +40,7 @@ def test_ioargs(osEnv):
     import importlib.resources as rscs
     ogFiles = rscs.files
     rscs.files = throwingFiles
-    assert selectPlotType(DemodulationChoices.FM) is None
+    with pytest.raises(ValueError) as e:
+        selectPlotType(DemodulationChoices.FM)
+    print(f'\n{e.value}')
     rscs.files = ogFiles

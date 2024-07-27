@@ -20,7 +20,7 @@
 from abc import ABC, abstractmethod
 from typing import Callable
 
-from numpy import linspace, arange, ndarray, dtype, complex64, complex128, exp, pi
+from numpy import linspace, arange, exp, pi
 
 from dsp.data_processor import DataProcessor
 from misc.general_util import vprint
@@ -49,7 +49,8 @@ class AbstractPlot(DataProcessor, ABC):
                  tuned: int = 0,
                  *args, **kwargs):
         if isDead is None:
-            raise ValueError('MultiSpectrumAnalyzerPlot cannot be used without a halt condition: isDead')
+            raise ValueError(
+                'MultiSpectrumAnalyzerPlot cannot be used without a halt condition: isDead')
         if fs is None:
             raise ValueError('MultiSpectrumAnalyzerPlot cannot be used without a sampling rate: fs')
         if buffer is None:
@@ -74,26 +75,38 @@ class AbstractPlot(DataProcessor, ABC):
         self.fs = fs
         self._omega = -2j * pi * (self.offset / self.fs)
 
-    def _shiftFreq(self, y: ndarray[any, dtype[complex64 | complex128]]) -> None:
-        if self._t is None:
-            self._t = arange(len(y))
-            self._shift = exp(self._omega * self._t)
-        y[:] = y * self._shift
+    # def _shiftFreq(self, y: ndarray[any, dtype[complex64 | complex128]]) -> None:
+    #     if self._t is None:
+    #         self._t = arange(len(y))
+    #         self._shift = exp(self._omega * self._t)
+    #     y[:] = y * self._shift
 
     def _setTicks(self, n, num=11):
         for widget, off in self.widgets:
             xr, _ = widget.viewRange()
             oldRange = linspace(-n + off, n + off, num)
             newRange = linspace(xr[0], xr[1], 11)
-            ticks = [[(float(u), str(round((v + self.tuned) / 10E+5, 3))) for u, v in zip(oldRange, newRange)]]
+            ticks = [[(float(u), str(round((v + self.tuned) / 10E+5, 3))) for u, v in
+                      zip(oldRange, newRange)]]
             widget.getAxis('bottom').setTicks(ticks)
 
     def __del__(self):
+        del self._t
+        del self._shift
+        del self._y
+        del self._dt
+        del self._nyquistFs
+        del self._fs
+        del self.widgets
+        del self.timer
+        del self.axis
+        del self.window
+        del self.buffer
         del self.isDead
         del self.frameRate
         del self.offset
         del self.tuned
-        del self.fs
+        del self._omega
 
     @property
     def fs(self) -> int:
@@ -129,11 +142,13 @@ class AbstractPlot(DataProcessor, ABC):
 
     @check_halt_condition
     def receiveData(self) -> int | None:
-        # set buffer initially
-        if self._y is None:
-            self._y = self.buffer.get()
-        else:
+        if self._y is not None:
             self._y[:] = self.buffer.get()
+        else:
+            # set buffer initially
+            self._y = self.buffer.get()
+            self._t = arange(len(self._y))
+            self._shift = exp(self._omega * self._t)
 
         # check for EOF
         if self._y is None or not len(self._y):

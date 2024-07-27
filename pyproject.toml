@@ -8,12 +8,13 @@ sources = ["src"]
 
 [project]
 name = "sdrterm"
-version = "0.3.1"
+version = "0.4"
 dependencies = [
     'scipy',
     'numpy>=1.26',
     'typer-slim',
-    'psutil'
+    'psutil',
+    'numba>=0.60.0'
 ]
 requires-python = ">=3.10"
 authors = [
@@ -57,6 +58,7 @@ classifiers = [
 [project.optional-dependencies]
 gui = ["pyqtgraph", "PyQt5"]
 cli = ["textual", "textual-slider"]
+compiled = ["Cython", "setuptools"]
 
 [project.urls]
 Homepage = "https://github.com/peads/sdrterm"

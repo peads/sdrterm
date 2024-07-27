@@ -21,6 +21,7 @@
 from numpy import log10, abs
 from scipy.fft import fftshift, fftn, fftfreq
 
+from dsp.demodulation import shiftFreq
 from misc.general_util import printException
 from plots.abstract_plot import AbstractPlot
 
@@ -74,7 +75,7 @@ class SpectrumAnalyzerPlot(AbstractPlot):
     def update(self):
         try:
             self.receiveData()
-            self._shiftFreq(self._y)
+            shiftFreq(self._y, self._shift, self._y)
             if self.amp is None:
                 self.amp = abs(fftshift(fftn(self._y, norm='forward')))
             else:
