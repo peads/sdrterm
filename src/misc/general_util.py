@@ -68,7 +68,7 @@ def applyIgnoreException(func: Callable[[any], any], *args) -> any:
 
 
 def __multiApplyIgnoreException(*func: Callable[[any], any], args: Iterable[tuple[any]] = None) -> \
-list[any]:
+        list[any]:
     ret = []
     for f, arg in zip(func, args):
         ret.append(applyIgnoreException(f, *arg))

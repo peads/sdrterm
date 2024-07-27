@@ -31,7 +31,7 @@ cimport cython
 cimport numpy as np; np.import_array()
 from numpy cimport ndarray
 
-cdef class IQCorrector:
+cdef class IQCorrection:
     cdef unsigned long _fs
     cdef readonly double inductance
     cdef double complex _off
@@ -48,7 +48,9 @@ cdef class IQCorrector:
         # for i in prange(size, nogil=True):
         with nogil:
             for i in range(size):
-                data[i] = data[i] - self._off # *SIGH* VS bitches about the unary operator, bc ofc it does
+                # *SIGH* VS bitches about the arithmetic assignment
+                # operator, bc ofc it does
+                data[i] = data[i] - self._off
                 self._off += data[i] * self.inductance
 
     @property

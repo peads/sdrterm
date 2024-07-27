@@ -34,8 +34,8 @@ else:
                         '/fp:fast', '/fp:except-', '/GL', '/Gw', '/jumptablerdata', '/MP', '/Qpar']
 
 setup(ext_modules=cythonize([
-    Extension('iq_corrector',
-              sources=['src/fast/iq_corrector.pyx'],
+    Extension('dsp.fast.iq_correction',
+              sources=['src/iq_correction.pyx'],
               include_dirs=[
                   numpy.get_include(),
               ],

@@ -55,7 +55,7 @@ def readFile(bitsPerSample: dtype = None,
 
     if correctIq:
         try:
-            from extra.iq_corrector import IQCorrector as IQCorrection
+            from dsp.fast.iq_correction import IQCorrection
             tprint('Imported pre-compiled IQCorrection class')
         except ImportError:
             from dsp.iq_correction import IQCorrection

@@ -13,9 +13,9 @@ NEXT_IMPEDANCE = 75
 def correctors():
     ret = [IQCorrection(DEFAULT_SAMPLE_RATE), ]
     try:
-        from extra.iq_corrector import IQCorrector
+        from dsp.fast import iq_correction
         print('Imported pre-compiled IQCorrection class')
-        ret.append(IQCorrector(DEFAULT_SAMPLE_RATE))
+        ret.append(iq_correction.IQCorrection(DEFAULT_SAMPLE_RATE))
     except ImportError:
         pass
     return ret
