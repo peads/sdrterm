@@ -35,17 +35,17 @@ def fmDemod(data: ndarray[any, dtype[complexfloating]]) -> ndarray[any, dtype[fl
     return resample(_fmDemod(data), len(data))
 
 
-@njit(cache=True, nogil=True, error_model='numpy', boundscheck=False, parallel=True)
+@njit(cache=True, nogil=True, error_model='numpy', boundscheck=False)
 def amDemod(data: ndarray[any, dtype[complexfloating]]) -> ndarray[any, dtype[floating]]:
     return abs(data)
 
 
-@njit(cache=True, nogil=True, error_model='numpy', boundscheck=False, parallel=True)
+@njit(cache=True, nogil=True, error_model='numpy', boundscheck=False)
 def realOutput(data: ndarray[any, dtype[complexfloating]]) -> ndarray[any, dtype[floating]]:
     return real(data)
 
 
-@njit(cache=True, nogil=True, error_model='numpy', boundscheck=False, parallel=True)
+@njit(cache=True, nogil=True, error_model='numpy', boundscheck=False)
 def imagOutput(data: ndarray[any, dtype[complexfloating]]) -> ndarray[any, dtype[floating]]:
     return imag(data)
 
