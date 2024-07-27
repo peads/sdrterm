@@ -35,10 +35,10 @@ def test_ioargs(osEnv):
                                      buffers=[],
                                      **kwargs)
 
-    with pytest.raises(ValueError) as e:
-        selectPlotType(DemodulationChoices.FM)
-    print(f'\n{e.value}')
     if osEnv is not None:  # DO NOT REMOVE; it's to prevent github's containerized rigs from barfing during testing
+        with pytest.raises(ValueError) as e:
+            selectPlotType(DemodulationChoices.FM)
+        print(f'\n{e.value}')
         os.environ['DISPLAY'] = osEnv
 
     import importlib.util as rscs
