@@ -195,9 +195,9 @@ class DspProcessor(DataProcessor):
                 file.flush()
             except KeyboardInterrupt:
                 pass
-            except BaseException as e:
-                from misc.general_util import printException
-                printException(e)
+            # except BaseException as e:
+            #     from misc.general_util import printException
+            #     printException(e)
             finally:
                 buffer.close()
                 buffer.join_thread()

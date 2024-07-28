@@ -146,15 +146,15 @@ class AbstractPlot(DataProcessor, ABC):
             self._y[:] = self.buffer.get()
         else:
             # set buffer initially
-            self._y = self.buffer.get()
-            self._t = arange(len(self._y))
+            self._y = array([self.buffer.get()])
+            self._t = arange(self._y.size)
             self._shift = array([exp(self._omega * self._t)])
 
         # check for EOF
         if self._y is None or not len(self._y):
             self.quit()
             return None
-        return len(self._y)
+        return self._y.size
 
     @abstractmethod
     def update(self) -> None:

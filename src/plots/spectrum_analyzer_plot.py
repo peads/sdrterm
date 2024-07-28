@@ -88,7 +88,7 @@ class SpectrumAnalyzerPlot(AbstractPlot):
                 self.freq[:] = fftshift(fftfreq(self.amp.size, self.dt))
 
             for plot in self.plots:
-                plot.setData(self.freq, self.amp)
+                plot.setData(self.freq, self.amp[0])
 
         except (RuntimeWarning, ValueError, KeyboardInterrupt):
             self.quit()

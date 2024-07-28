@@ -91,7 +91,7 @@ class WaterfallPlot(AbstractPlot):
         try:
             length = self.receiveData()
             if self.image is None or length != self.size:
-                col = len(self._y) // self._NOOVERLAP
+                col = self._y.size // self._NOOVERLAP
                 self.image = empty((self._NFFT, col + 1), dtype=float64)
                 self.item.setImage(self.image, autoLevels=False)
                 self.size = length
