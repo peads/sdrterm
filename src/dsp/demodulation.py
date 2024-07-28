@@ -24,14 +24,14 @@ from scipy.signal import resample
 
 
 # @njit(cache=True, nogil=True, error_model='numpy', boundscheck=False, parallel=True)
-@guvectorize([(complex128[:], float64[:])], '(n)->(n)',#[(complex128[:, :], float64[:, :])], '(n,m)->(n,m)',
+@guvectorize([(complex128[:], float64[:])], '(n)->(n)',
              nopython=True,
              cache=True,
-             boundscheck=False)
+             boundscheck=False,
+             target='parallel')
 def _fmDemod(data: ndarray[any, dtype[complexfloating]], res: ndarray[any, dtype[floating]]):
     for i in range(0,data.shape[0],2):
         res[i>>1] = angle(data[i] * conj(data[i+1]))
-    # res[:data.shape[1]>>1] = angle(data[::2] * conj(data[1::2]))
 
 
 def fmDemod(data: ndarray[any, dtype[complexfloating]], tmp: ndarray[any, dtype[floating]]):

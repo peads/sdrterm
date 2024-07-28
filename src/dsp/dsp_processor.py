@@ -100,7 +100,8 @@ class DspProcessor(DataProcessor):
     @property
     def decimatedFs(self) -> int:
         return self.__decimatedFs
-
+    def demod(self, *_, **__):
+        pass
     # def demod(self, y: ndarray[any, dtype[complexfloating]]) -> ndarray[any, dtype[floating]]:
     #     if y.ndim < 2:
     #         setattr(self, 'demod', self._demod)
