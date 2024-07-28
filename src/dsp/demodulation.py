@@ -27,8 +27,8 @@ from scipy.signal import resample
 @guvectorize([(complex128[:], float64[:])], '(n)->(n)',
              nopython=True,
              cache=True,
-             boundscheck=False,
-             target='parallel')
+             boundscheck=False)
+             # target='parallel')
 def _fmDemod(data: ndarray[any, dtype[complexfloating]], res: ndarray[any, dtype[floating]]):
     for i in range(0,data.shape[0],2):
         res[i>>1] = angle(data[i] * conj(data[i+1]))
