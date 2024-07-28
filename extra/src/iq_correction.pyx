@@ -21,11 +21,14 @@
 # cython: nonecheck=False
 # cython: boundscheck=False
 # cython: overflowcheck=False
+# cython: overflowcheck.fold=False
 # cython: language_level=3
 # cython: infer_types=False
 # TODO remove and append EVERY SINGLE CDEF LINE with noexcept, when this is finally removed.
 # cython: legacy_no_except=True
 # cython: show_performance_hints=True
+# cython: freethreading_compatible=True
+# cython: cpow=True
 
 cimport cython
 cimport numpy as np; np.import_array()

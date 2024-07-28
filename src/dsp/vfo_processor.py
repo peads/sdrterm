@@ -106,15 +106,14 @@ class VfoProcessor(DspProcessor):
             st = Thread(target=server.serve_forever)
 
             try:
-                from concurrent.futures import ThreadPoolExecutor as Executor
                 eprint(f'\nAccepting connections on {server.socket.getsockname()}\n')
                 st.start()
                 self._processData(isDead, buffer, None)
             except KeyboardInterrupt:
                 pass
-            except BaseException as e:
-                from misc.general_util import printException
-                printException(e)
+            # except BaseException as e:
+            #     from misc.general_util import printException
+            #     printException(e)
             finally:
                 self.__event.set()
                 self._isDead = True
