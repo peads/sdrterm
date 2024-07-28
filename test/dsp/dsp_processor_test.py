@@ -23,9 +23,9 @@ def test_init(processor):
     assert processor.decimation == 2
     assert processor.decimatedFs == DEFAULT_FS >> 1
     processor.selectOutputFm()
-    assert processor._demod == dem.fmDemod
+    assert processor.demod == dem.fmDemod
     processor.selectOutputAm()
-    assert processor._demod == dem.amDemod
+    assert processor.demod == dem.amDemod
 
     with pytest.raises(ValueError) as e:
         processor.decimation = 1

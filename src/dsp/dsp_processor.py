@@ -21,7 +21,7 @@ from multiprocessing import Value, Queue
 from sys import stdout
 from typing import Callable, Iterable
 
-from numpy import ndarray, dtype, complexfloating, floating, exp, arange, pi, array, empty
+from numpy import ndarray, dtype, complexfloating, floating, exp, arange, pi, empty
 from scipy.signal import decimate, dlti, savgol_filter, sosfilt, ellip
 
 from dsp.data_processor import DataProcessor
@@ -59,7 +59,6 @@ class DspProcessor(DataProcessor):
                  **kwargs):
 
         self._demod = None
-        self._pool = None
         self._shift = None
         self.bandwidth = None
         self.__fs = None
@@ -100,24 +99,9 @@ class DspProcessor(DataProcessor):
     @property
     def decimatedFs(self) -> int:
         return self.__decimatedFs
+
     def demod(self, *_, **__):
         pass
-    # def demod(self, y: ndarray[any, dtype[complexfloating]]) -> ndarray[any, dtype[floating]]:
-    #     if y.ndim < 2:
-    #         setattr(self, 'demod', self._demod)
-    #         return self._demod(y)
-    #     else:
-    #         ret = array([self._demod(yy) for yy in y])
-    #
-    #         def demod(x):
-    #             i = 0
-    #             for val in self._pool.map(self._demod, x):
-    #                 ret[i][:] = val
-    #                 i += 1
-    #             return ret
-    #
-    #         setattr(self, 'demod', demod)
-    #         return ret
 
     def _setDemod(self,
                   fun: Callable[[ndarray[any, dtype[complexfloating]]], ndarray[any, dtype[floating]]],
@@ -142,7 +126,8 @@ class DspProcessor(DataProcessor):
     def selectOutputAm(self):
         vprint('AM Selected')
         self.bandwidth = 10000
-        self._setDemod(amDemod, generateEllipFilter(self.__decimatedFs, self._FILTER_DEGREE, self.omegaOut,
+        self._setDemod(amDemod,
+                       generateEllipFilter(self.__decimatedFs, self._FILTER_DEGREE, self.omegaOut,
                                            'lowpass'))
 
     def selectOutputReal(self):
@@ -155,7 +140,8 @@ class DspProcessor(DataProcessor):
         self.bandwidth = self.decimatedFs
         self._setDemod(imagOutput)
 
-    def _processChunk(self, y: ndarray[any, dtype[complexfloating]]) -> ndarray[any, dtype[floating]]:
+    def _processChunk(self, y: ndarray[any, dtype[complexfloating]]) -> ndarray[
+        any, dtype[floating]]:
         if self._shift is not None:
             # shiftFreq(y, self._shift, y)
             y = y * self._shift

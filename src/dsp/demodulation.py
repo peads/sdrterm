@@ -44,18 +44,18 @@ def fmDemod(data: ndarray[any, dtype[complexfloating]], tmp: ndarray[any, dtype[
 
 
 @njit(cache=True, nogil=True, error_model='numpy', boundscheck=False)
-def amDemod(data: ndarray[any, dtype[complexfloating]]) -> ndarray[any, dtype[floating]]:
-    return abs(data)
+def amDemod(data: ndarray[any, dtype[complexfloating]], res: ndarray[any, dtype[floating]]):
+    res[:] =  abs(data)
 
 
 @njit(cache=True, nogil=True, error_model='numpy', boundscheck=False)
-def realOutput(data: ndarray[any, dtype[complexfloating]]) -> ndarray[any, dtype[floating]]:
-    return real(data)
+def realOutput(data: ndarray[any, dtype[complexfloating]], res: ndarray[any, dtype[floating]]):
+    res[:] =  real(data)
 
 
 @njit(cache=True, nogil=True, error_model='numpy', boundscheck=False)
-def imagOutput(data: ndarray[any, dtype[complexfloating]]) -> ndarray[any, dtype[floating]]:
-    return imag(data)
+def imagOutput(data: ndarray[any, dtype[complexfloating]], res: ndarray[any, dtype[floating]]):
+    res[:] = imag(data)
 
 
 @njit(cache=True, nogil=True, error_model='numpy', boundscheck=False, parallel=True)
