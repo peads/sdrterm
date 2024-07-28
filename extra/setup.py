@@ -33,7 +33,8 @@ else:
     extraCompileArgs = ['/DNPY_NO_DEPRECATED_API', '/O2', '/Oiy', '/Ob3', '/favor:INTEL64', '/options:strict',# '/openmp',
                         '/fp:fast', '/fp:except-', '/GL', '/Gw', '/jumptablerdata', '/MP', '/Qpar']
 
-setup(ext_modules=cythonize([
+setup(name="dsp",
+    ext_modules=cythonize([
     Extension('dsp.fast.iq_correction',
               sources=['src/iq_correction.pyx'],
               include_dirs=[

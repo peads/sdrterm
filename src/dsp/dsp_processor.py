@@ -21,8 +21,7 @@ from multiprocessing import Value, Queue
 from sys import stdout
 from typing import Callable, Iterable
 
-from numpy import ndarray, dtype, complex64, complex128, float32, float64, exp, arange, pi, \
-    array
+from numpy import ndarray, dtype, complexfloating, floating, exp, arange, pi, empty
 from scipy.signal import decimate, dlti, savgol_filter, sosfilt, ellip
 
 from dsp.data_processor import DataProcessor
@@ -31,7 +30,7 @@ from misc.general_util import vprint
 
 
 def applyFilters(y: ndarray | Iterable, *filters) -> ndarray[
-    any, dtype[float32 | float64 | complex64 | complex128]]:
+    any, dtype[floating | complexfloating]]:
     for sos in filters:
         y = sosfilt(sos, y)
     return y
@@ -60,13 +59,14 @@ class DspProcessor(DataProcessor):
                  **kwargs):
 
         self._demod = None
-        self._pool = None
         self._shift = None
         self.bandwidth = None
         self.__fs = None
         self.__decimatedFs = None
         self._isDead = False
         self._outputFilters = []
+        self.tmp = None
+        self._nFreq = 1
 
         self._decimationFactor = dec
         self.fs = fs
@@ -77,59 +77,42 @@ class DspProcessor(DataProcessor):
         self.__fileInfo = fileInfo
 
     @property
-    def fs(self):
+    def fs(self) -> int:
         return self.__fs
 
     @fs.setter
-    def fs(self, fs: int):
+    def fs(self, fs: int) -> None:
         self.__fs = fs
         self.__decimatedFs = fs // self._decimationFactor
 
     @property
-    def decimation(self):
+    def decimation(self) -> int:
         return self._decimationFactor
 
     @decimation.setter
-    def decimation(self, decimation: int):
+    def decimation(self, decimation: int) -> None:
         if decimation < 2:
             raise ValueError("Decimation must be at least 2.")
         self._decimationFactor = decimation
         self.fs = self.__fs
 
     @property
-    def decimatedFs(self):
+    def decimatedFs(self) -> int:
         return self.__decimatedFs
 
-    def demod(self, y: ndarray[any, dtype[complex64 | complex128]]) -> ndarray[
-        any, dtype[float32 | float64]]:
-        if y.ndim < 2:
-            setattr(self, 'demod', self._demod)
-            return self._demod(y)
-        else:
-            ret = array([self._demod(yy) for yy in y])
-
-            def demod(x):
-                i = 0
-                for val in self._pool.map(self._demod, x):
-                    ret[i][:] = val
-                    i += 1
-                return ret
-
-            setattr(self, 'demod', demod)
-            return ret
+    def demod(self, *_, **__):
+        pass
 
     def _setDemod(self,
-                  fun: Callable[[ndarray[any, dtype[complex64 | complex128]]], ndarray[
-                      any, dtype[float32 | float64]]],
+                  fun: Callable[[ndarray[any, dtype[complexfloating]]], ndarray[any, dtype[floating]]],
                   *filters) \
-            -> Callable[[ndarray[any, dtype[complex64 | complex128]]], ndarray[
-                any, dtype[float32 | float64]]]:
+            -> Callable[[ndarray[any, dtype[complexfloating]]], ndarray[any, dtype[floating]]]:
 
         if fun is not None:
             self._outputFilters.clear()
             if len(filters):
                 self._outputFilters.extend(*filters)
-            setattr(self, '_demod', fun)
+            setattr(self, 'demod', fun)
             return self.demod
         raise ValueError("Demodulation function, or filters not defined")
 
@@ -157,29 +140,31 @@ class DspProcessor(DataProcessor):
         self.bandwidth = self.decimatedFs
         self._setDemod(imagOutput)
 
-    def _processChunk(self, y: ndarray) -> ndarray[any, dtype[float32 | float64]]:
+    def _processChunk(self, y: ndarray[any, dtype[complexfloating]]) -> ndarray[
+        any, dtype[floating]]:
         if self._shift is not None:
             # shiftFreq(y, self._shift, y)
             y = y * self._shift
         if self._decimationFactor > 1:
             y = decimate(y, self._decimationFactor)
-        y = self.demod(y)
-        return applyFilters(y, self._outputFilters)
+        self.demod(y, self.tmp)
+        return applyFilters(self.tmp, self._outputFilters)
 
-    def _transformData(self, x: ndarray, file) -> None:
+    def _transformData(self, x: ndarray[any, dtype[complexfloating]], file) -> None:
         from struct import pack
         y = self._processChunk(x)
 
         if self.smooth:
             y = savgol_filter(y, self.smooth, self._FILTER_DEGREE)
 
-        file.write(pack('@' + (y.size * 'd'), *y))
+        file.write(pack('@' + (y.size * 'd'), *y.flat))
 
     def _processData(self, isDead: Value, buffer: Queue, file) -> None:
         x = None
         while not (self._isDead or isDead.value):
             if x is None:
                 x = buffer.get()
+                self.tmp = empty((self._nFreq, x.size // self._decimationFactor), dtype=floating)
             else:
                 x[:] = buffer.get()
 
@@ -200,9 +185,9 @@ class DspProcessor(DataProcessor):
                 file.flush()
             except KeyboardInterrupt:
                 pass
-            except BaseException as e:
-                from misc.general_util import printException
-                printException(e)
+            # except BaseException as e:
+            #     from misc.general_util import printException
+            #     printException(e)
             finally:
                 buffer.close()
                 buffer.join_thread()
@@ -225,7 +210,7 @@ class DspProcessor(DataProcessor):
     def __str__(self):
         return self.__class__.__name__
 
-# def generateDeemphFilter(fs: float, f: float = 7.5e-5) -> ndarray[any, dtype[float32 | float64]]:
+# def generateDeemphFilter(fs: float, f: float = 7.5e-5) -> ndarray[any, dtype[floating]]:
 #     alpha = 1 / (1 - exp(-26666.7 / (f * fs)))
 #     B = [alpha, 1]
 #     A = [1]

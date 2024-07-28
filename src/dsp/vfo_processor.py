@@ -106,24 +106,20 @@ class VfoProcessor(DspProcessor):
             st = Thread(target=server.serve_forever)
 
             try:
-                from concurrent.futures import ThreadPoolExecutor as Executor
                 eprint(f'\nAccepting connections on {server.socket.getsockname()}\n')
                 st.start()
-                with Executor(max_workers=self._nFreq) as self._pool:
-                    self._processData(isDead, buffer, None)
+                self._processData(isDead, buffer, None)
             except KeyboardInterrupt:
                 pass
-            except BaseException as e:
-                from misc.general_util import printException
-                printException(e)
+            # except BaseException as e:
+            #     from misc.general_util import printException
+            #     printException(e)
             finally:
                 self.__event.set()
                 self._isDead = True
-                self._pool.shutdown(wait=False, cancel_futures=False)
                 server.shutdown()
                 with self.__queue.all_tasks_done:
                     self.__queue.all_tasks_done.notify_all()
                 st.join()
-                self._pool.shutdown(wait=False, cancel_futures=True)
                 vprint('Multi-VFO writer halted')
                 return
