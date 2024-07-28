@@ -17,22 +17,30 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-from numba import njit
-from numpy import angle, ndarray, conj, abs, real, imag, dtype, complexfloating, floating
+from numba import njit, guvectorize, complex128, float64, void
+from numpy import angle, ndarray, conj, abs, real, imag, dtype, complexfloating, floating, empty, \
+    reshape
 from scipy.signal import resample
 
 
-@njit(cache=True, nogil=True, error_model='numpy', boundscheck=False, parallel=True)
-def _fmDemod(data: ndarray[any, dtype[complexfloating]]) -> ndarray[any, dtype[complexfloating]]:
-    return angle(data[::2] * conj(data[1::2]))
+# @njit(cache=True, nogil=True, error_model='numpy', boundscheck=False, parallel=True)
+@guvectorize([(complex128[:], float64[:])], '(n)->(n)',#[(complex128[:, :], float64[:, :])], '(n,m)->(n,m)',
+             nopython=True,
+             cache=True,
+             boundscheck=False)
+def _fmDemod(data: ndarray[any, dtype[complexfloating]], res: ndarray[any, dtype[floating]]):
+    for i in range(0,data.shape[0],2):
+        res[i>>1] = angle(data[i] * conj(data[i+1]))
+    # res[:data.shape[1]>>1] = angle(data[::2] * conj(data[1::2]))
 
 
-def fmDemod(data: ndarray[any, dtype[complexfloating]]) -> ndarray[any, dtype[floating]]:
-    # re: ndarray[any, dtype[complex64 | complex128]] = data[0::2]
-    # im: ndarray[any, dtype[complex64 | complex128]] = data[1::2]
-    # re = re * conj(im)
-    # np.reshape(data, (2, data.size >> 1))
-    return resample(_fmDemod(data), len(data))
+def fmDemod(data: ndarray[any, dtype[complexfloating]], tmp: ndarray[any, dtype[floating]]):
+    # tmp1 = resample(angle(data[::2] * conj(data[1::2])), data.size)
+    if data.ndim < 2:
+        data[:] = reshape(data,(1,data.shape[0]))
+    _fmDemod( data, tmp)
+    for i in range(tmp.shape[0]):
+        tmp[i] =  resample(tmp[i][:tmp.shape[1] >> 1], tmp.shape[1])
 
 
 @njit(cache=True, nogil=True, error_model='numpy', boundscheck=False)
