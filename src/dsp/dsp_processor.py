@@ -19,13 +19,14 @@
 #
 from multiprocessing import Value, Queue
 from sys import stdout
-from typing import Callable, Iterable
+from typing import Callable, Iterable, Any
 
-from numpy import ndarray, dtype, complexfloating, floating, exp, arange, pi, empty
+from numpy import ndarray, dtype, complexfloating, floating, exp, arange, pi, empty, array, reshape, \
+    broadcast_to
 from scipy.signal import decimate, dlti, savgol_filter, sosfilt, ellip
 
 from dsp.data_processor import DataProcessor
-from dsp.demodulation import amDemod, fmDemod, realOutput, imagOutput
+from dsp.demodulation import amDemod, fmDemod, realOutput, imagOutput, shiftFreq
 from misc.general_util import vprint
 
 
@@ -103,11 +104,8 @@ class DspProcessor(DataProcessor):
     def demod(self, *_, **__):
         pass
 
-    def _setDemod(self,
-                  fun: Callable[[ndarray[any, dtype[complexfloating]]], ndarray[any, dtype[floating]]],
-                  *filters) \
-            -> Callable[[ndarray[any, dtype[complexfloating]]], ndarray[any, dtype[floating]]]:
-
+    def _setDemod(self, fun: Callable[[ndarray, ndarray], None], *filters) \
+            -> Callable[[tuple[Any, ...], dict[str, Any]], None]:
         if fun is not None:
             self._outputFilters.clear()
             if len(filters):
@@ -140,42 +138,54 @@ class DspProcessor(DataProcessor):
         self.bandwidth = self.decimatedFs
         self._setDemod(imagOutput)
 
-    def _processChunk(self, y: ndarray[any, dtype[complexfloating]]) -> ndarray[
-        any, dtype[floating]]:
+    def _processChunk(self,
+                      x: ndarray[any, dtype[complexfloating]],
+                      y: ndarray[any, dtype[complexfloating]],
+                      z: ndarray[any, dtype[floating]])->None:
         if self._shift is not None:
-            # shiftFreq(y, self._shift, y)
-            y = y * self._shift
-        if self._decimationFactor > 1:
-            y = decimate(y, self._decimationFactor)
-        self.demod(y, self.tmp)
-        return applyFilters(self.tmp, self._outputFilters)
+            shiftFreq(x[0], self._shift, x)
+            # y = y * self._shift
+        y[:] = decimate(x, self._decimationFactor)
+        self.demod(y, z)
+        z[:] = applyFilters(z, self._outputFilters)
 
-    def _transformData(self, x: ndarray[any, dtype[complexfloating]], file) -> None:
+    def _transformData(self,
+                       x: ndarray[any, dtype[complexfloating]],
+                       y: ndarray[any, dtype[complexfloating]],
+                       z: ndarray[any, dtype[floating]],
+                       file) -> None:
         from struct import pack
-        y = self._processChunk(x)
+        self._processChunk(x, y, z)
 
         if self.smooth:
-            y = savgol_filter(y, self.smooth, self._FILTER_DEGREE)
+            z[:] = savgol_filter(z, self.smooth, self._FILTER_DEGREE)
 
-        file.write(pack('@' + (y.size * 'd'), *y.flat))
+        file.write(pack('@' + (z.size * 'd'), *z.flat))
 
-    def _processData(self, isDead: Value, buffer: Queue, file) -> None:
+    def _processData(self, isDead: Value, buffer: Queue, file=None) -> None:
         x = None
+        y = None
+        z = None
         while not (self._isDead or isDead.value):
-            if x is None:
-                x = buffer.get()
-                self.tmp = empty((self._nFreq, x.size // self._decimationFactor), dtype=floating)
+            if x is not None:
+                x[0, :] = buffer.get()
             else:
-                x[:] = buffer.get()
+                x = buffer.get()
+                shape = (self._nFreq, x.size // self._decimationFactor)
+                tmp = empty((self._nFreq, x.size), dtype=x.dtype)
+                tmp[0, :] = x
+                x = tmp
+                y = empty(shape, dtype=x.dtype)
+                z = empty(shape, dtype=floating)
 
             if self._shift is None:
-                self._generateShift(x.size)
+                self._generateShift(x.shape[1])
 
-            self._transformData(x, file)
+            self._transformData(x, y, z, file)
 
     def _generateShift(self, c: int) -> None:
         if self.centerFreq:
-            self._shift = exp(-2j * pi * (self.centerFreq / self.__fs) * arange(c))
+            self._shift = array([exp(-2j * pi * (self.centerFreq / self.__fs) * arange(c))])
 
     def processData(self, isDead: Value, buffer: Queue, f: str, *args, **kwargs) -> None:
         with open(f, 'wb') if f is not None else open(stdout.fileno(), 'wb', closefd=False) as file:
@@ -185,9 +195,9 @@ class DspProcessor(DataProcessor):
                 file.flush()
             except KeyboardInterrupt:
                 pass
-            # except BaseException as e:
-            #     from misc.general_util import printException
-            #     printException(e)
+            except BaseException as e:
+                from misc.general_util import printException
+                printException(e)
             finally:
                 buffer.close()
                 buffer.join_thread()

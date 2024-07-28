@@ -20,7 +20,7 @@
 from abc import ABC, abstractmethod
 from typing import Callable
 
-from numpy import linspace, arange, exp, pi
+from numpy import linspace, arange, exp, pi, array
 
 from dsp.data_processor import DataProcessor
 from misc.general_util import vprint
@@ -148,7 +148,7 @@ class AbstractPlot(DataProcessor, ABC):
             # set buffer initially
             self._y = self.buffer.get()
             self._t = arange(len(self._y))
-            self._shift = exp(self._omega * self._t)
+            self._shift = array([exp(self._omega * self._t)])
 
         # check for EOF
         if self._y is None or not len(self._y):

@@ -52,7 +52,7 @@ class VfoProcessor(DspProcessor):
         else:
             self.host = vfoHost
             self.port = findPort(self.host)
-        self.__queue: Queue[str] | None = None
+        self.__queue: Queue[int, ...] | None = None
         self.__clients: dict[str, RawIOBase] | None = None
         self.__event: Event | None = None
 
@@ -65,7 +65,7 @@ class VfoProcessor(DspProcessor):
         return self.__event
 
     @property
-    def queue(self) -> Queue[str]:
+    def queue(self) -> Queue[int, ...]:
         return self.__queue
 
     def _generateShift(self, c: int) -> None:
@@ -77,9 +77,10 @@ class VfoProcessor(DspProcessor):
         self.queue.join()
         eprint('Connection(s) established')
 
-    def _transformData(self, x, _=None) -> None:
+    def _transformData(self, x, y, z, _=None) -> None:
         from struct import pack
-        for (request, data) in zip(self.__clients.values(), self._processChunk(x)):
+        self._processChunk(x, y, z)
+        for (request, data) in zip(self.__clients.values(), z):
             request.write(pack('!' + str(data.size) + 'd', *data))
 
     def processData(self, isDead: Value, buffer: Queue, *args, **kwargs) -> None:
@@ -108,12 +109,12 @@ class VfoProcessor(DspProcessor):
             try:
                 eprint(f'\nAccepting connections on {server.socket.getsockname()}\n')
                 st.start()
-                self._processData(isDead, buffer, None)
+                self._processData(isDead, buffer)
             except KeyboardInterrupt:
                 pass
-            # except BaseException as e:
-            #     from misc.general_util import printException
-            #     printException(e)
+            except BaseException as e:
+                from misc.general_util import printException
+                printException(e)
             finally:
                 self.__event.set()
                 self._isDead = True
