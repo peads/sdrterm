@@ -17,10 +17,15 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
+from io import BufferedReader
 from multiprocessing import Value, Process, Queue
+from sys import stdin
 from typing import Iterable
 
-from numpy import dtype
+from numba import njit
+from numpy import frombuffer, ndarray, complexfloating, dtype, empty, uint8
+
+from misc.general_util import vprint, eprint, tprint, applyIgnoreException
 
 
 def readFile(bitsPerSample: dtype = None,
@@ -34,16 +39,8 @@ def readFile(bitsPerSample: dtype = None,
              swapEndianness: bool = False,
              correctIq: bool = False,
              normalize: bool = False,
+             isSocket: bool = False,
              **_) -> None:
-    from array import array
-    from io import BufferedReader
-    from sys import stdin
-
-    from numpy import frombuffer, ndarray, complex128, complex64, ix_, isfinite, invert
-
-    from dsp.iq_correction import IQCorrection
-    from misc.general_util import vprint, eprint, tprint, applyIgnoreException
-
     if fs is None:
         raise ValueError('fs is not specified')
 
@@ -51,29 +48,43 @@ def readFile(bitsPerSample: dtype = None,
         bitsPerSample = bitsPerSample.newbyteorder('<' if '>' == bitsPerSample.byteorder else '>')
 
     dataType = dtype([('re', bitsPerSample), ('im', bitsPerSample)])
-    buffer = array(bitsPerSample.char, readSize * b'0')
+    buffer = empty(readSize, dtype=uint8)
 
-    def doCorrectIq(_: ndarray[any, dtype[complex64 | complex128]]) -> None:
+    def _correctIq(_: ndarray[any, dtype[complexfloating]]) -> None:
         pass
 
-    def doNormalize(_: ndarray[any, dtype[complex64 | complex128]]) -> None:
+    if correctIq:
+        try:
+            from dsp.fast.iq_correction import IQCorrection
+            tprint('Imported pre-compiled IQCorrection class')
+        except ImportError:
+            from dsp.iq_correction import IQCorrection
+            tprint('Falling-back to jit IQCorrection class')
+        _correctIq = IQCorrection(fs).correctIq
+
+    def noNormalize(*_) -> None:
         pass
 
-    if correctIq or (bitsPerSample.char.isupper() and normalize):
-        doCorrectIq = IQCorrection(fs).correctIq
+    if not normalize:
+        _normalize = noNormalize
+    else:
+        ret = generateDomain(bitsPerSample.char)
+        if ret is None:
+            _normalize = noNormalize
+        else:
+            xmin, xMaxMinDiff = ret
 
-    if normalize:
-        def doNormalize(Z: ndarray[any, dtype[complex64 | complex128]]) -> None:
-            Z[:] = Z / abs(Z)
-            ix = invert(isfinite(Z[:, ]))
-            Z[ix] = Z[ix_(ix)].all(0)
+            @njit(cache=True, nogil=True, error_model='numpy', boundscheck=False)
+            def _normalize(z: ndarray[any, dtype[complexfloating]]) -> None:
+                for i in range(z.shape[0]):
+                    z[i] = 1.6 * (z[i] - xmin) * xMaxMinDiff - 0.8
     procs = list(processes)
     clients = list(buffers)
 
-    def feedBuffers(x: ndarray) -> None:
-        x = x['re'] + 1j * x['im']
-        doCorrectIq(x)
-        doNormalize(x)
+    def feedBuffers(y: ndarray) -> None:
+        z = y['re'] + 1j * y['im']
+        _normalize(z)
+        _correctIq(z)
         for proc, client in zip(procs, clients):
             if proc.exitcode is not None:
                 tprint(f'Process : {proc.name} ended; removing {client} from queue')
@@ -82,7 +93,7 @@ def readFile(bitsPerSample: dtype = None,
                 procs.remove(proc)
             else:
                 try:
-                    client.put_nowait(x)
+                    client.put_nowait(z)
                 except ValueError:
                     tprint(f'Client : {client} closed; removing {proc.name} from queue')
                     client.close()
@@ -90,9 +101,10 @@ def readFile(bitsPerSample: dtype = None,
                     procs.remove(proc)
 
     def readData(reader: BufferedReader) -> None:
-        length = readSize
-        while not isDead.value and length == readSize:
-            length = reader.readinto(buffer)
+
+        while not isDead.value:
+            if not reader.readinto(buffer):
+                break
             y = frombuffer(buffer, dataType)
             feedBuffers(y)
 
@@ -106,7 +118,8 @@ def readFile(bitsPerSample: dtype = None,
 
     def readSocket() -> None:
         from misc.general_util import shutdownSocket
-        from socket import socket, AF_INET, SOCK_STREAM, SO_KEEPALIVE, SO_REUSEADDR, SOL_SOCKET, gaierror
+        from socket import socket, AF_INET, SOCK_STREAM, SO_KEEPALIVE, SO_REUSEADDR, SOL_SOCKET, \
+            gaierror
         from os import name as osName
         MAX_RETRIES = 5
         retries = 0
@@ -132,7 +145,7 @@ def readFile(bitsPerSample: dtype = None,
             finally:
                 shutdownSocket(sock)
 
-    if inFile is not None and ':' in inFile:
+    if isSocket:
         readSocket()
     else:
         readFd()
@@ -143,3 +156,25 @@ def readFile(bitsPerSample: dtype = None,
 
     vprint('File reader halted')
     return
+
+
+def generateDomain(dataType: str) -> tuple[int, float] | None:
+    if 'B' == dataType:
+        xmin, xmax = 0, 255
+    elif 'h' == dataType:
+        xmin, xmax = -32768, 32767
+    elif 'b' == dataType:
+        xmin, xmax = -128, 127
+    elif 'i' == dataType:
+        xmin, xmax = -2147483648, 2147483647
+    elif 'H' == dataType:
+        xmin, xmax = 0, 65536
+    elif 'I' == dataType:
+        xmin, xmax = 0, 4294967295
+    elif 'L' == dataType:
+        xmin, xmax = 0, 18446744073709551615
+    elif 'l' == dataType:
+        xmin, xmax = -9223372036854775808, 9223372036854775807
+    else:
+        return None
+    return xmin, 1 / (-xmin + xmax)

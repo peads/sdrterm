@@ -21,7 +21,7 @@ from enum import Enum
 from multiprocessing import Queue, Process
 from typing import Callable
 
-from misc.general_util import tprint
+from misc.general_util import tprint, eprint
 
 
 class DemodulationChoices(str, Enum):
@@ -48,23 +48,21 @@ def selectDemodulation(demodType: DemodulationChoices, processor) -> Callable:
 
 
 def selectPlotType(plotType: str):
-    from misc.general_util import printException
-    from plots.multi_spectrum_analyzer_plot import MultiSpectrumAnalyzerPlot
-    from plots.spectrum_analyzer_plot import SpectrumAnalyzerPlot
-    from plots.waterfall_plot import WaterfallPlot
-    from importlib.resources import files
+    from importlib.util import find_spec
 
-    try:
-        files('pyqtgraph')
+    if find_spec('pyqtgraph') is None:
+        eprint('pyqtgraph not installed')
+        return None
+    else:
         if plotType == 'ps' or plotType == 'spec':
+            from plots.spectrum_analyzer_plot import SpectrumAnalyzerPlot
             return SpectrumAnalyzerPlot
         elif plotType == 'vfos' or plotType == 'vfo':
+            from plots.multi_spectrum_analyzer_plot import MultiSpectrumAnalyzerPlot
             return MultiSpectrumAnalyzerPlot
         elif plotType == 'water' or plotType == 'waterfall':
+            from plots.waterfall_plot import WaterfallPlot
             return WaterfallPlot
-    except ModuleNotFoundError as e:
-        printException(e)
-        return None
     raise ValueError(f'Invalid plot type {plotType}')
 
 

@@ -23,9 +23,9 @@ def test_init(processor):
     assert processor.decimation == 2
     assert processor.decimatedFs == DEFAULT_FS >> 1
     processor.selectOutputFm()
-    assert processor._demod == dem.fmDemod
+    assert processor.demod == dem.fmDemod
     processor.selectOutputAm()
-    assert processor._demod == dem.amDemod
+    assert processor.demod == dem.amDemod
 
     with pytest.raises(ValueError) as e:
         processor.decimation = 1
@@ -53,9 +53,9 @@ def test_init(processor):
     processor.centerFreq = DEFAULT_CENTER
     assert processor.centerFreq == DEFAULT_CENTER
     processor._generateShift(DEFAULT_SHIFT_SIZE)
-    assert len(processor._shift) == DEFAULT_SHIFT_SIZE
+    assert processor._shift.size == DEFAULT_SHIFT_SIZE
     for k in range(8):
-        assert processor._shift[k] == np.pow(math.e, -2j * math.pi * (DEFAULT_CENTER / DEFAULT_FS) * k)
+        assert processor._shift[0][k] == np.pow(math.e, -2j * math.pi * (DEFAULT_CENTER / DEFAULT_FS) * k)
 
     with pytest.raises(FileNotFoundError) as e:
         processor.processData(None, None, '')

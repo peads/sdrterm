@@ -5,8 +5,8 @@ import pytest
 from misc.io_args import IOArgs, DemodulationChoices, selectPlotType
 
 
-def throwingFiles(*_, **__):
-    raise ModuleNotFoundError
+def nullFindSpec(*_, **__):
+    return None
 
 
 @pytest.fixture(scope='function')
@@ -34,11 +34,15 @@ def test_ioargs(osEnv):
                                      processes=[],
                                      buffers=[],
                                      **kwargs)
+
     if osEnv is not None:  # DO NOT REMOVE; it's to prevent github's containerized rigs from barfing during testing
+        with pytest.raises(ValueError) as e:
+            selectPlotType(DemodulationChoices.FM)
+        print(f'\n{e.value}')
         os.environ['DISPLAY'] = osEnv
 
-    import importlib.resources as rscs
-    ogFiles = rscs.files
-    rscs.files = throwingFiles
+    import importlib.util as rscs
+    ogFiles = rscs.find_spec
+    rscs.find_spec = nullFindSpec
     assert selectPlotType(DemodulationChoices.FM) is None
-    rscs.files = ogFiles
+    rscs.find_spec = ogFiles

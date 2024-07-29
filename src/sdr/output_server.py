@@ -42,7 +42,8 @@ class OutputServer(ThreadingMixIn, TCPServer):
                     receiver.addClient(file).wait()
                 return
 
-        super().__init__((server_host, findPort(server_host)), ThreadedTCPRequestHandler, *args, **kwargs)
+        super().__init__((server_host, findPort(server_host)), ThreadedTCPRequestHandler, *args,
+                         **kwargs)
         self.block_on_close = False
         self.receiver = receiver
         self.pt = KeyboardInterruptableThread(self.shutdown, target=receiver.receive)

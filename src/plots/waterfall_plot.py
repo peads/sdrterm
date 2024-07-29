@@ -18,10 +18,10 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
 
-from numpy import log10, abs, zeros, float64
+from numpy import log10, abs, empty, float64
 from scipy.signal import ShortTimeFFT
 
-from dsp.iq_correction import IQCorrection
+from dsp.demodulation import shiftFreq
 from misc.general_util import printException
 from plots.abstract_plot import AbstractPlot
 
@@ -32,8 +32,6 @@ class WaterfallPlot(AbstractPlot):
     _NFFT: int = 1024
 
     def __init__(self,
-                 correctIq=False,
-                 fileInfo=None,
                  *args,
                  **kwargs):
 
@@ -85,22 +83,19 @@ class WaterfallPlot(AbstractPlot):
         self.timer = QTimer()
         self.timer.timeout.connect(self.update)
         self.timer.start(self.frameRate)
-        if not correctIq and fileInfo['bitsPerSample'].char.isupper():
-            setattr(self, '_doCorrectIq', IQCorrection(self.fs).correctIq)
 
-    def _doCorrectIq(self, _) -> None:
-        pass
+    def __del__(self):
+        del self.image
 
     def update(self):
         try:
             length = self.receiveData()
             if self.image is None or length != self.size:
-                col = len(self._y) // self._NOOVERLAP
-                self.image = zeros((self._NFFT, col + 1), dtype=float64)
+                col = self._y.size // self._NOOVERLAP
+                self.image = empty((self._NFFT, col + 1), dtype=float64)
                 self.item.setImage(self.image, autoLevels=False)
                 self.size = length
-            self._doCorrectIq(self._y)
-            self._shiftFreq(self._y)
+            shiftFreq(self._y, self._shift, self._y)
             self.image[:] = 10. * log10(abs(self._SFT.stft(self._y)))
             self.item.setImage(autoLevels=False)
         except (RuntimeWarning, ValueError, KeyboardInterrupt):

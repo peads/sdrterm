@@ -97,15 +97,17 @@ class DataType(MappableEnum):
         return ret
 
 
-def parseRawType(file: str | None, fs: int, enc: str) -> dict:
+def parseRawType(file: str | None, fs: int, enc: str, isSocket: bool = False) -> dict:
     if fs is None or fs < 1 or enc is None:
-        raise ValueError('Valid sampling rate, encoding type and bit-size are all required for raw pcm input')
+        raise ValueError(
+            'Valid sampling rate, encoding type and bit-size are all required for raw pcm input')
     fs = int(fs)
     dataType = DataType[enc].value
     if file is not None and ':' in file:
         dataType = dataType.newbyteorder('>')
     result = zipRet((0, 0, 0, fs, fs, 0, dataType))
     result['dataOffset'] = 0
+    result['isSocket'] = isSocket
     return result
 
 
@@ -121,8 +123,16 @@ def zipRet(x: Iterable):
 
 
 def checkWavHeader(f, fs: int, enc: str) -> dict:
-    if f is None or issubclass(type(f), str) and ':' in f:
+    if f is None:
         return parseRawType(f, fs, enc)
+    elif issubclass(type(f), str) and ':' in f:
+        from socket import getaddrinfo, gaierror
+        host, port = f.split(':')
+        try:
+            if getaddrinfo(host, port):
+                return parseRawType(f, fs, enc, True)
+        except gaierror:
+            pass
 
     with (open(f, 'rb') as file):
         # derived from http://soundfile.sapp.org/doc/WaveFormat/ and https://bts.keep-cool.org/wiki/Specs/CodecsValues
@@ -154,6 +164,7 @@ def checkWavHeader(f, fs: int, enc: str) -> dict:
                                 # 20
                ) = unpack(endianness + 'IHHIIHH', file.read(20))
         ret = zipRet(ret)
+        ret['isSocket'] = False
         subFormat = None
 
         if WaveFormat.WAVE_FORMAT_EXTENSIBLE.value == ret['audioFormat']:
@@ -166,7 +177,8 @@ def checkWavHeader(f, fs: int, enc: str) -> dict:
                 raise ValueError('Invalid: SubFormat GUID malformed')
             subFormat = ExWaveFormat(subFormat)
 
-        ret['bitsPerSample'] = DataType.fromWav(bitsPerSample, WaveFormat(ret['audioFormat']), subFormat,
+        ret['bitsPerSample'] = DataType.fromWav(bitsPerSample, WaveFormat(ret['audioFormat']),
+                                                subFormat,
                                                 '>' == endianness)
         ret['bitRate'] = (bitsPerSample * byteRate * blockAlign) >> 3
 

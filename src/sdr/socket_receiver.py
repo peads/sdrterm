@@ -100,7 +100,8 @@ class SocketReceiver(Receiver):
                     with self._receiver.makefile('rb') as file:
                         retries = self._receive(file)
                 except (TimeoutError, ConnectionError, gaierror) as e:
-                    eprint(f'Connection failed: {e}. Retrying {retries} of {self._MAX_RETRIES} times')
+                    eprint(
+                        f'Connection failed: {e}. Retrying {retries} of {self._MAX_RETRIES} times')
                 finally:
                     retries += 1
                     self.disconnect()

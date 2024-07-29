@@ -299,11 +299,13 @@ class SdrControl(App):
                             classes='source',
                             type='integer',
                             valid_empty=False)
-                yield Button('Connect', id='connector', classes='sources connect', variant='success')
+                yield Button('Connect', id='connector', classes='sources connect',
+                             variant='success')
 
             yield Label('Tuning')
             with Horizontal():
-                yield Input(placeholder='100000000 Hz', id='frequency', classes='frequency', type='integer')
+                yield Input(placeholder='100000000 Hz', id='frequency', classes='frequency',
+                            type='integer')
                 yield Button('Set', id='set_freq', classes='frequency')
 
             with Horizontal():
@@ -347,7 +349,8 @@ class SdrControl(App):
         return False
 
 
-def main(server_host: Annotated[str, Option(help='Port of local distribution server')] = 'localhost') -> None:
+def main(server_host: Annotated[
+    str, Option(help='Port of local distribution server')] = 'localhost') -> None:
     from os import getpid
     isDead = Value('b', 0)
     isDead.value = 0
@@ -355,7 +358,8 @@ def main(server_host: Annotated[str, Option(help='Port of local distribution ser
 
     with SocketReceiver(isDead=isDead) as receiver:
         try:
-            server, lt, ft, resetBuffers = output_server.initServer(receiver, isDead, server_host=server_host)
+            server, lt, ft, resetBuffers = output_server.initServer(receiver, isDead,
+                                                                    server_host=server_host)
             app = SdrControl(receiver, server)
 
             setattr(app, 'resetBuffers', resetBuffers)

@@ -33,7 +33,8 @@ from sdr.socket_receiver import SocketReceiver
 
 def main(host: Annotated[str, Argument(help='Address of remote rtl_tcp server')],
          port: Annotated[int, Argument(help='Port of remote rtl_tcp server')],
-         server_host: Annotated[str, Option(help='Port of local distribution server')] = 'localhost',
+         server_host: Annotated[
+             str, Option(help='Port of local distribution server')] = 'localhost',
          verbose:
          Annotated[int, Option("--verbose", "-v",
                                count=True,

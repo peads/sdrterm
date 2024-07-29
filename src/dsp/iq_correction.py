@@ -17,42 +17,46 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-# from dsp.util import quadwise
-from numpy import ndarray, dtype, complex64, complex128
+from numba import complex128, uint64, float64, prange
+from numba.experimental import jitclass
+from numpy import ndarray, dtype, complexfloating
 
 
+@jitclass([
+    ('_sampRate', uint64),
+    ('_inductance', float64),
+    ('_off', complex128)])
 class IQCorrection:
     def __init__(self, sampRate: int, impedance: int = 50):
-        self.__sampRate = sampRate
-        self.__inductance = impedance / sampRate
+        self._sampRate = sampRate
+        self._inductance = impedance / sampRate
         self._off = 0j
 
-    def __del__(self):
-        del self.__inductance
-        del self.__sampRate
-        del self._off
-
     @property
-    def sampleRate(self):
-        return self.__sampRate
+    def fs(self):
+        return self._sampRate
 
-    @sampleRate.setter
-    def sampleRate(self, sampRate: int):
-        self.__inductance = self.__inductance * self.__sampRate
-        self.__sampRate = sampRate
-        self.__inductance /= self.__sampRate
+    @fs.setter
+    def fs(self, sampRate: int):
+        self._inductance = self._inductance * self._sampRate
+        self._sampRate = sampRate
+        self._inductance /= self._sampRate
         self._off = 0j
 
     @property
     def inductance(self):
-        return self.__inductance
+        return self._inductance
 
-    @inductance.setter
-    def inductance(self, impedance: int):
-        self.__inductance = impedance / self.__sampRate
+    @property
+    def impedance(self):
+        return self.inductance * self._sampRate
+
+    @impedance.setter
+    def impedance(self, impedance: int):
+        self._inductance = impedance / self._sampRate
         self._off = 0j
 
-    def correctIq(self, data: ndarray[any, dtype[complex64 | complex128]]) -> None:
-        for i in range(len(data)):
+    def correctIq(self, data: ndarray[any, dtype[complexfloating]]) -> None:
+        for i in prange(len(data)):
             data[i] -= self._off
-            self._off += data[i] * self.__inductance
+            self._off += data[i] * self._inductance

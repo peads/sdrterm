@@ -52,7 +52,7 @@ class VfoProcessor(DspProcessor):
         else:
             self.host = vfoHost
             self.port = findPort(self.host)
-        self.__queue: Queue[str] | None = None
+        self.__queue: Queue[int, ...] | None = None
         self.__clients: dict[str, RawIOBase] | None = None
         self.__event: Event | None = None
 
@@ -65,7 +65,7 @@ class VfoProcessor(DspProcessor):
         return self.__event
 
     @property
-    def queue(self) -> Queue[str]:
+    def queue(self) -> Queue[int, ...]:
         return self.__queue
 
     def _generateShift(self, c: int) -> None:
@@ -77,9 +77,10 @@ class VfoProcessor(DspProcessor):
         self.queue.join()
         eprint('Connection(s) established')
 
-    def _transformData(self, x, _=None) -> None:
+    def _transformData(self, x, y, z, _=None) -> None:
         from struct import pack
-        for (request, data) in zip(self.__clients.values(), self._processChunk(x)):
+        self._processChunk(x, y, z)
+        for (request, data) in zip(self.__clients.values(), z):
             request.write(pack('!' + str(data.size) + 'd', *data))
 
     def processData(self, isDead: Value, buffer: Queue, *args, **kwargs) -> None:
@@ -106,24 +107,20 @@ class VfoProcessor(DspProcessor):
             st = Thread(target=server.serve_forever)
 
             try:
-                from concurrent.futures import ThreadPoolExecutor as Executor
                 eprint(f'\nAccepting connections on {server.socket.getsockname()}\n')
                 st.start()
-                with Executor(max_workers=self._nFreq) as self._pool:
-                    self._processData(isDead, buffer, None)
+                self._processData(isDead, buffer)
             except KeyboardInterrupt:
                 pass
-            # except Exception as e:
+            # except BaseException as e:
             #     from misc.general_util import printException
             #     printException(e)
             finally:
                 self.__event.set()
                 self._isDead = True
-                self._pool.shutdown(wait=False, cancel_futures=False)
                 server.shutdown()
                 with self.__queue.all_tasks_done:
                     self.__queue.all_tasks_done.notify_all()
                 st.join()
-                self._pool.shutdown(wait=False, cancel_futures=True)
                 vprint('Multi-VFO writer halted')
                 return

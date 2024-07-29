@@ -39,7 +39,8 @@ class __VerbosePrint:
         cls.tlog(*args, **kwargs)
 
 
-def eprint(*args, func: Callable[[any, TextIO, any], None] = lambda *a, **k: print(*a, file=stderr, **k),
+def eprint(*args,
+           func: Callable[[any, TextIO, any], None] = lambda *a, **k: print(*a, file=stderr, **k),
            **kwargs) -> None:
     func(*args, **kwargs)
 
@@ -66,7 +67,8 @@ def applyIgnoreException(func: Callable[[any], any], *args) -> any:
         return e
 
 
-def __multiApplyIgnoreException(*func: Callable[[any], any], args: Iterable[tuple[any]] = None) -> list[any]:
+def __multiApplyIgnoreException(*func: Callable[[any], any], args: Iterable[tuple[any]] = None) -> \
+        list[any]:
     ret = []
     for f, arg in zip(func, args):
         ret.append(applyIgnoreException(f, *arg))
