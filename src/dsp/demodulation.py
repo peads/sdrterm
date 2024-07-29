@@ -56,7 +56,6 @@ def imagOutput(data: ndarray[any, dtype[complexfloating]], res: ndarray[any, dty
     res[:] = imag(data)
 
 
-# @njit(cache=True, nogil=True, error_model='numpy', boundscheck=False, parallel=True)
 @guvectorize([(complex128[:], complex128[:, :], complex128[:, :])], '(n),(m,n)->(m,n)',
              nopython=True,
              cache=True,
@@ -65,10 +64,4 @@ def imagOutput(data: ndarray[any, dtype[complexfloating]], res: ndarray[any, dty
 def shiftFreq(y: ndarray[any, dtype[complexfloating]],
               shift: ndarray[any, dtype[complexfloating]],
               res: ndarray[any, dtype[complexfloating]]) -> None:
-    """
-         NOTE: apparently, numpy doesn't override the unary multiplication arithemetic assignment operator the
-         same way as the binary multiplication operator for ndarrays. So, this has to remain this way.
-     """
     res[:, :] = y * shift
-    # for i in range(y.shape[0]):
-    #     res[i] = y[i] * shift[i]
