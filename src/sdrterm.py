@@ -172,6 +172,12 @@ def main(fs: Annotated[int, Option('--fs', '-r',
 def __setStartMethod():
     from multiprocessing import get_all_start_methods
     from misc.general_util import printException
+    from os import environ
+    from sys import warnoptions
+    from warnings import simplefilter
+    if not warnoptions:
+        simplefilter('ignore')
+        environ["PYTHONWARNINGS"] = 'ignore'
 
     if 'spawn' in get_all_start_methods():
         from multiprocessing import set_start_method

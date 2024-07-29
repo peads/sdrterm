@@ -74,7 +74,7 @@ def readFile(bitsPerSample: dtype = None,
         else:
             xmin, xMaxMinDiff = ret
 
-            @njit(cache=True, nogil=True, error_model='numpy', boundscheck=False)
+            @njit(cache=True, nogil=True, error_model='numpy', boundscheck=False, fastmath=True)
             def _normalize(z: ndarray[any, dtype[complexfloating]]) -> None:
                 for i in range(z.shape[0]):
                     z[i] = 1.6 * (z[i] - xmin) * xMaxMinDiff - 0.8

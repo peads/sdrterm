@@ -18,7 +18,7 @@
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
 from numba import njit, guvectorize, complex128, float64
-from numpy import angle, ndarray, conj, abs, real, imag, dtype, complexfloating, floating, reshape
+from numpy import angle, ndarray, conj, abs, real, imag, dtype, complexfloating, floating
 from scipy.signal import resample
 
 
@@ -26,7 +26,7 @@ from scipy.signal import resample
              nopython=True,
              cache=True,
              boundscheck=False,
-             target='parallel')
+             fastmath=True)
 def _fmDemod(data: ndarray[any, dtype[complexfloating]], res: ndarray[any, dtype[floating]]):
     for i in range(0, data.shape[0], 2):
         res[i >> 1] = angle(data[i] * conj(data[i + 1]))
@@ -34,24 +34,24 @@ def _fmDemod(data: ndarray[any, dtype[complexfloating]], res: ndarray[any, dtype
 
 def fmDemod(data: ndarray[any, dtype[complexfloating]], tmp: ndarray[any, dtype[floating]]):
     # tmp1 = resample(angle(data[::2] * conj(data[1::2])), data.size)
-    if data.ndim < 2:
-        data[:] = reshape(data, (1, data.shape[0]))
+    # if data.ndim < 2:
+    #     data[:] = reshape(data, (1, data.shape[0]))
     _fmDemod(data, tmp)
     for i in range(tmp.shape[0]):
         tmp[i] = resample(tmp[i][:tmp.shape[1] >> 1], tmp.shape[1])
 
 
-@njit(cache=True, nogil=True, error_model='numpy', boundscheck=False)
+@njit(cache=True, nogil=True, error_model='numpy', boundscheck=False, fastmath=True)
 def amDemod(data: ndarray[any, dtype[complexfloating]], res: ndarray[any, dtype[floating]]):
     res[:] = abs(data)
 
 
-@njit(cache=True, nogil=True, error_model='numpy', boundscheck=False)
+@njit(cache=True, nogil=True, error_model='numpy', boundscheck=False, fastmath=True)
 def realOutput(data: ndarray[any, dtype[complexfloating]], res: ndarray[any, dtype[floating]]):
     res[:] = real(data)
 
 
-@njit(cache=True, nogil=True, error_model='numpy', boundscheck=False)
+@njit(cache=True, nogil=True, error_model='numpy', boundscheck=False, fastmath=True)
 def imagOutput(data: ndarray[any, dtype[complexfloating]], res: ndarray[any, dtype[floating]]):
     res[:] = imag(data)
 
@@ -60,7 +60,7 @@ def imagOutput(data: ndarray[any, dtype[complexfloating]], res: ndarray[any, dty
              nopython=True,
              cache=True,
              boundscheck=False,
-             target='parallel')
+             fastmath=True)
 def shiftFreq(y: ndarray[any, dtype[complexfloating]],
               shift: ndarray[any, dtype[complexfloating]],
               res: ndarray[any, dtype[complexfloating]]) -> None:
