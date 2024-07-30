@@ -34,7 +34,7 @@ else:
                         '/fp:fast', '/fp:except-', '/GL', '/Gw', '/jumptablerdata', '/MP', '/Qpar']
 
 setup(name="sdrterm",
-    version="0.4",
+    version="0.4.1",
     python_requires=">=3.10",
     ext_modules=cythonize([
     Extension('dsp.fast.iq_correction',
