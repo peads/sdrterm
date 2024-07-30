@@ -37,15 +37,13 @@ from numpy cimport ndarray
 cdef class IQCorrection:
     cdef unsigned long _fs
     cdef readonly double inductance
-    cdef double complex _off
 
     def __cinit__(self, const unsigned long fs, const unsigned short impedance = 50):
         self._fs = fs
         self.inductance = impedance / fs
-        self._off = 0j
 
     @cython.cdivision(True)
-    cpdef void correctIq(self, ndarray[np.complex128_t] data):
+    cpdef void correctIq(self, ndarray[np.complex128_t] data, ndarray[np.complex128_t] off):
         cdef Py_ssize_t i
         cdef Py_ssize_t size = data.shape[0]
         # for i in prange(size, nogil=True):
@@ -53,8 +51,8 @@ cdef class IQCorrection:
             for i in range(size):
                 # *SIGH* VS bitches about the arithmetic assignment
                 # operator, bc ofc it does
-                data[i] = data[i] - self._off
-                self._off += data[i] * self.inductance
+                data[i] = data[i] - off[0]
+                off[0] += data[i] * self.inductance
 
     @property
     def fs(self):
@@ -73,4 +71,3 @@ cdef class IQCorrection:
     @impedance.setter
     def impedance(self, const unsigned short impedance):
         self.inductance = impedance / self._fs
-        self._off = 0j

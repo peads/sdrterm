@@ -59,10 +59,7 @@ def readFile(bitsPerSample: dtype = None,
         try:
             from dsp.fast.iq_correction import IQCorrection
             tprint('Imported pre-compiled IQCorrection class')
-            corrector = IQCorrection(fs)
-
-            def _correctIq(x, *_):
-                corrector.correctIq(x)
+            _correctIq = IQCorrection(fs).correctIq
         except ImportError:
             tprint('Falling back to local IQCorrection')
             inductance: float = impedance / fs
