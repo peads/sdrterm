@@ -47,7 +47,7 @@ cdef class IQCorrection:
     @cython.cdivision(True)
     cpdef void correctIq(self, ndarray[np.complex128_t] data):
         cdef Py_ssize_t i
-        cdef Py_ssize_t size = data.size
+        cdef Py_ssize_t size = data.shape[0]
         # for i in prange(size, nogil=True):
         with nogil:
             for i in range(size):
