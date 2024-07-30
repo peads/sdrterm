@@ -46,11 +46,8 @@ cdef class IQCorrection:
     cpdef void correctIq(self, ndarray[np.complex128_t] data, ndarray[np.complex128_t] off):
         cdef Py_ssize_t i
         cdef Py_ssize_t size = data.shape[0]
-        # for i in prange(size, nogil=True):
         with nogil:
             for i in range(size):
-                # *SIGH* VS bitches about the arithmetic assignment
-                # operator, bc ofc it does
                 data[i] = data[i] - off[0]
                 off[0] += data[i] * self.inductance
 

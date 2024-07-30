@@ -22,7 +22,7 @@ import os
 import numpy
 from Cython.Build import cythonize
 from Cython.Distutils import Extension
-from setuptools import setup, find_packages
+from setuptools import setup
 
 extraLinkArgs = []
 if 'posix' in os.name:
