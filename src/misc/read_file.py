@@ -72,7 +72,7 @@ def readFile(bitsPerSample: dtype = None,
             def _correctIq(z, res) -> None:
                 off = res[0]
                 for i in range(z.shape[0]):
-                    z[i] = z[i] - off
+                    z[i] -= off
                     off += z[i] * inductance
                 res[0] = off
 
