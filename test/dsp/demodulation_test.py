@@ -31,7 +31,7 @@ def test_fm(data):
 def test_am(data):
     inp, outp = data
     dsp.amDemod(np.array(inp), outp)
-    testOutp = [math.sqrt(math.pow(z.real, 2) + math.pow(z.imag, 2)) for z in inp[0]]
+    testOutp = [math.pow(z.real, 2) + math.pow(z.imag, 2) for z in inp[0]]
     for x, y in zip(outp[0], testOutp):
         assert math.fabs(x - y) < EPSILON
 

@@ -21,8 +21,7 @@ from multiprocessing import Value, Queue
 from sys import stdout
 from typing import Callable, Iterable, Any
 
-from numpy import ndarray, dtype, complexfloating, floating, exp, arange, pi, empty, array, reshape, \
-    broadcast_to
+from numpy import ndarray, dtype, complexfloating, floating, exp, arange, pi, empty, array
 from scipy.signal import decimate, dlti, savgol_filter, sosfilt, ellip
 
 from dsp.data_processor import DataProcessor
@@ -141,7 +140,7 @@ class DspProcessor(DataProcessor):
     def _processChunk(self,
                       x: ndarray[any, dtype[complexfloating]],
                       y: ndarray[any, dtype[complexfloating]],
-                      z: ndarray[any, dtype[floating]])->None:
+                      z: ndarray[any, dtype[floating]]) -> None:
         if self._shift is not None:
             shiftFreq(x[0], self._shift, x)
             # y = y * self._shift

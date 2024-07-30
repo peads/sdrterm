@@ -22,8 +22,8 @@ from multiprocessing import Value, Process, Queue
 from sys import stdin
 from typing import Iterable
 
-from numba import njit
-from numpy import frombuffer, ndarray, complexfloating, dtype, empty, uint8
+from numba import guvectorize, complex128 as nbComplex128
+from numpy import frombuffer, ndarray, complexfloating, dtype, empty, uint8, complex128, array
 
 from misc.general_util import vprint, eprint, tprint, applyIgnoreException
 
@@ -40,6 +40,7 @@ def readFile(bitsPerSample: dtype = None,
              correctIq: bool = False,
              normalize: bool = False,
              isSocket: bool = False,
+             impedance: int = 50,
              **_) -> None:
     if fs is None:
         raise ValueError('fs is not specified')
@@ -49,42 +50,56 @@ def readFile(bitsPerSample: dtype = None,
 
     dataType = dtype([('re', bitsPerSample), ('im', bitsPerSample)])
     buffer = empty(readSize, dtype=uint8)
+    offset = array([complex128(0j)])
 
-    def _correctIq(_: ndarray[any, dtype[complexfloating]]) -> None:
+    def _correctIq(*_) -> None:
         pass
 
     if correctIq:
         try:
             from dsp.fast.iq_correction import IQCorrection
             tprint('Imported pre-compiled IQCorrection class')
+            _correctIq = IQCorrection(fs).correctIq
         except ImportError:
-            from dsp.iq_correction import IQCorrection
-            tprint('Falling-back to jit IQCorrection class')
-        _correctIq = IQCorrection(fs).correctIq
+            tprint('Falling back to local IQCorrection')
+            inductance: float = impedance / fs
 
-    def noNormalize(*_) -> None:
+            @guvectorize([(nbComplex128[:], nbComplex128[:])], '(n)->()',
+                         nopython=True,
+                         cache=True,
+                         boundscheck=False,
+                         fastmath=True)
+            def _correctIq(z, res) -> None:
+                off = res[0]
+                for i in range(z.shape[0]):
+                    z[i] = z[i] - off
+                    off += z[i] * inductance
+                res[0] = off
+
+    def _normalize(*_) -> None:
         pass
 
-    if not normalize:
-        _normalize = noNormalize
-    else:
+    if normalize:
         ret = generateDomain(bitsPerSample.char)
-        if ret is None:
-            _normalize = noNormalize
-        else:
+        if ret is not None:
             xmin, xMaxMinDiff = ret
 
-            @njit(cache=True, nogil=True, error_model='numpy', boundscheck=False)
-            def _normalize(z: ndarray[any, dtype[complexfloating]]) -> None:
+            @guvectorize([(nbComplex128[:], nbComplex128[:])], '(n)->(n)',
+                         nopython=True,
+                         cache=True,
+                         boundscheck=False,
+                         fastmath=True)
+            def _normalize(z: ndarray[any, dtype[complexfloating]],
+                           res: ndarray[any, dtype[complexfloating]]) -> None:
                 for i in range(z.shape[0]):
-                    z[i] = 1.6 * (z[i] - xmin) * xMaxMinDiff - 0.8
+                    res[i] = 1.6 * (z[i] - xmin) * xMaxMinDiff - 0.8
     procs = list(processes)
     clients = list(buffers)
 
     def feedBuffers(y: ndarray) -> None:
         z = y['re'] + 1j * y['im']
-        _normalize(z)
-        _correctIq(z)
+        _normalize(z, z)
+        _correctIq(z, offset)
         for proc, client in zip(procs, clients):
             if proc.exitcode is not None:
                 tprint(f'Process : {proc.name} ended; removing {client} from queue')
