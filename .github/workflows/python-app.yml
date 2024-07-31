@@ -26,6 +26,7 @@ jobs:
       run: |
         WD=$(pwd);
         echo $WD;
+        sudo sed -Ei 's/^# deb-src /deb-src /' /etc/apt/sources.list;
         sudo apt-get update;
         sudo apt-get install wget sox socat unzip git make cmake libitpp-dev libsndfile1-dev portaudio19-dev coreutils sed -y;
         sudo apt build-dep python3-numpy python3-scipy python3-numba -y;
