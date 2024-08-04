@@ -17,63 +17,63 @@
 # You should have received a copy of the GNU General Public License
 # along with this program. If not, see <http://www.gnu.org/licenses/>.
 #
-from numba import guvectorize, complex128, float64
-from numpy import angle, ndarray, conj, abs, real, imag, dtype, complexfloating, floating, square
+from numba import guvectorize, complex128 as nbComplex128, float64 as nbFloat64
+from numpy import angle, ndarray, conj, abs, real, imag, dtype, complex128, float64, square
 from scipy.signal import resample
 
 
-@guvectorize([(complex128[:], float64[:])], '(n)->(n)',
+@guvectorize([(nbComplex128[:], nbFloat64[:])], '(n)->(n)',
              nopython=True,
              cache=True,
              boundscheck=False,
              fastmath=True)
-def _fmDemod(data: ndarray[any, dtype[complexfloating]], res: ndarray[any, dtype[floating]]):
+def _fmDemod(data: ndarray[any, dtype[complex128]], res: ndarray[any, dtype[float64]]):
     for i in range(0, data.shape[0], 2):
         res[i >> 1] = angle(data[i] * conj(data[i + 1]))
 
 
-def fmDemod(data: ndarray[any, dtype[complexfloating]], tmp: ndarray[any, dtype[floating]]):
+def fmDemod(data: ndarray[any, dtype[complex128]], tmp: ndarray[any, dtype[float64]]):
     _fmDemod(data, tmp)
     for i in range(tmp.shape[0]):
         tmp[i] = resample(tmp[i][:tmp.shape[1] >> 1], tmp.shape[1])
 
 
-@guvectorize([(complex128[:], float64[:])], '(n)->(n)',
+@guvectorize([(nbComplex128[:], nbFloat64[:])], '(n)->(n)',
              nopython=True,
              cache=True,
              boundscheck=False,
              fastmath=True)
-def amDemod(data: ndarray[any, dtype[complexfloating]], res: ndarray[any, dtype[floating]]):
+def amDemod(data: ndarray[any, dtype[complex128]], res: ndarray[any, dtype[float64]]):
     for i in range(data.shape[0]):
         res[i] = abs(square(data[i]))
 
 
-@guvectorize([(complex128[:], float64[:])], '(n)->(n)',
+@guvectorize([(nbComplex128[:], nbFloat64[:])], '(n)->(n)',
              nopython=True,
              cache=True,
              boundscheck=False,
              fastmath=True)
-def realOutput(data: ndarray[any, dtype[complexfloating]], res: ndarray[any, dtype[floating]]):
+def realOutput(data: ndarray[any, dtype[complex128]], res: ndarray[any, dtype[float64]]):
     for i in range(data.shape[0]):
         res[i] = real(data[i])
 
 
-@guvectorize([(complex128[:], float64[:])], '(n)->(n)',
+@guvectorize([(nbComplex128[:], nbFloat64[:])], '(n)->(n)',
              nopython=True,
              cache=True,
              boundscheck=False,
              fastmath=True)
-def imagOutput(data: ndarray[any, dtype[complexfloating]], res: ndarray[any, dtype[floating]]):
+def imagOutput(data: ndarray[any, dtype[complex128]], res: ndarray[any, dtype[float64]]):
     for i in range(data.shape[0]):
         res[i] = imag(data[i])
 
 
-@guvectorize([(complex128[:], complex128[:, :], complex128[:, :])], '(n),(m,n)->(m,n)',
+@guvectorize([(nbComplex128[:], nbComplex128[:, :], nbComplex128[:, :])], '(n),(m,n)->(m,n)',
              nopython=True,
              cache=True,
              boundscheck=False,
              fastmath=True)
-def shiftFreq(y: ndarray[any, dtype[complexfloating]],
-              shift: ndarray[any, dtype[complexfloating]],
-              res: ndarray[any, dtype[complexfloating]]) -> None:
+def shiftFreq(y: ndarray[any, dtype[complex128]],
+              shift: ndarray[any, dtype[complex128]],
+              res: ndarray[any, dtype[complex128]]) -> None:
     res[:, :] = y * shift

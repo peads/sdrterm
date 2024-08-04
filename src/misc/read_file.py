@@ -23,7 +23,7 @@ from sys import stdin
 from typing import Iterable
 
 from numba import guvectorize, complex128 as nbComplex128
-from numpy import frombuffer, ndarray, complexfloating, dtype, empty, uint8, complex128, array
+from numpy import frombuffer, ndarray, complex128, dtype, empty, uint8, complex128, array
 
 from misc.general_util import vprint, eprint, tprint, applyIgnoreException
 
@@ -72,7 +72,7 @@ def readFile(bitsPerSample: dtype = None,
             def _correctIq(z, res) -> None:
                 off = res[0]
                 for i in range(z.shape[0]):
-                    z[i] = z[i] - off
+                    z[i] -= off
                     off += z[i] * inductance
                 res[0] = off
 
@@ -82,6 +82,7 @@ def readFile(bitsPerSample: dtype = None,
     if normalize:
         ret = generateDomain(bitsPerSample.char)
         if ret is not None:
+            tprint('Exact input being normalized to interval [-0.8, 0.8]')
             xmin, xMaxMinDiff = ret
 
             @guvectorize([(nbComplex128[:], nbComplex128[:])], '(n)->(n)',
@@ -89,8 +90,8 @@ def readFile(bitsPerSample: dtype = None,
                          cache=True,
                          boundscheck=False,
                          fastmath=True)
-            def _normalize(z: ndarray[any, dtype[complexfloating]],
-                           res: ndarray[any, dtype[complexfloating]]) -> None:
+            def _normalize(z: ndarray[any, dtype[complex128]],
+                           res: ndarray[any, dtype[complex128]]) -> None:
                 for i in range(z.shape[0]):
                     res[i] = 1.6 * (z[i] - xmin) * xMaxMinDiff - 0.8
     procs = list(processes)

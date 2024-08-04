@@ -21,7 +21,7 @@ from multiprocessing import Value, Queue
 from sys import stdout
 from typing import Callable, Iterable, Any
 
-from numpy import ndarray, dtype, complexfloating, floating, exp, arange, pi, empty, array
+from numpy import ndarray, dtype, complex128, float64, exp, arange, pi, empty, array
 from scipy.signal import decimate, dlti, savgol_filter, sosfilt, ellip
 
 from dsp.data_processor import DataProcessor
@@ -30,7 +30,7 @@ from misc.general_util import vprint
 
 
 def applyFilters(y: ndarray | Iterable, *filters) -> ndarray[
-    any, dtype[floating | complexfloating]]:
+    any, dtype[float64 | complex128]]:
     for sos in filters:
         y = sosfilt(sos, y)
     return y
@@ -138,9 +138,9 @@ class DspProcessor(DataProcessor):
         self._setDemod(imagOutput)
 
     def _processChunk(self,
-                      x: ndarray[any, dtype[complexfloating]],
-                      y: ndarray[any, dtype[complexfloating]],
-                      z: ndarray[any, dtype[floating]]) -> None:
+                      x: ndarray[any, dtype[complex128]],
+                      y: ndarray[any, dtype[complex128]],
+                      z: ndarray[any, dtype[float64]]) -> None:
         if self._shift is not None:
             shiftFreq(x[0], self._shift, x)
             # y = y * self._shift
@@ -149,9 +149,9 @@ class DspProcessor(DataProcessor):
         z[:] = applyFilters(z, self._outputFilters)
 
     def _transformData(self,
-                       x: ndarray[any, dtype[complexfloating]],
-                       y: ndarray[any, dtype[complexfloating]],
-                       z: ndarray[any, dtype[floating]],
+                       x: ndarray[any, dtype[complex128]],
+                       y: ndarray[any, dtype[complex128]],
+                       z: ndarray[any, dtype[float64]],
                        file) -> None:
         from struct import pack
         self._processChunk(x, y, z)
@@ -175,7 +175,7 @@ class DspProcessor(DataProcessor):
                 tmp[0, :] = x
                 x = tmp
                 y = empty(shape, dtype=x.dtype)
-                z = empty(shape, dtype=floating)
+                z = empty(shape, dtype=float64)
 
             if self._shift is None:
                 self._generateShift(x.shape[1])
@@ -219,7 +219,7 @@ class DspProcessor(DataProcessor):
     def __str__(self):
         return self.__class__.__name__
 
-# def generateDeemphFilter(fs: float, f: float = 7.5e-5) -> ndarray[any, dtype[floating]]:
+# def generateDeemphFilter(fs: float, f: float = 7.5e-5) -> ndarray[any, dtype[float64]]:
 #     alpha = 1 / (1 - exp(-26666.7 / (f * fs)))
 #     B = [alpha, 1]
 #     A = [1]
