@@ -75,7 +75,7 @@ class AbstractPlot(DataProcessor, ABC):
         self.fs = fs
         self._omega = -2j * pi * (self.offset / self.fs)
 
-    # def _shiftFreq(self, y: ndarray[any, dtype[complexfloating]]) -> None:
+    # def _shiftFreq(self, y: ndarray[any, dtype[complex128]]) -> None:
     #     if self._t is None:
     #         self._t = arange(len(y))
     #         self._shift = exp(self._omega * self._t)
